@@ -1,0 +1,16 @@
+{
+  "machines": [
+    {
+      "id": "gpu-server",
+      "host": "192.168.1.100",
+      "user": "developer",
+      "projects_dir": "/home/developer/projects"
+    },
+    {
+      "id": "devbox",
+      "host": "devbox.local",
+      "user": "dev",
+      "projects_dir": "/home/dev/projects"
+    }
+  ]
+}

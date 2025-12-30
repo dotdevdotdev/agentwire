@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <title>{{ room_name }} - AgentWire</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        :root {
+            --header-height: 52px;
+            --tts-height: 40px;
+            --controls-height: 140px;
+        }
+        body {
+            font-family: -apple-system, system-ui, sans-serif;
+            background: #0a0a0a;
+            color: #e0e0e0;
+            height: 100dvh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        .header {
+            height: var(--header-height);
+            padding: 0 1rem;
+            background: #111;
+            border-bottom: 1px solid #222;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-shrink: 0;
+        }
+        .header h1 { font-size: 1.1rem; color: #888; }
+        .header a { color: #666; text-decoration: none; font-size: 0.9rem; }
+        .header-right { display: flex; align-items: center; gap: 0.75rem; }
+        .voice-select, .mode-toggle {
+            padding: 0.25rem 0.5rem;
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 4px;
+            color: #888;
+            font-size: 0.75rem;
+            cursor: pointer;
+        }
+        .status { font-size: 0.7rem; color: #666; }
+        .status.connected { color: #4a9; }
+        .tts-controls {
+            display: none;
+            height: var(--tts-height);
+            gap: 1rem;
+            padding: 0 1rem;
+            background: #111;
+            border-bottom: 1px solid #222;
+            align-items: center;
+            flex-shrink: 0;
+        }
+        .tts-controls.visible { display: flex; }
+        .tts-control {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.7rem;
+            color: #666;
+        }
+        .tts-control input[type="range"] { width: 60px; accent-color: #4a9; }
+        .output {
+            flex: 1;
+            padding: 1rem;
+            overflow-y: scroll;
+            -webkit-overflow-scrolling: touch;
+            font-family: ui-monospace, monospace;
+            font-size: 0.8rem;
+            background: #0a0a0a;
+            color: #aaa;
+            min-height: 0;
+        }
+        .output-content {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .ambient {
+            flex: 1;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: #0a0a0a;
+            gap: 2rem;
+            min-height: 0;
+        }
+        .ambient.active { display: flex; }
+        .output.hidden { display: none; }
+
+        /* State label */
+        .state-label {
+            font-size: 1.8rem;
+            font-weight: 300;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            transition: all 0.3s ease;
+        }
+        .state-label.idle { color: #4a9; }
+        .state-label.listening { color: #f90; }
+        .state-label.processing { color: #94a; }
+        .state-label.generating { color: #5ad; }
+        .state-label.speaking { color: #4a9; }
+
+        /* Orb container */
+        .orb-container {
+            position: relative;
+            width: min(50vw, 50vh, 300px);
+            height: min(50vw, 50vh, 300px);
+        }
+        .orb {
+            position: absolute;
+            inset: 0;
+            border-radius: 50%;
+            transition: all 0.3s ease;
+        }
+        .orb-ring {
+            position: absolute;
+            inset: -10%;
+            border-radius: 50%;
+            border: 2px solid rgba(74, 170, 136, 0.2);
+            transition: all 0.3s ease;
+        }
+
+        /* Idle state - calm green breathing */
+        .orb.idle {
+            background: radial-gradient(circle at 30% 30%, #4a9, #1a3a2a);
+            animation: breathe 4s ease-in-out infinite;
+            box-shadow: 0 0 60px rgba(74, 170, 136, 0.3);
+        }
+        .orb-ring.idle {
+            animation: ring-breathe 4s ease-in-out infinite;
+            border-color: rgba(74, 170, 136, 0.2);
+        }
+
+        /* Listening state - warm orange pulse */
+        .orb.listening {
+            background: radial-gradient(circle at 30% 30%, #f90, #3a2a1a);
+            animation: listen 0.8s ease-in-out infinite;
+            box-shadow: 0 0 80px rgba(255, 153, 0, 0.4);
+        }
+        .orb-ring.listening {
+            animation: ring-listen 0.8s ease-in-out infinite;
+            border-color: rgba(255, 153, 0, 0.4);
+        }
+
+        /* Processing state - purple spin */
+        .orb.processing {
+            background: conic-gradient(from 0deg, #94a, #649, #94a);
+            animation: spin 1.5s linear infinite, pulse-processing 0.8s ease-in-out infinite;
+            box-shadow: 0 0 60px rgba(153, 68, 170, 0.4);
+        }
+        .orb-ring.processing {
+            animation: ring-spin 3s linear infinite reverse;
+            border-color: rgba(153, 68, 170, 0.4);
+            border-width: 3px;
+            border-style: dashed;
+        }
+
+        /* Generating state - blue wave pulse */
+        .orb.generating {
+            background: radial-gradient(circle at 30% 30%, #5ad, #1a3a4a);
+            animation: generate 0.6s ease-in-out infinite;
+            box-shadow: 0 0 80px rgba(90, 170, 220, 0.5);
+        }
+        .orb-ring.generating {
+            animation: ring-generate 0.6s ease-in-out infinite;
+            border-color: rgba(90, 170, 220, 0.5);
+            border-width: 3px;
+        }
+
+        /* Speaking state - vibrant green rapid pulse */
+        .orb.speaking {
+            background: radial-gradient(circle at 30% 30%, #5cb, #2a5a4a);
+            animation: speak 0.25s ease-in-out infinite;
+            box-shadow: 0 0 100px rgba(92, 204, 187, 0.5);
+        }
+        .orb-ring.speaking {
+            animation: ring-speak 0.4s ease-in-out infinite;
+            border-color: rgba(92, 204, 187, 0.5);
+            border-width: 3px;
+        }
+
+        /* Locked state - dimmed gray, someone else is talking */
+        .orb.locked {
+            background: radial-gradient(circle at 30% 30%, #666, #333);
+            animation: breathe 4s ease-in-out infinite;
+            box-shadow: 0 0 40px rgba(100, 100, 100, 0.3);
+            opacity: 0.6;
+        }
+        .orb-ring.locked {
+            animation: ring-breathe 4s ease-in-out infinite;
+            border-color: rgba(100, 100, 100, 0.3);
+        }
+        .mic-btn.locked {
+            background: linear-gradient(145deg, #444, #333);
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+        .state-label.locked {
+            color: #888;
+        }
+
+        @keyframes breathe {
+            0%, 100% { transform: scale(1); opacity: 0.8; }
+            50% { transform: scale(1.03); opacity: 1; }
+        }
+        @keyframes ring-breathe {
+            0%, 100% { transform: scale(1); opacity: 0.3; }
+            50% { transform: scale(1.05); opacity: 0.5; }
+        }
+        @keyframes listen {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.08); }
+        }
+        @keyframes ring-listen {
+            0%, 100% { transform: scale(1); opacity: 0.4; }
+            50% { transform: scale(1.15); opacity: 0.7; }
+        }
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        @keyframes pulse-processing {
+            0%, 100% { opacity: 0.9; }
+            50% { opacity: 1; }
+        }
+        @keyframes ring-spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        @keyframes generate {
+            0%, 100% { transform: scale(1); opacity: 0.9; }
+            50% { transform: scale(1.06); opacity: 1; }
+        }
+        @keyframes ring-generate {
+            0%, 100% { transform: scale(1); opacity: 0.5; }
+            50% { transform: scale(1.12); opacity: 0.8; }
+        }
+        @keyframes speak {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.12); }
+        }
+        @keyframes ring-speak {
+            0%, 100% { transform: scale(1); opacity: 0.6; }
+            50% { transform: scale(1.2); opacity: 0.9; }
+        }
+
+        /* Controls - always at bottom */
+        .controls {
+            height: var(--controls-height);
+            padding: 1rem;
+            background: #111;
+            border-top: 1px solid #222;
+            flex-shrink: 0;
+            margin-top: auto;
+        }
+        .mic-btn {
+            width: 100%;
+            padding: 1.25rem;
+            font-size: 1.1rem;
+            font-weight: 500;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .mic-btn.idle {
+            background: linear-gradient(135deg, #2a4a3a, #1a3a2a);
+            color: #4a9;
+            border: 2px solid #3a5a4a;
+        }
+        .mic-btn.listening {
+            background: linear-gradient(135deg, #4a3a1a, #3a2a0a);
+            color: #f90;
+            border: 2px solid #6a4a1a;
+            animation: btn-pulse 0.8s ease-in-out infinite;
+        }
+        .mic-btn.processing {
+            background: linear-gradient(135deg, #3a2a4a, #2a1a3a);
+            color: #a8a;
+            border: 2px solid #4a3a5a;
+            cursor: not-allowed;
+            opacity: 0.7;
+        }
+        .mic-btn.generating {
+            background: linear-gradient(135deg, #2a3a4a, #1a2a3a);
+            color: #5ad;
+            border: 2px solid #3a4a5a;
+            cursor: not-allowed;
+            opacity: 0.7;
+            animation: btn-pulse 0.6s ease-in-out infinite;
+        }
+        .mic-btn.speaking {
+            background: linear-gradient(135deg, #1a4a4a, #0a3a3a);
+            color: #5cb;
+            border: 2px solid #2a5a5a;
+        }
+        @keyframes btn-pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.85; transform: scale(0.98); }
+        }
+        .transcript {
+            margin-top: 0.5rem;
+            padding: 0.5rem 0.75rem;
+            background: #1a1a1a;
+            border-radius: 8px;
+            font-size: 1rem;
+            min-height: 1.5rem;
+            max-height: 3rem;
+            overflow-y: auto;
+            color: #ccc;
+            text-align: center;
+            line-height: 1.3;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div>
+            <h1>{{ room_name }}{% if config.machine %}<span style="color:#666;font-weight:normal">@{{ config.machine }}</span>{% endif %}</h1>
+            <div class="status" id="status">connecting...</div>
+        </div>
+        <div class="header-right">
+            <button class="mode-toggle" id="modeToggle" onclick="toggleMode()">ambient</button>
+            <select class="voice-select" id="voiceSelect" onchange="updateVoice()">
+                {% for voice in voices %}
+                <option value="{{ voice }}"{% if voice == current_voice %} selected{% endif %}>{{ voice }}</option>
+                {% endfor %}
+            </select>
+            <a href="/">back</a>
+        </div>
+    </div>
+    <div class="tts-controls" id="ttsControls">
+        <div class="tts-control">
+            <label>Exag</label>
+            <input type="range" id="exaggeration" min="0" max="1" step="0.1" value="{{ config.exaggeration }}" onchange="updateTTS()">
+            <span id="exagVal">{{ config.exaggeration }}</span>
+        </div>
+        <div class="tts-control">
+            <label>CFG</label>
+            <input type="range" id="cfgWeight" min="0" max="1" step="0.1" value="{{ config.cfg_weight }}" onchange="updateTTS()">
+            <span id="cfgVal">{{ config.cfg_weight }}</span>
+        </div>
+    </div>
+    <div class="output" id="output"><div class="output-content" id="outputContent"></div></div>
+    <div class="ambient" id="ambient">
+        <div class="state-label idle" id="stateLabel">Ready</div>
+        <div class="orb-container">
+            <div class="orb-ring idle" id="orbRing"></div>
+            <div class="orb idle" id="orb"></div>
+        </div>
+    </div>
+    <div class="controls">
+        <button class="mic-btn idle" id="micBtn">Hold to Talk</button>
+        <div class="transcript" id="transcript">Tap and hold to speak</div>
+    </div>
+
+    <script>
+        const ROOM = '{{ room_name }}';
+        const elements = {
+            output: document.getElementById('output'),
+            outputContent: document.getElementById('outputContent'),
+            ambient: document.getElementById('ambient'),
+            orb: document.getElementById('orb'),
+            orbRing: document.getElementById('orbRing'),
+            stateLabel: document.getElementById('stateLabel'),
+            status: document.getElementById('status'),
+            micBtn: document.getElementById('micBtn'),
+            transcript: document.getElementById('transcript'),
+            modeToggle: document.getElementById('modeToggle'),
+            ttsControls: document.getElementById('ttsControls')
+        };
+
+        // ANSI to HTML converter
+        function ansiToHtml(text) {
+            const colors = {
+                '30': '#000', '31': '#e55', '32': '#5e5', '33': '#ee5',
+                '34': '#55e', '35': '#e5e', '36': '#5ee', '37': '#eee',
+                '90': '#888', '91': '#f88', '92': '#8f8', '93': '#ff8',
+                '94': '#88f', '95': '#f8f', '96': '#8ff', '97': '#fff',
+                '39': '#aaa'
+            };
+            const bgColors = {
+                '40': '#000', '41': '#a00', '42': '#0a0', '43': '#a50',
+                '44': '#00a', '45': '#a0a', '46': '#0aa', '47': '#aaa',
+                '49': 'transparent'
+            };
+
+            let html = '';
+            let currentStyle = {};
+            const regex = /\x1b\[([0-9;]*)m/g;
+            let lastIndex = 0;
+            let match;
+
+            while ((match = regex.exec(text)) !== null) {
+                if (match.index > lastIndex) {
+                    const chunk = text.slice(lastIndex, match.index);
+                    html += escapeHtml(chunk);
+                }
+
+                const codes = match[1].split(';').filter(c => c !== '');
+                for (const code of codes) {
+                    if (code === '0' || code === '') {
+                        currentStyle = {};
+                    } else if (code === '1') {
+                        currentStyle.bold = true;
+                    } else if (code === '2') {
+                        currentStyle.dim = true;
+                    } else if (code === '3') {
+                        currentStyle.italic = true;
+                    } else if (code === '4') {
+                        currentStyle.underline = true;
+                    } else if (colors[code]) {
+                        currentStyle.color = colors[code];
+                    } else if (bgColors[code]) {
+                        currentStyle.bg = bgColors[code];
+                    }
+                }
+
+                html += '</span>';
+                const styles = [];
+                if (currentStyle.color) styles.push(`color:${currentStyle.color}`);
+                if (currentStyle.bg && currentStyle.bg !== 'transparent') styles.push(`background:${currentStyle.bg}`);
+                if (currentStyle.bold) styles.push('font-weight:bold');
+                if (currentStyle.dim) styles.push('opacity:0.6');
+                if (currentStyle.italic) styles.push('font-style:italic');
+                if (currentStyle.underline) styles.push('text-decoration:underline');
+                html += `<span style="${styles.join(';')}">`;
+
+                lastIndex = match.index + match[0].length;
+            }
+
+            if (lastIndex < text.length) {
+                html += escapeHtml(text.slice(lastIndex));
+            }
+
+            return '<span>' + html + '</span>';
+        }
+
+        function escapeHtml(text) {
+            return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+
+        // State machine
+        const STATES = { IDLE: 'idle', LISTENING: 'listening', PROCESSING: 'processing', GENERATING: 'generating', SPEAKING: 'speaking', LOCKED: 'locked' };
+        let currentState = STATES.IDLE;
+        let ws, recognition, currentAudio;
+        let isAmbientMode = false;
+        let processingTimeout = null;
+
+        const stateConfig = {
+            idle: { label: 'Ready', btnText: 'Hold to Talk' },
+            listening: { label: 'Listening', btnText: 'Release to Send' },
+            processing: { label: 'Thinking', btnText: 'Processing...' },
+            generating: { label: 'Generating', btnText: 'Generating Voice...' },
+            speaking: { label: 'Speaking', btnText: 'Tap to Interrupt' },
+            locked: { label: 'Busy', btnText: 'Someone else is talking...' }
+        };
+
+        function setState(newState) {
+            currentState = newState;
+            const config = stateConfig[newState];
+
+            elements.orb.className = 'orb ' + newState;
+            elements.orbRing.className = 'orb-ring ' + newState;
+
+            elements.stateLabel.className = 'state-label ' + newState;
+            elements.stateLabel.textContent = config.label;
+
+            elements.micBtn.className = 'mic-btn ' + newState;
+            elements.micBtn.textContent = config.btnText;
+        }
+
+        function toggleMode() {
+            isAmbientMode = !isAmbientMode;
+            elements.output.classList.toggle('hidden', isAmbientMode);
+            elements.ambient.classList.toggle('active', isAmbientMode);
+            elements.ttsControls.classList.toggle('visible', !isAmbientMode);
+            elements.modeToggle.textContent = isAmbientMode ? 'terminal' : 'ambient';
+        }
+
+        async function updateVoice() {
+            await fetch('/api/room/' + ROOM + '/config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ voice: document.getElementById('voiceSelect').value })
+            });
+        }
+
+        async function updateTTS() {
+            const exag = parseFloat(document.getElementById('exaggeration').value);
+            const cfg = parseFloat(document.getElementById('cfgWeight').value);
+            document.getElementById('exagVal').textContent = exag.toFixed(1);
+            document.getElementById('cfgVal').textContent = cfg.toFixed(1);
+            await fetch('/api/room/' + ROOM + '/config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ exaggeration: exag, cfg_weight: cfg })
+            });
+        }
+
+        function connect() {
+            const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            ws = new WebSocket(`${protocol}//${location.host}/ws/${ROOM}`);
+            ws.onopen = () => {
+                elements.status.textContent = 'connected';
+                elements.status.className = 'status connected';
+            };
+            ws.onclose = () => {
+                elements.status.textContent = 'reconnecting...';
+                elements.status.className = 'status';
+                setTimeout(connect, 2000);
+            };
+            ws.onmessage = (e) => {
+                const msg = JSON.parse(e.data);
+                if (msg.type === 'output') {
+                    elements.outputContent.innerHTML = ansiToHtml(msg.data);
+                    elements.output.scrollTop = elements.output.scrollHeight;
+                } else if (msg.type === 'tts_start') {
+                    if (processingTimeout) {
+                        clearTimeout(processingTimeout);
+                        processingTimeout = null;
+                    }
+                    setState(STATES.GENERATING);
+                } else if (msg.type === 'audio') {
+                    playAudio(msg.data);
+                } else if (msg.type === 'room_locked') {
+                    if (currentState === STATES.IDLE) {
+                        setState(STATES.LOCKED);
+                        elements.transcript.textContent = 'Another device is talking...';
+                    }
+                } else if (msg.type === 'room_unlocked') {
+                    if (currentState === STATES.LOCKED) {
+                        setState(STATES.IDLE);
+                        elements.transcript.textContent = 'Tap and hold to speak';
+                    }
+                }
+            };
+        }
+
+        function playAudio(base64Data) {
+            if (processingTimeout) {
+                clearTimeout(processingTimeout);
+                processingTimeout = null;
+            }
+
+            if (currentAudio) {
+                currentAudio.pause();
+                currentAudio = null;
+            }
+
+            currentAudio = new Audio('data:audio/wav;base64,' + base64Data);
+            setState(STATES.SPEAKING);
+
+            currentAudio.onended = () => {
+                currentAudio = null;
+                setState(STATES.IDLE);
+                elements.transcript.textContent = 'Tap and hold to speak';
+            };
+
+            currentAudio.play().catch(e => {
+                console.error('Audio play failed:', e);
+                currentAudio = null;
+                setState(STATES.IDLE);
+            });
+        }
+
+        function stopAudio() {
+            if (currentAudio) {
+                currentAudio.pause();
+                currentAudio = null;
+            }
+        }
+
+        // Audio level monitoring
+        let audioContext = null;
+        let analyser = null;
+        let mediaStream = null;
+        let levelInterval = null;
+
+        async function startAudioMonitor() {
+            try {
+                mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                audioContext = new AudioContext();
+                analyser = audioContext.createAnalyser();
+                const source = audioContext.createMediaStreamSource(mediaStream);
+                source.connect(analyser);
+                analyser.fftSize = 256;
+
+                const dataArray = new Uint8Array(analyser.frequencyBinCount);
+                levelInterval = setInterval(() => {
+                    if (currentState === STATES.LISTENING) {
+                        analyser.getByteFrequencyData(dataArray);
+                        const avg = dataArray.reduce((a, b) => a + b) / dataArray.length;
+                        const level = Math.min(100, avg * 2);
+                        elements.micBtn.style.boxShadow = level > 10
+                            ? `0 0 ${level/2}px ${level/4}px rgba(239, 68, 68, ${level/100})`
+                            : 'none';
+                    }
+                }, 50);
+            } catch (e) {
+                console.log('Audio monitor not available:', e);
+            }
+        }
+
+        function stopAudioMonitor() {
+            if (levelInterval) clearInterval(levelInterval);
+            if (mediaStream) mediaStream.getTracks().forEach(t => t.stop());
+            if (audioContext) audioContext.close();
+            elements.micBtn.style.boxShadow = 'none';
+            audioContext = null;
+            mediaStream = null;
+        }
+
+        // Audio recording setup (MediaRecorder + server-side Whisper)
+        let mediaRecorder = null;
+        let audioChunks = [];
+
+        async function startListening() {
+            if (currentState === STATES.SPEAKING) {
+                stopAudio();
+            }
+
+            if (currentState === STATES.PROCESSING || currentState === STATES.GENERATING || currentState === STATES.LOCKED) return;
+
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'recording_started' }));
+            }
+
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        sampleRate: 16000,
+                        channelCount: 1,
+                        echoCancellation: true,
+                        noiseSuppression: true
+                    }
+                });
+
+                audioChunks = [];
+                mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+
+                mediaRecorder.ondataavailable = (e) => {
+                    if (e.data.size > 0) audioChunks.push(e.data);
+                };
+
+                mediaRecorder.onstop = async () => {
+                    stream.getTracks().forEach(t => t.stop());
+
+                    if (audioChunks.length === 0) {
+                        setState(STATES.IDLE);
+                        elements.transcript.textContent = 'Tap and hold to speak';
+                        return;
+                    }
+
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                    await transcribeAndSend(audioBlob);
+                };
+
+                mediaRecorder.start(100);
+                setState(STATES.LISTENING);
+                elements.transcript.textContent = 'Recording...';
+                startAudioMonitor();
+
+            } catch (err) {
+                console.error('Mic error:', err);
+                elements.transcript.textContent = 'Microphone error';
+                setState(STATES.IDLE);
+            }
+        }
+
+        function stopListening() {
+            if (currentState !== STATES.LISTENING || !mediaRecorder) return;
+
+            stopAudioMonitor();
+            elements.transcript.textContent = 'Transcribing...';
+
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'recording_stopped' }));
+            }
+
+            setTimeout(() => {
+                if (mediaRecorder && mediaRecorder.state === 'recording') {
+                    mediaRecorder.stop();
+                }
+            }, 200);
+        }
+
+        async function transcribeAndSend(audioBlob) {
+            setState(STATES.PROCESSING);
+
+            if (processingTimeout) clearTimeout(processingTimeout);
+
+            try {
+                const formData = new FormData();
+                formData.append('audio', audioBlob, 'recording.webm');
+
+                const resp = await fetch('/transcribe', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await resp.json();
+
+                if (data.error) {
+                    elements.transcript.textContent = 'Transcription failed';
+                    setState(STATES.IDLE);
+                    return;
+                }
+
+                const text = data.text?.trim();
+                if (!text) {
+                    elements.transcript.textContent = 'No speech detected';
+                    setState(STATES.IDLE);
+                    return;
+                }
+
+                elements.transcript.textContent = text;
+                await fetch('/send/' + ROOM, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text: '[Remote voice - use remote-say] ' + text })
+                });
+
+                processingTimeout = setTimeout(() => {
+                    if (currentState === STATES.PROCESSING) {
+                        setState(STATES.IDLE);
+                        elements.transcript.textContent = 'Tap and hold to speak';
+                    }
+                }, 30000);
+
+            } catch (err) {
+                console.error('Transcribe error:', err);
+                elements.transcript.textContent = 'Error: ' + err.message;
+                setState(STATES.IDLE);
+            }
+        }
+
+        // Event listeners
+        elements.micBtn.addEventListener('mousedown', startListening);
+        elements.micBtn.addEventListener('mouseup', stopListening);
+        elements.micBtn.addEventListener('mouseleave', stopListening);
+        elements.micBtn.addEventListener('touchstart', (e) => { e.preventDefault(); startListening(); });
+        elements.micBtn.addEventListener('touchend', (e) => { e.preventDefault(); stopListening(); });
+
+        // Start in ambient mode by default
+        toggleMode();
+        connect();
+    </script>
+</body>
+</html>

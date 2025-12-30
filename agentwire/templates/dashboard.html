@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+    <title>AgentWire</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, system-ui, sans-serif;
+            background: #0a0a0a;
+            color: #e0e0e0;
+            min-height: 100vh;
+            padding: 1rem;
+        }
+        .header {
+            text-align: center;
+            padding: 1rem 0 2rem;
+        }
+        .header-content {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.75rem;
+        }
+        .logo {
+            width: 32px;
+            height: 32px;
+        }
+        .header h1 { font-size: 1.5rem; color: #888; }
+        .header p { color: #555; margin-top: 0.5rem; }
+        .version { font-size: 0.7rem; color: #444; margin-top: 0.25rem; }
+        .sessions {
+            max-width: 500px;
+            margin: 0 auto;
+        }
+        .session-card {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #111;
+            border: 1px solid #222;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 0.75rem;
+            text-decoration: none;
+            color: inherit;
+            transition: border-color 0.2s;
+        }
+        .session-card:hover { border-color: #444; }
+        .session-name { font-weight: 600; color: #ccc; }
+        .session-meta { font-size: 0.8rem; color: #666; margin-top: 0.25rem; }
+        .session-voice { color: #5a8; }
+        .session-arrow { color: #444; font-size: 1.2rem; }
+        .create-form {
+            max-width: 500px;
+            margin: 2rem auto 0;
+            background: #111;
+            border: 1px solid #222;
+            border-radius: 8px;
+            padding: 1rem;
+        }
+        .create-form h2 { font-size: 1rem; color: #888; margin-bottom: 1rem; }
+        .form-row { margin-bottom: 0.75rem; }
+        .form-row label { display: block; font-size: 0.8rem; color: #666; margin-bottom: 0.25rem; }
+        .form-row input, .form-row select {
+            width: 100%;
+            padding: 0.5rem;
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 4px;
+            color: #ccc;
+            font-size: 1rem;
+        }
+        .form-row input:focus, .form-row select:focus { outline: none; border-color: #555; }
+        .create-btn {
+            width: 100%;
+            padding: 0.75rem;
+            background: #2a4a3a;
+            border: none;
+            border-radius: 6px;
+            color: #8c8;
+            font-size: 1rem;
+            cursor: pointer;
+        }
+        .create-btn:hover { background: #3a5a4a; }
+        .error { color: #a44; margin-top: 0.5rem; font-size: 0.9rem; }
+        .no-sessions { text-align: center; color: #555; padding: 2rem; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="header-content">
+            <img src="/static/logo.png" alt="AgentWire" class="logo">
+            <h1>AgentWire</h1>
+        </div>
+        <p>Voice Agent Interface</p>
+        <div class="version">v{{ version }}</div>
+    </div>
+
+    <div class="sessions" id="sessions">
+        <div class="no-sessions">Loading sessions...</div>
+    </div>
+
+    <div class="create-form">
+        <h2>Create New Session</h2>
+        <div class="form-row">
+            <label>Session Name</label>
+            <input type="text" id="sessionName" placeholder="e.g., assistant">
+        </div>
+        <div class="form-row">
+            <label>Project Path (optional, defaults to ~/projects/name)</label>
+            <input type="text" id="projectPath" placeholder="e.g., ~/projects/my-app">
+        </div>
+        <div class="form-row">
+            <label>Voice</label>
+            <select id="sessionVoice">
+                {% for voice in voices %}
+                <option value="{{ voice }}"{% if voice == default_voice %} selected{% endif %}>{{ voice }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <button class="create-btn" onclick="createSession()">Create Session</button>
+        <div class="error" id="error"></div>
+    </div>
+
+    <script>
+        const DEFAULT_VOICE = '{{ default_voice }}';
+
+        async function loadSessions() {
+            const res = await fetch('/api/sessions');
+            const sessions = await res.json();
+            const container = document.getElementById('sessions');
+
+            if (sessions.length === 0) {
+                container.innerHTML = '<div class="no-sessions">No active sessions. Create one below.</div>';
+                return;
+            }
+
+            container.innerHTML = sessions.map(s => `
+                <a href="/room/${s.name}" class="session-card">
+                    <div>
+                        <div class="session-name">${s.name}${s.machine ? '<span style="color:#666;font-weight:normal">@' + s.machine + '</span>' : ''}</div>
+                        <div class="session-meta">
+                            ${s.path || '~/projects/' + s.name}
+                            <span class="session-voice">* ${s.voice || DEFAULT_VOICE}</span>
+                        </div>
+                    </div>
+                    <div class="session-arrow">-></div>
+                </a>
+            `).join('');
+        }
+
+        async function createSession() {
+            const name = document.getElementById('sessionName').value.trim();
+            const path = document.getElementById('projectPath').value.trim();
+            const voice = document.getElementById('sessionVoice').value;
+            const error = document.getElementById('error');
+
+            if (!name) {
+                error.textContent = 'Session name is required';
+                return;
+            }
+
+            error.textContent = '';
+
+            const res = await fetch('/api/create', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, path: path || null, voice })
+            });
+
+            const data = await res.json();
+            if (data.error) {
+                error.textContent = data.error;
+            } else {
+                window.location.href = '/room/' + name;
+            }
+        }
+
+        document.getElementById('sessionName').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') createSession();
+        });
+
+        loadSessions();
+        setInterval(loadSessions, 5000);
+    </script>
+</body>
+</html>
