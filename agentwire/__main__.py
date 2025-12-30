@@ -373,13 +373,17 @@ def cmd_dev(args) -> int:
         print(f"Project directory not found: {project_dir}", file=sys.stderr)
         return 1
 
+    # Get agent command from config
+    config = load_config()
+    agent_cmd = config.get("agent", {}).get("command", "claude --dangerously-skip-permissions")
+
     # Create session and start Claude Code
     print(f"Creating dev session '{session_name}' in {project_dir}...")
     subprocess.run([
         "tmux", "new-session", "-d", "-s", session_name, "-c", str(project_dir),
     ])
     subprocess.run([
-        "tmux", "send-keys", "-t", session_name, "claude", "Enter",
+        "tmux", "send-keys", "-t", session_name, agent_cmd, "Enter",
     ])
 
     print(f"Attaching... (Ctrl+B D to detach)")
@@ -390,76 +394,9 @@ def cmd_dev(args) -> int:
 # === Init Command ===
 
 def cmd_init(args) -> int:
-    """Initialize AgentWire configuration directory."""
-    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-
-    # Create default config if not exists
-    config_path = CONFIG_DIR / "config.yaml"
-    if not config_path.exists():
-        default_config = """# AgentWire Configuration
-# See: https://agentwire.dev/docs/configuration
-
-server:
-  host: "0.0.0.0"
-  port: 8765
-  ssl:
-    cert: "~/.agentwire/cert.pem"
-    key: "~/.agentwire/key.pem"
-
-projects:
-  dir: "~/projects"
-  worktrees:
-    enabled: true
-    suffix: "-worktrees"
-
-tts:
-  backend: "chatterbox"
-  url: "http://localhost:8100"
-  default_voice: "default"
-
-stt:
-  backend: "whisperkit"  # whisperkit | whispercpp | openai | none
-  language: "en"
-
-agent:
-  command: "claude --dangerously-skip-permissions"
-"""
-        config_path.write_text(default_config)
-        print(f"Created: {config_path}")
-
-    # Create machines.json if not exists
-    machines_path = CONFIG_DIR / "machines.json"
-    if not machines_path.exists():
-        machines_path.write_text('{\n  "machines": []\n}\n')
-        print(f"Created: {machines_path}")
-
-    # Create rooms.json if not exists
-    rooms_path = CONFIG_DIR / "rooms.json"
-    if not rooms_path.exists():
-        rooms_path.write_text("{}\n")
-        print(f"Created: {rooms_path}")
-
-    # Create roles directory
-    roles_dir = CONFIG_DIR / "roles"
-    roles_dir.mkdir(exist_ok=True)
-
-    # Create default role files
-    worker_role = roles_dir / "worker.md"
-    if not worker_role.exists():
-        worker_role.write_text("# Worker Role\n\nYou are a worker agent focused on completing assigned tasks.\n")
-        print(f"Created: {worker_role}")
-
-    orchestrator_role = roles_dir / "orchestrator.md"
-    if not orchestrator_role.exists():
-        orchestrator_role.write_text("# Orchestrator Role\n\nYou coordinate other Claude Code sessions via AgentWire skills.\n")
-        print(f"Created: {orchestrator_role}")
-
-    print(f"\nAgentWire initialized at {CONFIG_DIR}")
-    print("\nNext steps:")
-    print("  agentwire generate-certs   # Generate SSL certificates")
-    print("  agentwire tts start        # Start TTS server (optional)")
-    print("  agentwire portal start     # Start the web portal")
-    return 0
+    """Initialize AgentWire configuration with interactive wizard."""
+    from .onboarding import run_onboarding
+    return run_onboarding()
 
 
 def cmd_generate_certs(args) -> int:
