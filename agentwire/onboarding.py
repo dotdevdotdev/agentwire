@@ -312,10 +312,33 @@ def run_onboarding() -> int:
 
     if tts_choice == "chatterbox":
         print()
-        config["tts_url"] = prompt("Chatterbox server URL", config["tts_url"])
-        config["tts_voice"] = prompt("Default voice", config["tts_voice"])
+        tts_location = prompt_choice(
+            "Where is Chatterbox running?",
+            [
+                ("local", "Local machine (I'll start it with 'agentwire tts start')"),
+                ("remote", "Remote machine (already running elsewhere)"),
+            ],
+            default=1,
+        )
+
+        if tts_location == "local":
+            config["tts_url"] = "http://localhost:8100"
+            print()
+            print_info("Start the TTS server with: agentwire tts start")
+        else:
+            print()
+            config["tts_url"] = prompt("Chatterbox server URL (e.g., http://dotdev-pc:8100)", config["tts_url"])
+            # Test connection
+            print(f"\nTesting connection to {config['tts_url']}...")
+            try:
+                import urllib.request
+                req = urllib.request.urlopen(f"{config['tts_url']}/voices", timeout=3)
+                print_success("TTS server is reachable!")
+            except Exception:
+                print_warning("Could not reach TTS server (may not be running yet)")
+
         print()
-        print_info("Start the TTS server with: agentwire tts start")
+        config["tts_voice"] = prompt("Default voice", config["tts_voice"])
 
     elif tts_choice == "elevenlabs":
         print()

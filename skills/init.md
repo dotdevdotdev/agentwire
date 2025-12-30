@@ -1,15 +1,15 @@
 ---
 name: init
-description: Interactive onboarding wizard for AgentWire setup. Walks users through all configuration options, handles existing configs, and fully sets up the system.
+description: Interactive onboarding wizard for AgentWire setup. Walks users through all configuration options conversationally, handles existing configs, and creates all necessary files.
 ---
 
 # /init - AgentWire Onboarding Wizard
 
-Interactive setup wizard that configures AgentWire for the user's environment.
+You are guiding the user through AgentWire setup. Be conversational and helpful.
 
-## Trigger
+## Your Role
 
-Run when user executes `agentwire init` from the CLI.
+You're a friendly setup assistant. Ask questions one at a time, validate answers, and create config files. Don't dump all questions at once - have a conversation.
 
 ## Behavior
 

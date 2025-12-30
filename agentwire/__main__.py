@@ -395,8 +395,61 @@ def cmd_dev(args) -> int:
 
 def cmd_init(args) -> int:
     """Initialize AgentWire configuration with interactive wizard."""
-    from .onboarding import run_onboarding
-    return run_onboarding()
+    if args.quick:
+        # Quick mode: use Python prompts (no Claude session)
+        from .onboarding import run_onboarding
+        return run_onboarding()
+
+    # Full mode: spawn Claude session for guided setup
+    session_name = "agentwire-setup"
+
+    if tmux_session_exists(session_name):
+        print(f"Setup session already exists. Attaching...")
+        subprocess.run(["tmux", "attach-session", "-t", session_name])
+        return 0
+
+    # Create config directory first
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+
+    # The prompt to send to Claude for guided onboarding
+    setup_prompt = '''Run /init to start the AgentWire setup wizard. Guide me through configuring:
+1. Projects directory
+2. Agent command (claude flags)
+3. TTS (text-to-speech) - I might have it running on a remote machine
+4. STT (speech-to-text)
+5. SSL certificates
+6. Remote machines (optional)
+
+Ask me questions conversationally and create all the config files in ~/.agentwire/'''
+
+    print("Starting AgentWire setup wizard...")
+    print("This will spawn a Claude session to guide you through configuration.\n")
+
+    # Create tmux session
+    subprocess.run([
+        "tmux", "new-session", "-d", "-s", session_name,
+        "-c", str(Path.home() / "projects" / "agentwire"),
+    ])
+
+    # Start Claude
+    subprocess.run([
+        "tmux", "send-keys", "-t", session_name,
+        "claude --dangerously-skip-permissions", "Enter",
+    ])
+
+    # Wait a moment for Claude to start
+    import time
+    time.sleep(2)
+
+    # Send the setup prompt
+    subprocess.run([
+        "tmux", "send-keys", "-t", session_name,
+        setup_prompt, "Enter",
+    ])
+
+    print("Attaching to setup session... (Ctrl+B D to detach)\n")
+    subprocess.run(["tmux", "attach-session", "-t", session_name])
+    return 0
 
 
 def cmd_generate_certs(args) -> int:
@@ -419,7 +472,11 @@ def main() -> int:
     subparsers = parser.add_subparsers(dest="command", help="Commands")
 
     # === init command ===
-    init_parser = subparsers.add_parser("init", help="Initialize configuration")
+    init_parser = subparsers.add_parser("init", help="Interactive setup wizard")
+    init_parser.add_argument(
+        "--quick", action="store_true",
+        help="Quick mode: use simple prompts instead of Claude session"
+    )
     init_parser.set_defaults(func=cmd_init)
 
     # === portal command group ===
