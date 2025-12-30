@@ -1,21 +1,21 @@
 # Mission: AgentWire Initial Release
 
-> Extract nerve-web into a standalone open source project
+> Standalone open source voice web interface for AI coding agents
 
 **Branch:** `main` (greenfield)
 
 ## Objective
 
-Create a clean, configurable, open source version of nerve-web called AgentWire. This is the multi-room voice web interface for AI coding agents (Claude Code sessions).
+Clean, configurable, open source multi-room voice interface for AI coding agents (Claude Code sessions).
 
-## Current State (nerve-web inventory)
+## Configuration Inventory
 
 ### Hardcoded Values to Make Configurable
 
 | Current | Description | Config Key |
 |---------|-------------|------------|
 | `~/projects` | Projects directory | `projects_dir` |
-| `~/.claude/nerve/` | Config directory | CLI flag / env var |
+| `~/.agentwire/` | Config directory | CLI flag / env var |
 | `rooms.json` | Room configurations | `rooms_file` |
 | `http://localhost:8100` | TTS API URL | `tts_url` |
 | `bashbunni` | Default TTS voice | `default_voice` |
@@ -133,7 +133,7 @@ agentwire/
 ├── agentwire/
 │   ├── __init__.py
 │   ├── __main__.py             # CLI entry point
-│   ├── server.py               # Main web server (extracted from nerve-web)
+│   ├── server.py               # Main web server
 │   ├── config.py               # Configuration loading/defaults
 │   ├── tts/
 │   │   ├── __init__.py
@@ -175,7 +175,7 @@ agentwire/
 | Task | Description |
 |------|-------------|
 | 2.1 | Extract HTML templates to separate files |
-| 2.2 | Create server.py from nerve-web (use Config for all values) |
+| 2.2 | Create server.py (use Config for all values) |
 | 2.3 | Create TTS interface + chatterbox implementation |
 | 2.4 | Create STT interface + whisperkit implementation |
 | 2.5 | Create agent interface + claude implementation |
@@ -185,7 +185,7 @@ agentwire/
 
 | Task | Description |
 |------|-------------|
-| 3.1 | Update all branding from "Nerve" to "AgentWire" |
+| 3.1 | Ensure consistent "AgentWire" branding throughout |
 | 3.2 | Add logo to dashboard (use generated logo) |
 | 3.3 | Create README.md with installation, quick start, screenshots |
 | 3.4 | Add MIT LICENSE file |
