@@ -12,16 +12,104 @@ Multi-room voice web interface for AI coding agents. Push-to-talk voice input fr
 
 ## What Is AgentWire?
 
-A web server that provides:
-- **Voice rooms** - One room per AI agent session (tmux + Claude Code)
-- **Push-to-talk** - Hold button to speak, release to send transcription to agent
-- **TTS playback** - Agent responses are spoken back via browser audio
-- **Multi-device** - Access from phone, tablet, laptop on same network
-- **Room locking** - Only one person can talk at a time per room
+A complete voice-enabled orchestration system for AI coding agents:
 
+- **Web Portal** - Voice rooms with push-to-talk, TTS playback, room locking
+- **TTS Server** - Host Chatterbox for voice synthesis
+- **CLI Tools** - Manage sessions, speak text, orchestrate agents
+- **Skills** - Claude Code skills for session orchestration
+
+---
+
+## CLI Commands
+
+```bash
+# Initialize configuration
+agentwire init
+
+# Portal (web server)
+agentwire portal start     # Start in tmux (agentwire-portal)
+agentwire portal stop      # Stop the portal
+agentwire portal status    # Check if running
+
+# TTS Server
+agentwire tts start        # Start Chatterbox in tmux (agentwire-tts)
+agentwire tts stop         # Stop TTS server
+agentwire tts status       # Check TTS status
+
+# Voice
+agentwire say "Hello"      # Speak text locally
+agentwire say --room api "Done"  # Send TTS to room
+
+# Development
+agentwire dev              # Start orchestrator session (agentwire)
+agentwire generate-certs   # Generate SSL certificates
 ```
-Phone/Tablet ──► AgentWire Server ──► tmux session
-   (voice)          (WebSocket)         (Claude Code)
+
+---
+
+## Configuration
+
+All config lives in `~/.agentwire/`:
+
+| File | Purpose |
+|------|---------|
+| `config.yaml` | Main configuration |
+| `machines.json` | Remote machine registry |
+| `rooms.json` | Per-session settings (voice, role, model) |
+| `roles/*.md` | Role context files for Claude sessions |
+| `cert.pem`, `key.pem` | SSL certificates |
+
+### config.yaml
+
+```yaml
+server:
+  host: "0.0.0.0"
+  port: 8765
+
+tts:
+  backend: "chatterbox"
+  url: "http://localhost:8100"
+  default_voice: "default"
+
+stt:
+  backend: "whisperkit"  # whisperkit | whispercpp | openai | none
+
+projects:
+  dir: "~/projects"
+  worktrees:
+    enabled: true
+```
+
+---
+
+## Skills (Session Orchestration)
+
+Skills in `skills/` provide Claude Code integration:
+
+| Skill | Command | Purpose |
+|-------|---------|---------|
+| sessions | `/sessions` | List all tmux sessions |
+| send | `/send <session> <prompt>` | Send prompt to session |
+| output | `/output <session>` | Read session output |
+| spawn | `/spawn <name>` | Smart session creation |
+| new | `/new <name> [path]` | Create new session |
+| kill | `/kill <session>` | Destroy session |
+| status | `/status` | Check all machines |
+| jump | `/jump <session>` | Get attach instructions |
+
+### Installing Skills
+
+Copy skills to Claude Code's skills directory:
+
+```bash
+cp -r ~/projects/agentwire/skills/* ~/.claude/skills/agentwire/
+```
+
+Or symlink:
+
+```bash
+ln -s ~/projects/agentwire/skills ~/.claude/skills/agentwire
 ```
 
 ---
@@ -29,29 +117,26 @@ Phone/Tablet ──► AgentWire Server ──► tmux session
 ## Architecture
 
 ```
-agentwire/
-├── __main__.py      # CLI entry point
-├── server.py        # Main aiohttp web server
-├── config.py        # YAML config loading
-├── tts/             # Text-to-speech backends
-├── stt/             # Speech-to-text backends
-├── agents/          # Agent command templates
-└── templates/       # HTML templates (dashboard, room)
+┌─────────────────────────────────────────────────────────────┐
+│  Device (phone/tablet/laptop)                               │
+│  └── Browser → https://localhost:8765                       │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                         WebSocket
+                              │
+┌─────────────────────────────────────────────────────────────┐
+│  AgentWire Portal (agentwire-portal tmux session)           │
+│  ├── HTTP routes (dashboard, room pages)                    │
+│  ├── WebSocket (output streaming, TTS audio)                │
+│  ├── /transcribe (STT)                                      │
+│  └── /send/{room} (prompt forwarding)                       │
+└─────────────────────────────────────────────────────────────┘
+                              │
+              ┌───────────────┴───────────────┐
+              │                               │
+    Local tmux sessions            Remote via SSH
+    (send-keys, capture-pane)      (session@machine)
 ```
-
----
-
-## Configuration
-
-Config file: `~/.agentwire/config.yaml`
-
-Key settings:
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `server.port` | 8765 | HTTPS port |
-| `tts.backend` | none | TTS backend (chatterbox, elevenlabs, none) |
-| `stt.backend` | whisperkit | STT backend (whisperkit, openai, none) |
-| `agent.command` | claude | Command to start agent in tmux |
 
 ---
 
@@ -60,11 +145,11 @@ Key settings:
 ```bash
 # Run from source
 cd ~/projects/agentwire
-uv run python -m agentwire
-
-# Install editable
 uv pip install -e .
-agentwire
+agentwire --help
+
+# Test imports
+python -c "from agentwire import __version__; print(__version__)"
 ```
 
 ---
@@ -73,21 +158,22 @@ agentwire
 
 | File | Purpose |
 |------|---------|
+| `__main__.py` | CLI entry point, all commands |
 | `server.py` | WebSocket server, HTTP routes, room management |
 | `config.py` | Config dataclass, YAML loading, defaults |
-| `tts/chatterbox.py` | Chatterbox TTS integration |
-| `stt/whisperkit.py` | WhisperKit STT integration |
-| `templates/room.html` | Voice room UI (orb, push-to-talk) |
+| `tts/` | TTS backends (chatterbox, none) |
+| `stt/` | STT backends (whisperkit, whispercpp, openai, none) |
+| `agents/` | Agent backends (tmux local/remote) |
+| `templates/` | HTML templates (dashboard, room) |
+| `skills/` | Claude Code skills for orchestration |
 
 ---
 
-## Inherited From Nerve
+## Session Naming Convention
 
-This project extracts and generalizes `nerve-web` from the private nerve project. Key differences:
-
-| nerve-web | AgentWire |
-|-----------|-----------|
-| Hardcoded paths | Configurable via YAML |
-| `~/.claude/nerve/` | `~/.agentwire/` |
-| Claude-specific | Agent-agnostic |
-| Private use | Open source (MIT) |
+| Format | Example | Description |
+|--------|---------|-------------|
+| `name` | `api` | Local session → ~/projects/api |
+| `name/branch` | `api/feature` | Worktree session |
+| `name@machine` | `ml@gpu-server` | Remote session |
+| `name/branch@machine` | `ml/train@gpu-server` | Remote worktree |

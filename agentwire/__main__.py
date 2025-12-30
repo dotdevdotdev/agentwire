@@ -1,6 +1,7 @@
 """CLI entry point for AgentWire."""
 
 import argparse
+import json
 import os
 import subprocess
 import sys
@@ -8,10 +9,13 @@ from pathlib import Path
 
 from . import __version__
 
+# Default config directory
+CONFIG_DIR = Path.home() / ".agentwire"
+
 
 def generate_certs() -> int:
     """Generate self-signed SSL certificates."""
-    cert_dir = Path.home() / ".agentwire"
+    cert_dir = CONFIG_DIR
     cert_dir.mkdir(parents=True, exist_ok=True)
 
     cert_path = cert_dir / "cert.pem"
@@ -68,6 +72,21 @@ def tmux_session_exists(name: str) -> bool:
     )
     return result.returncode == 0
 
+
+def load_config() -> dict:
+    """Load configuration from ~/.agentwire/config.yaml."""
+    config_path = CONFIG_DIR / "config.yaml"
+    if config_path.exists():
+        try:
+            import yaml
+            with open(config_path) as f:
+                return yaml.safe_load(f) or {}
+        except Exception:
+            pass
+    return {}
+
+
+# === Portal Commands ===
 
 def cmd_portal_start(args) -> int:
     """Start the AgentWire portal web server in tmux."""
@@ -149,6 +168,197 @@ def cmd_portal_status(args) -> int:
         return 1
 
 
+# === TTS Commands ===
+
+def cmd_tts_start(args) -> int:
+    """Start the Chatterbox TTS server in tmux."""
+    session_name = "agentwire-tts"
+
+    if tmux_session_exists(session_name):
+        print(f"TTS server already running in tmux session '{session_name}'")
+        print(f"Attaching... (Ctrl+B D to detach)")
+        subprocess.run(["tmux", "attach-session", "-t", session_name])
+        return 0
+
+    # Get TTS config
+    config = load_config()
+    tts_config = config.get("tts", {})
+    port = args.port or tts_config.get("port", 8100)
+    model = args.model or tts_config.get("model", "chatterbox")
+
+    # Build chatterbox command
+    # This assumes chatterbox is installed and available
+    tts_cmd = f"chatterbox serve --port {port}"
+    if args.gpu:
+        tts_cmd += " --device cuda"
+
+    print(f"Starting TTS server on port {port}...")
+    subprocess.run([
+        "tmux", "new-session", "-d", "-s", session_name,
+    ])
+    subprocess.run([
+        "tmux", "send-keys", "-t", session_name, tts_cmd, "Enter",
+    ])
+
+    print(f"TTS server started. Attaching... (Ctrl+B D to detach)")
+    subprocess.run(["tmux", "attach-session", "-t", session_name])
+    return 0
+
+
+def cmd_tts_stop(args) -> int:
+    """Stop the TTS server."""
+    session_name = "agentwire-tts"
+
+    if not tmux_session_exists(session_name):
+        print("TTS server is not running.")
+        return 1
+
+    subprocess.run(["tmux", "kill-session", "-t", session_name])
+    print("TTS server stopped.")
+    return 0
+
+
+def cmd_tts_status(args) -> int:
+    """Check TTS server status."""
+    session_name = "agentwire-tts"
+
+    if tmux_session_exists(session_name):
+        print(f"TTS server is running in tmux session '{session_name}'")
+        print(f"  Attach: tmux attach -t {session_name}")
+
+        # Try to check if it's responding
+        config = load_config()
+        tts_url = config.get("tts", {}).get("url", "http://localhost:8100")
+        try:
+            import urllib.request
+            req = urllib.request.urlopen(f"{tts_url}/voices", timeout=2)
+            voices = json.loads(req.read().decode())
+            print(f"  Voices: {', '.join(voices) if isinstance(voices, list) else 'available'}")
+        except Exception:
+            print("  Status: starting or not responding yet")
+
+        return 0
+    else:
+        print("TTS server is not running.")
+        print("  Start:  agentwire tts start")
+        return 1
+
+
+# === Say Command ===
+
+def cmd_say(args) -> int:
+    """Generate TTS audio and play it."""
+    text = " ".join(args.text) if args.text else ""
+
+    if not text:
+        print("Usage: agentwire say <text>", file=sys.stderr)
+        return 1
+
+    config = load_config()
+    tts_config = config.get("tts", {})
+    tts_url = tts_config.get("url", "http://localhost:8100")
+    voice = args.voice or tts_config.get("default_voice", "default")
+    exaggeration = args.exaggeration or tts_config.get("exaggeration", 0.5)
+    cfg_weight = args.cfg or tts_config.get("cfg_weight", 0.5)
+
+    # Check if this is a remote session (room specified)
+    if args.room:
+        # Use remote-say: POST to portal
+        portal_url = config.get("server", {}).get("url", "https://localhost:8765")
+        return _remote_say(text, args.room, portal_url)
+
+    # Local TTS: generate and play
+    return _local_say(text, voice, exaggeration, cfg_weight, tts_url)
+
+
+def _local_say(text: str, voice: str, exaggeration: float, cfg_weight: float, tts_url: str) -> int:
+    """Generate TTS locally and play via system audio."""
+    import urllib.request
+    import tempfile
+
+    try:
+        # Request audio from chatterbox
+        data = json.dumps({
+            "text": text,
+            "voice": voice,
+            "exaggeration": exaggeration,
+            "cfg_weight": cfg_weight,
+        }).encode()
+
+        req = urllib.request.Request(
+            f"{tts_url}/generate",
+            data=data,
+            headers={"Content-Type": "application/json"},
+        )
+
+        with urllib.request.urlopen(req, timeout=30) as response:
+            audio_data = response.read()
+
+        # Save to temp file and play
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+            f.write(audio_data)
+            temp_path = f.name
+
+        # Play audio (cross-platform)
+        if sys.platform == "darwin":
+            subprocess.run(["afplay", temp_path], check=True)
+        elif sys.platform == "linux":
+            # Try various players
+            for player in ["aplay", "paplay", "play"]:
+                try:
+                    subprocess.run([player, temp_path], check=True)
+                    break
+                except FileNotFoundError:
+                    continue
+        else:
+            print(f"Audio saved to: {temp_path}")
+
+        # Clean up
+        Path(temp_path).unlink(missing_ok=True)
+        return 0
+
+    except urllib.error.URLError as e:
+        print(f"TTS server not reachable: {e}", file=sys.stderr)
+        print("Start it with: agentwire tts start", file=sys.stderr)
+        return 1
+    except Exception as e:
+        print(f"TTS failed: {e}", file=sys.stderr)
+        return 1
+
+
+def _remote_say(text: str, room: str, portal_url: str) -> int:
+    """Send TTS to a room via the portal (for remote sessions)."""
+    import urllib.request
+    import ssl
+
+    try:
+        # Create SSL context that doesn't verify (self-signed certs)
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+
+        data = json.dumps({"text": text}).encode()
+        req = urllib.request.Request(
+            f"{portal_url}/api/say/{room}",
+            data=data,
+            headers={"Content-Type": "application/json"},
+        )
+
+        with urllib.request.urlopen(req, context=ctx, timeout=30) as response:
+            result = json.loads(response.read().decode())
+            if result.get("error"):
+                print(f"Error: {result['error']}", file=sys.stderr)
+                return 1
+
+        return 0
+
+    except Exception as e:
+        print(f"Failed to send to portal: {e}", file=sys.stderr)
+        return 1
+
+
+# === Dev Command ===
+
 def cmd_dev(args) -> int:
     """Start or attach to the AgentWire dev/orchestrator session."""
     session_name = "agentwire"
@@ -177,6 +387,81 @@ def cmd_dev(args) -> int:
     return 0
 
 
+# === Init Command ===
+
+def cmd_init(args) -> int:
+    """Initialize AgentWire configuration directory."""
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Create default config if not exists
+    config_path = CONFIG_DIR / "config.yaml"
+    if not config_path.exists():
+        default_config = """# AgentWire Configuration
+# See: https://agentwire.dev/docs/configuration
+
+server:
+  host: "0.0.0.0"
+  port: 8765
+  ssl:
+    cert: "~/.agentwire/cert.pem"
+    key: "~/.agentwire/key.pem"
+
+projects:
+  dir: "~/projects"
+  worktrees:
+    enabled: true
+    suffix: "-worktrees"
+
+tts:
+  backend: "chatterbox"
+  url: "http://localhost:8100"
+  default_voice: "default"
+
+stt:
+  backend: "whisperkit"  # whisperkit | whispercpp | openai | none
+  language: "en"
+
+agent:
+  command: "claude --dangerously-skip-permissions"
+"""
+        config_path.write_text(default_config)
+        print(f"Created: {config_path}")
+
+    # Create machines.json if not exists
+    machines_path = CONFIG_DIR / "machines.json"
+    if not machines_path.exists():
+        machines_path.write_text('{\n  "machines": []\n}\n')
+        print(f"Created: {machines_path}")
+
+    # Create rooms.json if not exists
+    rooms_path = CONFIG_DIR / "rooms.json"
+    if not rooms_path.exists():
+        rooms_path.write_text("{}\n")
+        print(f"Created: {rooms_path}")
+
+    # Create roles directory
+    roles_dir = CONFIG_DIR / "roles"
+    roles_dir.mkdir(exist_ok=True)
+
+    # Create default role files
+    worker_role = roles_dir / "worker.md"
+    if not worker_role.exists():
+        worker_role.write_text("# Worker Role\n\nYou are a worker agent focused on completing assigned tasks.\n")
+        print(f"Created: {worker_role}")
+
+    orchestrator_role = roles_dir / "orchestrator.md"
+    if not orchestrator_role.exists():
+        orchestrator_role.write_text("# Orchestrator Role\n\nYou coordinate other Claude Code sessions via AgentWire skills.\n")
+        print(f"Created: {orchestrator_role}")
+
+    print(f"\nAgentWire initialized at {CONFIG_DIR}")
+    print("\nNext steps:")
+    print("  agentwire generate-certs   # Generate SSL certificates")
+    print("  agentwire tts start        # Start TTS server (optional)")
+    print("  agentwire portal start     # Start the web portal")
+    return 0
+
+
 def cmd_generate_certs(args) -> int:
     """Generate SSL certificates."""
     return generate_certs()
@@ -195,6 +480,10 @@ def main() -> int:
     )
 
     subparsers = parser.add_subparsers(dest="command", help="Commands")
+
+    # === init command ===
+    init_parser = subparsers.add_parser("init", help="Initialize configuration")
+    init_parser.set_defaults(func=cmd_init)
 
     # === portal command group ===
     portal_parser = subparsers.add_parser("portal", help="Manage the web portal")
@@ -236,6 +525,34 @@ def main() -> int:
     )
     portal_certs.set_defaults(func=cmd_generate_certs)
 
+    # === tts command group ===
+    tts_parser = subparsers.add_parser("tts", help="Manage TTS server")
+    tts_subparsers = tts_parser.add_subparsers(dest="tts_command")
+
+    # tts start
+    tts_start = tts_subparsers.add_parser("start", help="Start TTS server")
+    tts_start.add_argument("--port", type=int, help="Server port (default: 8100)")
+    tts_start.add_argument("--model", type=str, help="TTS model")
+    tts_start.add_argument("--gpu", action="store_true", help="Use GPU acceleration")
+    tts_start.set_defaults(func=cmd_tts_start)
+
+    # tts stop
+    tts_stop = tts_subparsers.add_parser("stop", help="Stop TTS server")
+    tts_stop.set_defaults(func=cmd_tts_stop)
+
+    # tts status
+    tts_status = tts_subparsers.add_parser("status", help="Check TTS status")
+    tts_status.set_defaults(func=cmd_tts_status)
+
+    # === say command ===
+    say_parser = subparsers.add_parser("say", help="Speak text via TTS")
+    say_parser.add_argument("text", nargs="*", help="Text to speak")
+    say_parser.add_argument("--voice", type=str, help="Voice name")
+    say_parser.add_argument("--room", type=str, help="Send to room (remote-say)")
+    say_parser.add_argument("--exaggeration", type=float, help="Voice exaggeration (0-1)")
+    say_parser.add_argument("--cfg", type=float, help="CFG weight (0-1)")
+    say_parser.set_defaults(func=cmd_say)
+
     # === dev command ===
     dev_parser = subparsers.add_parser(
         "dev", help="Start/attach to dev orchestrator session"
@@ -256,6 +573,10 @@ def main() -> int:
 
     if args.command == "portal" and getattr(args, "portal_command", None) is None:
         portal_parser.print_help()
+        return 0
+
+    if args.command == "tts" and getattr(args, "tts_command", None) is None:
+        tts_parser.print_help()
         return 0
 
     if hasattr(args, "func"):
