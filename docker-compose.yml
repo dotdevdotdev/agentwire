@@ -1,0 +1,60 @@
+# AgentWire Docker Compose
+# Supports multiple deployment configurations
+
+version: '3.8'
+
+services:
+  # === Portal (Web Server) ===
+  portal:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "${AGENTWIRE_PORT:-8765}:8765"
+    volumes:
+      # Config and certs
+      - ${AGENTWIRE_CONFIG_DIR:-./config}:/root/.agentwire
+      # SSH keys for remote sessions
+      - ${SSH_DIR:-~/.ssh}:/root/.ssh:ro
+    environment:
+      - AGENTWIRE_SERVER__HOST=0.0.0.0
+      - AGENTWIRE_SERVER__PORT=8765
+      - AGENTWIRE_TTS__URL=${TTS_URL:-http://tts:8100}
+      - AGENTWIRE_STT__BACKEND=${STT_BACKEND:-openai}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    depends_on:
+      - tts
+    networks:
+      - agentwire
+    restart: unless-stopped
+
+  # === TTS Server (Chatterbox) ===
+  tts:
+    build:
+      context: .
+      dockerfile: Dockerfile.tts
+    ports:
+      - "${TTS_PORT:-8100}:8100"
+    volumes:
+      # Custom voices
+      - ${VOICES_DIR:-./voices}:/app/voices
+    networks:
+      - agentwire
+    restart: unless-stopped
+    # Uncomment for GPU support:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+networks:
+  agentwire:
+    driver: bridge
+
+# === Volume definitions ===
+volumes:
+  config:
+  voices:

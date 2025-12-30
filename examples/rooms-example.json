@@ -1,0 +1,33 @@
+{
+  "api": {
+    "role": "worker",
+    "voice": "default",
+    "path": "~/projects/api",
+    "model": "sonnet"
+  },
+  "frontend": {
+    "role": "worker",
+    "voice": "default",
+    "path": "~/projects/frontend"
+  },
+  "ml": {
+    "role": "worker",
+    "voice": "default",
+    "machine": "gpu-server",
+    "path": "/home/developer/projects/ml-training"
+  },
+  "assistant": {
+    "role": "chatbot",
+    "voice": "tiny-tina",
+    "chatbot_mode": true,
+    "model": "opus",
+    "exaggeration": 0.7,
+    "cfg_weight": 0.5
+  },
+  "bible-study": {
+    "role": "worker",
+    "voice": "default",
+    "machine": "mac-mini",
+    "path": "/Users/dotdev/projects/bible-study"
+  }
+}

@@ -1,0 +1,48 @@
+# AgentWire Distributed Configuration Example
+# For setups with components on different machines
+
+# === Server (runs on orchestrator machine) ===
+server:
+  host: "0.0.0.0"
+  port: 8765
+  ssl:
+    cert: "~/.agentwire/cert.pem"
+    key: "~/.agentwire/key.pem"
+  
+  # Public URL that clients use to connect
+  public_url: "https://mac-mini.local:8765"
+
+# === Projects ===
+projects:
+  dir: "~/projects"
+  worktrees:
+    enabled: true
+    suffix: "-worktrees"
+
+# === TTS (remote GPU server) ===
+tts:
+  backend: "chatterbox"
+  
+  # Point to remote TTS server
+  url: "http://gpu-server:8100"
+  
+  default_voice: "default"
+  exaggeration: 0.5
+  cfg_weight: 0.5
+
+# === STT (local on orchestrator) ===
+stt:
+  backend: "whisperkit"
+  model_path: "~/models/whisperkit/large-v3"
+  language: "en"
+
+# === Agent ===
+agent:
+  command: "claude --dangerously-skip-permissions"
+
+# === Machines (define all remote hosts) ===
+machines:
+  file: "~/.agentwire/machines.json"
+
+rooms:
+  file: "~/.agentwire/rooms.json"

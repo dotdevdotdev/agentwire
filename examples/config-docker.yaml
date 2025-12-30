@@ -1,0 +1,40 @@
+# AgentWire Docker Configuration Example
+# For containerized deployments
+
+# === Server ===
+server:
+  host: "0.0.0.0"
+  port: 8765
+  ssl:
+    # Mount certs as volume
+    cert: "/root/.agentwire/cert.pem"
+    key: "/root/.agentwire/key.pem"
+
+# === Projects (not used in container, sessions are remote) ===
+projects:
+  dir: "/projects"
+
+# === TTS (separate container) ===
+tts:
+  backend: "chatterbox"
+  # Docker service name
+  url: "http://tts:8100"
+  default_voice: "default"
+
+# === STT (use API for containers) ===
+stt:
+  # OpenAI works without local models
+  backend: "openai"
+  language: "en"
+  # API key from environment: OPENAI_API_KEY
+
+# === Agent ===
+agent:
+  command: "claude --dangerously-skip-permissions"
+
+# === Remote machines (sessions run outside containers) ===
+machines:
+  file: "/root/.agentwire/machines.json"
+
+rooms:
+  file: "/root/.agentwire/rooms.json"

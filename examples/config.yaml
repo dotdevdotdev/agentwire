@@ -1,42 +1,63 @@
 # AgentWire Configuration
 # Copy to ~/.agentwire/config.yaml
 
+# === Server Settings ===
 server:
-  host: "0.0.0.0"
-  port: 8765
+  host: "0.0.0.0"              # Bind to all interfaces
+  port: 8765                    # HTTPS port
   ssl:
     cert: "~/.agentwire/cert.pem"
     key: "~/.agentwire/key.pem"
+  
+  # Public URL for clients (when behind proxy or on different network)
+  # public_url: "https://myserver.local:8765"
 
-# Where your project folders live
+# === Projects Directory ===
 projects:
   dir: "~/projects"
   worktrees:
-    enabled: true                    # Use git worktrees for parallel sessions
-    suffix: "-worktrees"             # ~/projects/myapp-worktrees/
-    auto_create_branch: true         # Create branch if it doesn't exist
+    enabled: true               # Use git worktrees for parallel sessions
+    suffix: "-worktrees"        # ~/projects/myapp-worktrees/
+    auto_create_branch: true    # Create branch if it doesn't exist
 
-# Text-to-speech settings
+# === Text-to-Speech ===
 tts:
-  backend: "chatterbox"  # chatterbox | elevenlabs | none
+  # Backend: chatterbox | elevenlabs | none
+  backend: "chatterbox"
+  
+  # TTS server URL - can be local or remote
   url: "http://localhost:8100"
-  default_voice: "bashbunni"
+  # Remote example: url: "http://gpu-server:8100"
+  
+  # Default voice settings
+  default_voice: "default"
+  exaggeration: 0.5            # 0-1, voice expressiveness
+  cfg_weight: 0.5              # 0-1, voice consistency
 
-# Speech-to-text settings
+# === Speech-to-Text ===
 stt:
-  backend: "whisperkit"  # whisperkit | openai | none
+  # Backend options by platform:
+  #   macOS: whisperkit (recommended), whispercpp, openai
+  #   Linux: whispercpp, openai
+  #   Any:   openai (requires API key)
+  backend: "whisperkit"
+  
+  # Local model path (for whisperkit/whispercpp)
   model_path: "~/models/whisperkit/large-v3"
+  
+  # Language for transcription
   language: "en"
 
-# How to start the AI agent in tmux
+# === Agent Command ===
 agent:
-  # Available placeholders: {name}, {path}, {model}
+  # Command to start AI agent in new sessions
+  # Placeholders: {name}, {path}, {model}
   command: "claude --dangerously-skip-permissions"
 
-# Remote machines for distributed sessions
+# === Remote Machines Registry ===
 machines:
   file: "~/.agentwire/machines.json"
 
-# Room configurations (voice, model, etc.)
+# === Room Configurations ===
 rooms:
   file: "~/.agentwire/rooms.json"

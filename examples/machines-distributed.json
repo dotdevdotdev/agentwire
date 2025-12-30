@@ -1,0 +1,34 @@
+{
+  "machines": [
+    {
+      "id": "gpu-server",
+      "host": "192.168.1.50",
+      "user": "developer",
+      "projects_dir": "/home/developer/projects",
+      "description": "GPU server for ML workloads and TTS"
+    },
+    {
+      "id": "mac-mini",
+      "host": "mac-mini.local",
+      "user": "dotdev",
+      "projects_dir": "/Users/dotdev/projects",
+      "description": "Always-on Mac Mini orchestrator"
+    },
+    {
+      "id": "devbox",
+      "host": "devbox.internal",
+      "user": "dev",
+      "projects_dir": "/home/dev/projects",
+      "ssh_key": "~/.ssh/devbox_ed25519",
+      "description": "Linux development machine"
+    },
+    {
+      "id": "cloud-vm",
+      "host": "dev.example.com",
+      "user": "ubuntu",
+      "projects_dir": "/home/ubuntu/projects",
+      "ssh_port": 22,
+      "description": "Cloud development VM"
+    }
+  ]
+}
