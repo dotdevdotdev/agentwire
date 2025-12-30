@@ -1,0 +1,38 @@
+# AgentWire Configuration
+# Copy to ~/.agentwire/config.yaml
+
+server:
+  host: "0.0.0.0"
+  port: 8765
+  ssl:
+    cert: "~/.agentwire/cert.pem"
+    key: "~/.agentwire/key.pem"
+
+# Where your project folders live
+projects:
+  dir: "~/projects"
+
+# Text-to-speech settings
+tts:
+  backend: "chatterbox"  # chatterbox | elevenlabs | none
+  url: "http://localhost:8100"
+  default_voice: "bashbunni"
+
+# Speech-to-text settings
+stt:
+  backend: "whisperkit"  # whisperkit | openai | none
+  model_path: "~/models/whisperkit/large-v3"
+  language: "en"
+
+# How to start the AI agent in tmux
+agent:
+  # Available placeholders: {name}, {path}, {model}
+  command: "claude --dangerously-skip-permissions"
+
+# Remote machines for distributed sessions
+machines:
+  file: "~/.agentwire/machines.json"
+
+# Room configurations (voice, model, etc.)
+rooms:
+  file: "~/.agentwire/rooms.json"
