@@ -11,6 +11,10 @@ server:
 # Where your project folders live
 projects:
   dir: "~/projects"
+  worktrees:
+    enabled: true                    # Use git worktrees for parallel sessions
+    suffix: "-worktrees"             # ~/projects/myapp-worktrees/
+    auto_create_branch: true         # Create branch if it doesn't exist
 
 # Text-to-speech settings
 tts:

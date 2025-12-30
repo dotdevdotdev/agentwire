@@ -36,6 +36,54 @@ Create a clean, configurable, open source version of nerve-web called AgentWire.
 - Voice/TTS settings per room
 - Remote machine support via SSH
 
+### New Feature: Git Worktree Sessions
+
+**Problem:** Multiple sessions working on the same project cause git conflicts.
+
+**Solution:** Each session gets its own git worktree, enabling parallel work on different branches.
+
+```
+~/projects/
+├── myapp/                      # Main repo (origin)
+│   └── .git/
+└── myapp-worktrees/            # Worktree container
+    ├── feature-auth/           # Session 1 worktree (branch: feature-auth)
+    ├── bugfix-login/           # Session 2 worktree (branch: bugfix-login)
+    └── refactor-api/           # Session 3 worktree (branch: refactor-api)
+```
+
+**Session creation flow:**
+1. User creates session "myapp/feature-auth"
+2. AgentWire parses: project=myapp, branch=feature-auth
+3. If worktree doesn't exist: `git worktree add ../myapp-worktrees/feature-auth -b feature-auth`
+4. tmux session starts in worktree directory
+5. Agent works on isolated branch
+
+**Benefits:**
+- Multiple agents work on same codebase simultaneously
+- Each has its own working directory (no file conflicts)
+- Changes stay on separate branches until merged
+- Clean parallel development workflow
+
+**Git-provider agnostic:** Works with any remote - GitHub, GitLab, Bitbucket, self-hosted, or no remote at all. AgentWire only uses local git commands (`git worktree add`, etc.).
+
+### Project Types
+
+| Type | Has Git? | Sessions | Use Case |
+|------|----------|----------|----------|
+| **Scratch** | No | Single only | Brainstorming, new ideas, experimentation |
+| **Full** | Yes | Multiple (via worktrees) | Active development with parallel agents |
+
+**Scratch → Full upgrade path:**
+1. Create scratch session: `ideas` → `~/projects/ideas/`
+2. Brainstorm with agent, create initial files
+3. Initialize git: `git init && git add . && git commit -m "Initial"`
+4. Now can create worktree sessions: `ideas/feature-a`, `ideas/feature-b`
+
+**UI indication:**
+- Scratch projects show "scratch" badge, no branch selector
+- Full projects show current branch, option to create worktree session
+
 ### Features to Make Optional/Pluggable
 
 - TTS backend (chatterbox, elevenlabs, local, none)
@@ -98,6 +146,7 @@ agentwire/
 | 2.3 | Create TTS interface + chatterbox implementation |
 | 2.4 | Create STT interface + whisperkit implementation |
 | 2.5 | Create agent interface + claude implementation |
+| 2.6 | Implement git worktree session management |
 
 ## Wave 3: Branding & Polish
 
@@ -132,6 +181,10 @@ server:
 
 projects:
   dir: "~/projects"
+  worktrees:
+    enabled: true                    # Use git worktrees for parallel sessions
+    suffix: "-worktrees"             # ~/projects/myapp-worktrees/
+    auto_create_branch: true         # Create branch if it doesn't exist
 
 tts:
   backend: "chatterbox"  # chatterbox | elevenlabs | none
@@ -153,6 +206,15 @@ machines:
 rooms:
   file: "~/.agentwire/rooms.json"
 ```
+
+## Session Naming Convention
+
+| Format | Example | Result |
+|--------|---------|--------|
+| `project` | `myapp` | Single session in `~/projects/myapp` |
+| `project/branch` | `myapp/feature-auth` | Worktree session in `~/projects/myapp-worktrees/feature-auth` |
+| `project@machine` | `ml@devbox-1` | Remote session on devbox-1 |
+| `project/branch@machine` | `ml/train-v2@gpu-server` | Remote worktree session |
 
 ## CLI Interface
 
@@ -179,6 +241,7 @@ agentwire --version
 - [ ] Works with zero config (sensible defaults)
 - [ ] All paths/URLs configurable via YAML
 - [ ] TTS/STT backends pluggable (can run without either)
+- [ ] Git worktree sessions work (project/branch naming)
 - [ ] Branding is "AgentWire" throughout
 - [ ] README has clear installation + usage instructions
 - [ ] MIT licensed
