@@ -84,10 +84,43 @@ Create a clean, configurable, open source version of nerve-web called AgentWire.
 - Scratch projects show "scratch" badge, no branch selector
 - Full projects show current branch, option to create worktree session
 
+### Cross-Platform Support
+
+**Supported platforms:** macOS, Linux, WSL2 (Windows users use WSL2)
+
+| Platform | STT Options | TTS | Notes |
+|----------|-------------|-----|-------|
+| **macOS** | WhisperKit, whisper.cpp, OpenAI | Chatterbox, ElevenLabs | Primary dev platform |
+| **Linux** | whisper.cpp, faster-whisper, OpenAI | Chatterbox, ElevenLabs | Full support |
+| **WSL2** | whisper.cpp, faster-whisper, OpenAI | Chatterbox, ElevenLabs | Windows recommended path |
+
+**Platform-specific STT:**
+
+| Backend | macOS | Linux | WSL2 | Speed | Quality |
+|---------|-------|-------|------|-------|---------|
+| WhisperKit | ✅ CoreML | ❌ | ❌ | Fast | Excellent |
+| whisper.cpp | ✅ | ✅ | ✅ | Medium | Excellent |
+| faster-whisper | ✅ | ✅ | ✅ | Fast | Excellent |
+| OpenAI API | ✅ | ✅ | ✅ | Fast | Excellent |
+
+**Dependencies by platform:**
+
+| Platform | Install |
+|----------|---------|
+| macOS | `brew install tmux ffmpeg` |
+| Linux | `apt install tmux ffmpeg` |
+| WSL2 | `apt install tmux ffmpeg` |
+
+**Implementation notes:**
+- Use `pathlib` everywhere for cross-platform paths
+- Use `shutil.which()` to find executables
+- Detect platform via `sys.platform` for STT backend defaults
+- WSL2: Access web UI from Windows browser at `localhost:8765`
+
 ### Features to Make Optional/Pluggable
 
 - TTS backend (chatterbox, elevenlabs, local, none)
-- STT backend (whisperkit, whisper.cpp, openai, none)
+- STT backend (whisperkit, whisper.cpp, faster-whisper, openai, none)
 - Agent command (claude, aider, cursor, custom)
 
 ## Target Project Structure
