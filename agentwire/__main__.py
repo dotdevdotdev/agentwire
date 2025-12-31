@@ -286,7 +286,7 @@ def _local_say(text: str, voice: str, exaggeration: float, cfg_weight: float, tt
         }).encode()
 
         req = urllib.request.Request(
-            f"{tts_url}/generate",
+            f"{tts_url}/tts",
             data=data,
             headers={"Content-Type": "application/json"},
         )
@@ -412,15 +412,7 @@ def cmd_init(args) -> int:
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 
     # The prompt to send to Claude for guided onboarding
-    setup_prompt = '''Run /init to start the AgentWire setup wizard. Guide me through configuring:
-1. Projects directory
-2. Agent command (claude flags)
-3. TTS (text-to-speech) - I might have it running on a remote machine
-4. STT (speech-to-text)
-5. SSL certificates
-6. Remote machines (optional)
-
-Ask me questions conversationally and create all the config files in ~/.agentwire/'''
+    setup_prompt = '''/init'''
 
     print("Starting AgentWire setup wizard...")
     print("This will spawn a Claude session to guide you through configuration.\n")
