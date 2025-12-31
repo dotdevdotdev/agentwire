@@ -449,6 +449,37 @@ def cmd_generate_certs(args) -> int:
     return generate_certs()
 
 
+# === Listen Commands ===
+
+def cmd_listen_start(args) -> int:
+    """Start voice recording."""
+    from .listen import start_recording
+    return start_recording()
+
+
+def cmd_listen_stop(args) -> int:
+    """Stop recording, transcribe, send to session."""
+    from .listen import stop_recording
+    session = args.session or "agentwire"
+    return stop_recording(session, voice_prompt=not args.no_prompt)
+
+
+def cmd_listen_cancel(args) -> int:
+    """Cancel current recording."""
+    from .listen import cancel_recording
+    return cancel_recording()
+
+
+def cmd_listen_toggle(args) -> int:
+    """Toggle recording (start if not recording, stop if recording)."""
+    from .listen import is_recording, start_recording, stop_recording
+    session = args.session or "agentwire"
+    if is_recording():
+        return stop_recording(session, voice_prompt=not args.no_prompt)
+    else:
+        return start_recording()
+
+
 def main() -> int:
     """Main entry point."""
     parser = argparse.ArgumentParser(
@@ -544,6 +575,35 @@ def main() -> int:
         "dev", help="Start/attach to dev orchestrator session"
     )
     dev_parser.set_defaults(func=cmd_dev)
+
+    # === listen command group ===
+    listen_parser = subparsers.add_parser("listen", help="Voice input recording")
+    listen_parser.add_argument(
+        "--session", "-s", type=str, default="agentwire",
+        help="Target session (default: agentwire)"
+    )
+    listen_parser.add_argument(
+        "--no-prompt", action="store_true",
+        help="Don't prepend voice prompt hint"
+    )
+    listen_subparsers = listen_parser.add_subparsers(dest="listen_command")
+
+    # listen start
+    listen_start = listen_subparsers.add_parser("start", help="Start recording")
+    listen_start.set_defaults(func=cmd_listen_start)
+
+    # listen stop
+    listen_stop = listen_subparsers.add_parser("stop", help="Stop and send")
+    listen_stop.add_argument("--session", "-s", type=str, help="Target session")
+    listen_stop.add_argument("--no-prompt", action="store_true")
+    listen_stop.set_defaults(func=cmd_listen_stop)
+
+    # listen cancel
+    listen_cancel = listen_subparsers.add_parser("cancel", help="Cancel recording")
+    listen_cancel.set_defaults(func=cmd_listen_cancel)
+
+    # Default listen (no subcommand) = toggle
+    listen_parser.set_defaults(func=cmd_listen_toggle)
 
     # === generate-certs (top-level shortcut) ===
     certs_parser = subparsers.add_parser(
