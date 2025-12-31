@@ -45,10 +45,13 @@
         .left-column {
             display: flex;
             flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            padding: 2rem;
-            border-right: 1px solid var(--border);
+            padding: 1.5rem;
+            width: 320px;
+            flex-shrink: 0;
+        }
+        .brand {
+            text-align: center;
+            margin-bottom: 1rem;
         }
         .splash-logo {
             max-width: 280px;
@@ -56,15 +59,84 @@
             height: auto;
             border-radius: 12px;
         }
-        .tagline { color: var(--text-muted); margin-top: 1rem; font-size: 0.9rem; }
-        .version { font-size: 0.7rem; color: var(--text-muted); margin-top: 0.5rem; }
+        .tagline { color: var(--text-muted); margin-top: 0.75rem; font-size: 0.85rem; }
+        .version { font-size: 0.7rem; color: var(--text-muted); margin-top: 0.25rem; }
+        .actions {
+            margin-top: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+        .action-group {
+            background: var(--bg-mid);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .action-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.75rem 1rem;
+            cursor: pointer;
+            user-select: none;
+            transition: background 0.2s;
+        }
+        .action-header:hover {
+            background: var(--bg-light);
+        }
+        .action-header h3 {
+            font-size: 0.9rem;
+            font-weight: 500;
+            color: var(--text-primary);
+        }
+        .action-toggle {
+            color: var(--text-muted);
+            font-size: 0.8rem;
+            transition: transform 0.2s;
+        }
+        .action-group.open .action-toggle {
+            transform: rotate(180deg);
+        }
+        .action-content {
+            display: none;
+            padding: 0 1rem 1rem;
+        }
+        .action-group.open .action-content {
+            display: block;
+        }
+        .form-row { margin-bottom: 0.75rem; }
+        .form-row label { display: block; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.25rem; }
+        .form-row input, .form-row select {
+            width: 100%;
+            padding: 0.5rem;
+            background: var(--bg-light);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            color: var(--text-primary);
+            font-size: 0.9rem;
+        }
+        .form-row input:focus, .form-row select:focus { outline: none; border-color: var(--primary); }
+        .action-btn {
+            width: 100%;
+            padding: 0.6rem;
+            background: var(--primary-subtle);
+            border: 1px solid rgba(0, 221, 0, 0.3);
+            border-radius: 4px;
+            color: var(--primary);
+            font-size: 0.9rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .action-btn:hover {
+            background: rgba(0, 221, 0, 0.25);
+            border-color: var(--primary);
+        }
+        .error { color: var(--error); margin-top: 0.5rem; font-size: 0.8rem; }
         .right-column {
             flex: 1;
-            padding: 2rem;
+            padding: 1.5rem 2rem;
             overflow-y: auto;
-        }
-        .sessions {
-            max-width: 600px;
         }
         .section-title {
             font-size: 0.75rem;
@@ -73,62 +145,26 @@
             letter-spacing: 0.05em;
             margin-bottom: 1rem;
         }
+        .sessions {
+            max-width: 700px;
+        }
         .session-card {
             display: flex;
             justify-content: space-between;
             align-items: center;
             background: var(--bg-mid);
-            border: 1px solid var(--border);
             border-radius: 8px;
             padding: 1rem;
-            margin-bottom: 0.75rem;
+            margin-bottom: 0.5rem;
             text-decoration: none;
             color: inherit;
-            transition: border-color 0.2s;
+            transition: background 0.2s;
         }
-        .session-card:hover { border-color: var(--primary); }
+        .session-card:hover { background: var(--bg-light); }
         .session-name { font-weight: 600; color: var(--text-primary); }
         .session-meta { font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem; }
         .session-voice { color: var(--primary); }
-        .session-arrow { color: var(--border-light); font-size: 1.2rem; }
-        .create-form {
-            max-width: 600px;
-            margin-top: 2rem;
-            background: var(--bg-mid);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 1rem;
-        }
-        .create-form h2 { font-size: 1rem; color: var(--text-secondary); margin-bottom: 1rem; }
-        .form-row { margin-bottom: 0.75rem; }
-        .form-row label { display: block; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.25rem; }
-        .form-row input, .form-row select {
-            width: 100%;
-            padding: 0.5rem;
-            background: var(--bg-light);
-            border: 1px solid var(--border-light);
-            border-radius: 4px;
-            color: var(--text-primary);
-            font-size: 1rem;
-        }
-        .form-row input:focus, .form-row select:focus { outline: none; border-color: var(--primary); }
-        .create-btn {
-            width: 100%;
-            padding: 0.75rem;
-            background: var(--primary-subtle);
-            border: 2px solid rgba(0, 221, 0, 0.3);
-            border-radius: 6px;
-            color: var(--primary);
-            font-size: 1rem;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        .create-btn:hover {
-            background: rgba(0, 221, 0, 0.25);
-            border-color: var(--primary);
-        }
-        .error { color: var(--error); margin-top: 0.5rem; font-size: 0.9rem; }
+        .session-arrow { color: var(--text-muted); font-size: 1.2rem; }
         .no-sessions { color: var(--text-muted); padding: 1rem 0; }
 
         /* Mobile: stack vertically */
@@ -137,15 +173,17 @@
                 flex-direction: column;
             }
             .left-column {
-                border-right: none;
-                border-bottom: 1px solid var(--border);
-                padding: 1.5rem;
+                width: 100%;
+                padding: 1rem;
             }
             .splash-logo {
                 max-width: 200px;
             }
+            .actions {
+                margin-top: 1.5rem;
+            }
             .right-column {
-                padding: 1.5rem;
+                padding: 1rem;
             }
         }
     </style>
@@ -153,36 +191,46 @@
 <body>
     <div class="layout">
         <div class="left-column">
-            <img src="/static/agentwire-logo-splash-green.jpeg" alt="AgentWire" class="splash-logo">
-            <p class="tagline">Voice Agent Interface</p>
-            <div class="version">v{{ version }}</div>
+            <div class="brand">
+                <img src="/static/agentwire-logo-splash-green.jpeg" alt="AgentWire" class="splash-logo">
+                <p class="tagline">Voice Agent Interface</p>
+                <div class="version">v{{ version }}</div>
+            </div>
+
+            <div class="actions">
+                <div class="action-group" id="createSessionGroup">
+                    <div class="action-header" onclick="toggleAction('createSessionGroup')">
+                        <h3>Create Session</h3>
+                        <span class="action-toggle">▼</span>
+                    </div>
+                    <div class="action-content">
+                        <div class="form-row">
+                            <label>Session Name</label>
+                            <input type="text" id="sessionName" placeholder="e.g., assistant">
+                        </div>
+                        <div class="form-row">
+                            <label>Project Path (optional)</label>
+                            <input type="text" id="projectPath" placeholder="~/projects/name">
+                        </div>
+                        <div class="form-row">
+                            <label>Voice</label>
+                            <select id="sessionVoice">
+                                {% for voice in voices %}
+                                <option value="{{ voice }}"{% if voice == default_voice %} selected{% endif %}>{{ voice }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <button class="action-btn" onclick="createSession()">Create</button>
+                        <div class="error" id="error"></div>
+                    </div>
+                </div>
+            </div>
         </div>
+
         <div class="right-column">
             <div class="section-title">Active Sessions</div>
             <div class="sessions" id="sessions">
                 <div class="no-sessions">Loading sessions...</div>
-            </div>
-
-            <div class="create-form">
-                <h2>Create New Session</h2>
-                <div class="form-row">
-                    <label>Session Name</label>
-                    <input type="text" id="sessionName" placeholder="e.g., assistant">
-                </div>
-                <div class="form-row">
-                    <label>Project Path (optional, defaults to ~/projects/name)</label>
-                    <input type="text" id="projectPath" placeholder="e.g., ~/projects/my-app">
-                </div>
-                <div class="form-row">
-                    <label>Voice</label>
-                    <select id="sessionVoice">
-                        {% for voice in voices %}
-                        <option value="{{ voice }}"{% if voice == default_voice %} selected{% endif %}>{{ voice }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <button class="create-btn" onclick="createSession()">Create Session</button>
-                <div class="error" id="error"></div>
             </div>
         </div>
     </div>
@@ -190,13 +238,18 @@
     <script>
         const DEFAULT_VOICE = '{{ default_voice }}';
 
+        function toggleAction(id) {
+            const group = document.getElementById(id);
+            group.classList.toggle('open');
+        }
+
         async function loadSessions() {
             const res = await fetch('/api/sessions');
             const sessions = await res.json();
             const container = document.getElementById('sessions');
 
             if (sessions.length === 0) {
-                container.innerHTML = '<div class="no-sessions">No active sessions. Create one below.</div>';
+                container.innerHTML = '<div class="no-sessions">No active sessions. Create one to get started.</div>';
                 return;
             }
 
