@@ -1,0 +1,266 @@
+"""Voice cloning: record audio and upload to TTS server."""
+
+import os
+import signal
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+import requests
+
+CONFIG_DIR = Path.home() / ".agentwire"
+LOCK_FILE = Path("/tmp/agentwire-voiceclone.lock")
+PID_FILE = Path("/tmp/agentwire-voiceclone.pid")
+AUDIO_FILE = Path("/tmp/agentwire-voiceclone.wav")
+DEBUG_LOG = Path("/tmp/agentwire-voiceclone.log")
+
+
+def log(msg: str) -> None:
+    """Log debug message."""
+    with open(DEBUG_LOG, "a") as f:
+        f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')}: {msg}\n")
+
+
+def notify(msg: str) -> None:
+    """Show system notification (non-blocking)."""
+    if sys.platform == "darwin":
+        subprocess.Popen([
+            "osascript", "-e",
+            f'display notification "{msg}" with title "AgentWire Voice Clone"'
+        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def beep(sound: str) -> None:
+    """Play system sound (non-blocking)."""
+    if sys.platform == "darwin":
+        sounds = {
+            "start": "/System/Library/Sounds/Blow.aiff",
+            "stop": "/System/Library/Sounds/Pop.aiff",
+            "done": "/System/Library/Sounds/Glass.aiff",
+            "error": "/System/Library/Sounds/Basso.aiff",
+        }
+        if sound in sounds:
+            subprocess.Popen(["afplay", sounds[sound]],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def load_config() -> dict:
+    """Load agentwire config."""
+    config_path = CONFIG_DIR / "config.yaml"
+    if config_path.exists():
+        try:
+            import yaml
+            with open(config_path) as f:
+                return yaml.safe_load(f) or {}
+        except Exception:
+            pass
+    return {}
+
+
+def get_tts_url() -> str:
+    """Get TTS server URL from config."""
+    config = load_config()
+    return config.get("tts", {}).get("url", "http://localhost:8100")
+
+
+def start_recording() -> int:
+    """Start recording audio for voice cloning."""
+    log("start_recording called")
+
+    # Clean up any stale recording
+    subprocess.run(["pkill", "-9", "-f", "ffmpeg.*agentwire-voiceclone"],
+                   capture_output=True)
+    LOCK_FILE.unlink(missing_ok=True)
+    PID_FILE.unlink(missing_ok=True)
+    AUDIO_FILE.unlink(missing_ok=True)
+    time.sleep(0.1)
+
+    LOCK_FILE.touch()
+    beep("start")
+
+    # Record audio (24kHz mono for Chatterbox - it expects this format)
+    if sys.platform == "darwin":
+        proc = subprocess.Popen(
+            ["ffmpeg", "-f", "avfoundation", "-i", ":0",
+             "-ar", "24000", "-ac", "1", str(AUDIO_FILE), "-y"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+    else:
+        # Linux - use pulse or alsa
+        proc = subprocess.Popen(
+            ["ffmpeg", "-f", "pulse", "-i", "default",
+             "-ar", "24000", "-ac", "1", str(AUDIO_FILE), "-y"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+
+    PID_FILE.write_text(str(proc.pid))
+    log(f"Started ffmpeg with PID {proc.pid}")
+    print("Recording for voice clone... (10-30 seconds recommended)")
+    return 0
+
+
+def stop_recording(voice_name: str) -> int:
+    """Stop recording and upload voice clone."""
+    log(f"stop_recording called for voice: {voice_name}")
+
+    if not LOCK_FILE.exists():
+        log("ERROR: No lock file")
+        print("Not recording")
+        beep("error")
+        return 1
+
+    beep("stop")
+    log("Stopping ffmpeg")
+
+    # Stop ffmpeg
+    if PID_FILE.exists():
+        try:
+            pid = int(PID_FILE.read_text().strip())
+            os.kill(pid, signal.SIGTERM)
+        except (ValueError, ProcessLookupError):
+            pass
+        PID_FILE.unlink(missing_ok=True)
+
+    subprocess.run(["pkill", "-9", "-f", "ffmpeg.*agentwire-voiceclone"],
+                   capture_output=True)
+    LOCK_FILE.unlink(missing_ok=True)
+
+    # Wait for file to be written
+    time.sleep(0.3)
+
+    if not AUDIO_FILE.exists():
+        log("ERROR: No audio file")
+        notify("Recording failed")
+        beep("error")
+        return 1
+
+    # Check audio duration
+    result = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+         "-of", "default=noprint_wrappers=1:nokey=1", str(AUDIO_FILE)],
+        capture_output=True, text=True
+    )
+    try:
+        duration = float(result.stdout.strip())
+        log(f"Audio duration: {duration:.1f}s")
+        if duration < 3:
+            log("ERROR: Recording too short")
+            notify("Recording too short (min 3 seconds)")
+            beep("error")
+            AUDIO_FILE.unlink(missing_ok=True)
+            return 1
+    except (ValueError, AttributeError):
+        log("WARNING: Could not determine audio duration")
+
+    log("Uploading voice clone...")
+    notify("Uploading voice clone...")
+    print(f"Uploading voice '{voice_name}'...")
+
+    # Upload to TTS server
+    tts_url = get_tts_url()
+    try:
+        with open(AUDIO_FILE, "rb") as f:
+            response = requests.post(
+                f"{tts_url}/voices/{voice_name}",
+                files={"file": (f"{voice_name}.wav", f, "audio/wav")}
+            )
+
+        if response.status_code == 200:
+            data = response.json()
+            duration = data.get("duration", "?")
+            beep("done")
+            log(f"SUCCESS: Voice '{voice_name}' created ({duration}s)")
+            notify(f"Voice '{voice_name}' created!")
+            print(f"Voice '{voice_name}' created successfully ({duration}s)")
+            AUDIO_FILE.unlink(missing_ok=True)
+            return 0
+        else:
+            error = response.json().get("detail", response.text)
+            log(f"ERROR: Upload failed - {error}")
+            notify(f"Upload failed: {error}")
+            beep("error")
+            print(f"Upload failed: {error}")
+            AUDIO_FILE.unlink(missing_ok=True)
+            return 1
+
+    except requests.RequestException as e:
+        log(f"ERROR: Connection failed - {e}")
+        notify("Connection to TTS server failed")
+        beep("error")
+        print(f"Connection failed: {e}")
+        AUDIO_FILE.unlink(missing_ok=True)
+        return 1
+
+
+def cancel_recording() -> int:
+    """Cancel current recording."""
+    if PID_FILE.exists():
+        try:
+            pid = int(PID_FILE.read_text().strip())
+            os.kill(pid, signal.SIGTERM)
+        except (ValueError, ProcessLookupError):
+            pass
+        PID_FILE.unlink(missing_ok=True)
+
+    subprocess.run(["pkill", "-9", "-f", "ffmpeg.*agentwire-voiceclone"],
+                   capture_output=True)
+    LOCK_FILE.unlink(missing_ok=True)
+    AUDIO_FILE.unlink(missing_ok=True)
+
+    beep("error")
+    notify("Cancelled")
+    print("Cancelled")
+    return 0
+
+
+def is_recording() -> bool:
+    """Check if currently recording."""
+    return LOCK_FILE.exists()
+
+
+def list_voices() -> int:
+    """List available voices from TTS server."""
+    tts_url = get_tts_url()
+    try:
+        response = requests.get(f"{tts_url}/voices")
+        if response.status_code == 200:
+            data = response.json()
+            voices = data.get("voices", data) if isinstance(data, dict) else data
+
+            if not voices:
+                print("No voices available")
+                return 0
+
+            print(f"Available voices ({len(voices)}):")
+            for v in sorted(voices, key=lambda x: x.get("name", "")):
+                name = v.get("name", "?")
+                duration = v.get("duration", "?")
+                print(f"  {name}: {duration}s")
+            return 0
+        else:
+            print(f"Failed to list voices: {response.status_code}")
+            return 1
+    except requests.RequestException as e:
+        print(f"Connection failed: {e}")
+        return 1
+
+
+def delete_voice(voice_name: str) -> int:
+    """Delete a voice from TTS server."""
+    tts_url = get_tts_url()
+    try:
+        response = requests.delete(f"{tts_url}/voices/{voice_name}")
+        if response.status_code == 200:
+            print(f"Voice '{voice_name}' deleted")
+            return 0
+        elif response.status_code == 404:
+            print(f"Voice '{voice_name}' not found")
+            return 1
+        else:
+            error = response.json().get("detail", response.text)
+            print(f"Delete failed: {error}")
+            return 1
+    except requests.RequestException as e:
+        print(f"Connection failed: {e}")
+        return 1

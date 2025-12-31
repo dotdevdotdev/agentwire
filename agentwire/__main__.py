@@ -480,6 +480,38 @@ def cmd_listen_toggle(args) -> int:
         return start_recording()
 
 
+# === Voice Clone Commands ===
+
+def cmd_voiceclone_start(args) -> int:
+    """Start voice recording for cloning."""
+    from .voiceclone import start_recording
+    return start_recording()
+
+
+def cmd_voiceclone_stop(args) -> int:
+    """Stop recording and upload voice clone."""
+    from .voiceclone import stop_recording
+    return stop_recording(args.name)
+
+
+def cmd_voiceclone_cancel(args) -> int:
+    """Cancel current recording."""
+    from .voiceclone import cancel_recording
+    return cancel_recording()
+
+
+def cmd_voiceclone_list(args) -> int:
+    """List available voices."""
+    from .voiceclone import list_voices
+    return list_voices()
+
+
+def cmd_voiceclone_delete(args) -> int:
+    """Delete a voice."""
+    from .voiceclone import delete_voice
+    return delete_voice(args.name)
+
+
 def main() -> int:
     """Main entry point."""
     parser = argparse.ArgumentParser(
@@ -604,6 +636,44 @@ def main() -> int:
 
     # Default listen (no subcommand) = toggle
     listen_parser.set_defaults(func=cmd_listen_toggle)
+
+    # === voiceclone command group ===
+    voiceclone_parser = subparsers.add_parser(
+        "voiceclone", help="Record and upload voice clones"
+    )
+    voiceclone_subparsers = voiceclone_parser.add_subparsers(dest="voiceclone_command")
+
+    # voiceclone start
+    voiceclone_start = voiceclone_subparsers.add_parser(
+        "start", help="Start recording for voice clone"
+    )
+    voiceclone_start.set_defaults(func=cmd_voiceclone_start)
+
+    # voiceclone stop <name>
+    voiceclone_stop = voiceclone_subparsers.add_parser(
+        "stop", help="Stop recording and upload as voice clone"
+    )
+    voiceclone_stop.add_argument("name", help="Name for the voice clone")
+    voiceclone_stop.set_defaults(func=cmd_voiceclone_stop)
+
+    # voiceclone cancel
+    voiceclone_cancel = voiceclone_subparsers.add_parser(
+        "cancel", help="Cancel current recording"
+    )
+    voiceclone_cancel.set_defaults(func=cmd_voiceclone_cancel)
+
+    # voiceclone list
+    voiceclone_list = voiceclone_subparsers.add_parser(
+        "list", help="List available voices"
+    )
+    voiceclone_list.set_defaults(func=cmd_voiceclone_list)
+
+    # voiceclone delete <name>
+    voiceclone_delete = voiceclone_subparsers.add_parser(
+        "delete", help="Delete a voice clone"
+    )
+    voiceclone_delete.add_argument("name", help="Name of voice to delete")
+    voiceclone_delete.set_defaults(func=cmd_voiceclone_delete)
 
     # === generate-certs (top-level shortcut) ===
     certs_parser = subparsers.add_parser(
