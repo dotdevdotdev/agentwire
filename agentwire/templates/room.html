@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-    <link rel="icon" type="image/jpeg" href="/static/favicon.jpeg">
+    <link rel="icon" type="image/jpeg" href="/static/favicon-green.jpeg">
     <title>{{ room_name }} - AgentWire</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -12,12 +12,12 @@
             --tts-height: 40px;
             --controls-height: 140px;
 
-            /* Theme colors - Electric Blue from logo */
-            --primary: #4FC3F7;
-            --primary-dim: #29B6F6;
-            --primary-dark: #0288D1;
-            --primary-glow: rgba(79, 195, 247, 0.4);
-            --primary-subtle: rgba(79, 195, 247, 0.15);
+            /* Theme colors - Electric Green */
+            --primary: #00DD00;
+            --primary-dim: #00BB00;
+            --primary-dark: #009900;
+            --primary-glow: rgba(0, 221, 0, 0.4);
+            --primary-subtle: rgba(0, 221, 0, 0.15);
 
             /* Backgrounds */
             --bg-dark: #000;
@@ -43,14 +43,14 @@
             /* Orb states */
             --orb-idle: var(--primary);
             --orb-idle-dark: var(--primary-dark);
-            --orb-listening: #F59E0B;
-            --orb-listening-dark: #B45309;
+            --orb-listening: #FBBF24;
+            --orb-listening-dark: #D97706;
             --orb-processing: #A855F7;
             --orb-processing-dark: #7C3AED;
-            --orb-generating: #38BDF8;
-            --orb-generating-dark: #0284C7;
-            --orb-speaking: #2DD4BF;
-            --orb-speaking-dark: #14B8A6;
+            --orb-generating: #3B82F6;
+            --orb-generating-dark: #1D4ED8;
+            --orb-speaking: #4ADE80;
+            --orb-speaking-dark: #22C55E;
         }
         body {
             font-family: -apple-system, system-ui, sans-serif;
@@ -357,9 +357,9 @@
             -webkit-tap-highlight-color: transparent;
         }
         .mic-btn.idle {
-            background: linear-gradient(135deg, rgba(79, 195, 247, 0.15), rgba(2, 136, 209, 0.15));
+            background: linear-gradient(135deg, rgba(0, 221, 0, 0.15), rgba(0, 153, 0, 0.15));
             color: var(--primary);
-            border: 2px solid rgba(79, 195, 247, 0.3);
+            border: 2px solid rgba(0, 221, 0, 0.3);
         }
         .mic-btn.listening {
             background: linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(180, 83, 9, 0.15));
@@ -375,17 +375,17 @@
             opacity: 0.7;
         }
         .mic-btn.generating {
-            background: linear-gradient(135deg, rgba(56, 189, 248, 0.15), rgba(2, 132, 199, 0.15));
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(29, 78, 216, 0.15));
             color: var(--orb-generating);
-            border: 2px solid rgba(56, 189, 248, 0.3);
+            border: 2px solid rgba(59, 130, 246, 0.3);
             cursor: not-allowed;
             opacity: 0.7;
             animation: btn-pulse 0.6s ease-in-out infinite;
         }
         .mic-btn.speaking {
-            background: linear-gradient(135deg, rgba(45, 212, 191, 0.15), rgba(20, 184, 166, 0.15));
+            background: linear-gradient(135deg, rgba(74, 222, 128, 0.15), rgba(34, 197, 94, 0.15));
             color: var(--orb-speaking);
-            border: 2px solid rgba(45, 212, 191, 0.3);
+            border: 2px solid rgba(74, 222, 128, 0.3);
         }
         @keyframes btn-pulse {
             0%, 100% { opacity: 1; transform: scale(1); }
@@ -409,7 +409,7 @@
 <body>
     <div class="header">
         <div class="header-left">
-            <a href="/" class="header-brand"><img src="/static/logo.jpeg" alt="" class="header-logo">AgentWire</a>
+            <a href="/" class="header-brand"><img src="/static/logo-green.jpeg" alt="" class="header-logo">AgentWire</a>
             <div>
                 <h1>{{ room_name }}{% if config.machine %}<span style="color:var(--text-muted);font-weight:normal">@{{ config.machine }}</span>{% endif %}</h1>
                 <div class="status" id="status">connecting...</div>

@@ -2,17 +2,17 @@
 <html>
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-    <link rel="icon" type="image/jpeg" href="/static/favicon.jpeg">
+    <link rel="icon" type="image/jpeg" href="/static/favicon-green.jpeg">
     <title>AgentWire</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         :root {
-            /* Theme colors - Electric Blue from logo */
-            --primary: #4FC3F7;
-            --primary-dim: #29B6F6;
-            --primary-dark: #0288D1;
-            --primary-glow: rgba(79, 195, 247, 0.4);
-            --primary-subtle: rgba(79, 195, 247, 0.15);
+            /* Theme colors - Electric Green */
+            --primary: #00DD00;
+            --primary-dim: #00BB00;
+            --primary-dark: #009900;
+            --primary-glow: rgba(0, 221, 0, 0.4);
+            --primary-subtle: rgba(0, 221, 0, 0.15);
 
             /* Backgrounds */
             --bg-dark: #000;
@@ -111,7 +111,7 @@
             width: 100%;
             padding: 0.75rem;
             background: var(--primary-subtle);
-            border: 2px solid rgba(79, 195, 247, 0.3);
+            border: 2px solid rgba(0, 221, 0, 0.3);
             border-radius: 6px;
             color: var(--primary);
             font-size: 1rem;
@@ -120,7 +120,7 @@
             transition: all 0.2s;
         }
         .create-btn:hover {
-            background: rgba(79, 195, 247, 0.25);
+            background: rgba(0, 221, 0, 0.25);
             border-color: var(--primary);
         }
         .error { color: var(--error); margin-top: 0.5rem; font-size: 0.9rem; }
@@ -129,7 +129,7 @@
 </head>
 <body>
     <div class="header">
-        <img src="/static/agentwire-logo-splash-dark.jpeg" alt="AgentWire" class="splash-logo">
+        <img src="/static/agentwire-logo-splash-green.jpg" alt="AgentWire" class="splash-logo">
         <p>Voice Agent Interface</p>
         <div class="version">v{{ version }}</div>
     </div>
