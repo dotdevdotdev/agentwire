@@ -216,6 +216,7 @@ class TmuxAgent(AgentBackend):
 
     def send_input(self, name: str, text: str) -> bool:
         """Send input to a tmux session."""
+        import time
         session_name, machine = self._parse_session_name(name)
 
         if machine:
@@ -224,15 +225,30 @@ class TmuxAgent(AgentBackend):
             encoded = base64.b64encode(text.encode()).decode()
             cmd = (
                 f"echo {shlex.quote(encoded)} | base64 -d | "
-                f"xargs -0 tmux send-keys -t {shlex.quote(session_name)} && "
+                f"xargs -0 tmux send-keys -t {shlex.quote(session_name)} -l && "
+                f"sleep 0.2 && "
                 f"tmux send-keys -t {shlex.quote(session_name)} Enter"
             )
             result = self._run_remote(machine, cmd)
         else:
+            # Send text literally (no special char interpretation)
             result = self._run_local([
                 "tmux", "send-keys",
                 "-t", session_name,
-                text, "Enter",
+                "-l", text,
+            ])
+            if result.returncode != 0:
+                logger.error(f"Failed to send input: {result.stderr}")
+                return False
+
+            # Small delay before Enter
+            time.sleep(0.2)
+
+            # Send Enter separately
+            result = self._run_local([
+                "tmux", "send-keys",
+                "-t", session_name,
+                "Enter",
             ])
 
         if result.returncode != 0:

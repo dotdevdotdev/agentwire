@@ -41,6 +41,7 @@ class WhisperKitSTT(STTBackend):
             "--audio-path", str(audio_path),
             "--model-path", str(self.model_path),
             "--language", self.language,
+            "--skip-special-tokens",
         ]
 
         try:

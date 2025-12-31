@@ -70,10 +70,16 @@ server:
 tts:
   backend: "chatterbox"
   url: "http://localhost:8100"
-  default_voice: "default"
+  default_voice: "bashbunni"
+  voices_dir: "~/.agentwire/voices"  # Where voice clones are stored
 
 stt:
   backend: "whisperkit"  # whisperkit | whispercpp | openai | none
+  model_path: "~/Library/Application Support/MacWhisper/models/..."
+  language: "en"
+
+audio:
+  input_device: 1  # Audio input device index (use `agentwire init` to select)
 
 projects:
   dir: "~/projects"
@@ -114,6 +120,44 @@ ln -s ~/projects/agentwire/skills ~/.claude/skills/agentwire
 
 ---
 
+## Portal Features
+
+### Room UI Controls
+
+The room page header provides device and voice controls:
+
+| Control | Purpose |
+|---------|---------|
+| Mode toggle | Switch between ambient (orb) and terminal view |
+| Mic selector | Choose audio input device (saved to localStorage) |
+| Speaker selector | Choose audio output device (Chrome/Edge only) |
+| Voice selector | TTS voice for this room (saved to rooms.json) |
+
+### Say Command Detection
+
+The portal monitors terminal output for `say` and `remote-say` commands:
+
+```bash
+say "Hello world"           # Detected from output, triggers TTS
+remote-say "Task complete"  # Also posts to /api/say/{room}
+```
+
+TTS audio includes 300ms silence padding to prevent first-syllable cutoff.
+
+### Portal API
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/sessions` | GET | List all tmux sessions |
+| `/api/create` | POST | Create new session |
+| `/api/room/{name}/config` | POST | Update room config (voice, etc.) |
+| `/api/say/{name}` | POST | Generate TTS and broadcast to room |
+| `/api/voices` | GET | List available TTS voices |
+| `/transcribe` | POST | Transcribe audio (multipart form) |
+| `/send/{name}` | POST | Send text to session |
+
+---
+
 ## Architecture
 
 ```
@@ -129,7 +173,8 @@ ln -s ~/projects/agentwire/skills ~/.claude/skills/agentwire
 │  ├── HTTP routes (dashboard, room pages)                    │
 │  ├── WebSocket (output streaming, TTS audio)                │
 │  ├── /transcribe (STT)                                      │
-│  └── /send/{room} (prompt forwarding)                       │
+│  ├── /send/{room} (prompt forwarding)                       │
+│  └── /api/say/{room} (TTS broadcast)                        │
 └─────────────────────────────────────────────────────────────┘
                               │
               ┌───────────────┴───────────────┐

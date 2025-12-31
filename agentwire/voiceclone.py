@@ -64,6 +64,16 @@ def get_tts_url() -> str:
     return config.get("tts", {}).get("url", "http://localhost:8100")
 
 
+def get_audio_device() -> str:
+    """Get audio input device from config. Returns device index for ffmpeg."""
+    config = load_config()
+    # audio.input_device can be an integer index or "default"
+    device = config.get("audio", {}).get("input_device", "default")
+    if device == "default":
+        return "default"
+    return str(device)
+
+
 def start_recording() -> int:
     """Start recording audio for voice cloning."""
     log("start_recording called")
@@ -79,18 +89,39 @@ def start_recording() -> int:
     LOCK_FILE.touch()
     beep("start")
 
-    # Record audio (24kHz mono for Chatterbox - it expects this format)
+    # Record audio at native sample rate, apply filters, server resamples to 24kHz
+    device = get_audio_device()
+
     if sys.platform == "darwin":
+        # Build input specifier: ":N" for specific device, or use default
+        if device == "default":
+            input_spec = ":default"
+        else:
+            input_spec = f":{device}"
+
+        # Audio filters for cleaner recording:
+        # - highpass: remove low rumble below 80Hz
+        # - lowpass: remove hiss above 16kHz
+        # - dynaudnorm: normalize volume levels
+        audio_filter = "highpass=f=80,lowpass=f=16000,dynaudnorm=p=0.9:s=5"
+
         proc = subprocess.Popen(
-            ["ffmpeg", "-f", "avfoundation", "-i", ":0",
-             "-ar", "24000", "-ac", "1", str(AUDIO_FILE), "-y"],
+            ["ffmpeg", "-f", "avfoundation", "-i", input_spec,
+             "-af", audio_filter,
+             "-ar", "44100", "-ac", "1",  # Native sample rate, mono
+             "-acodec", "pcm_s16le",  # Uncompressed
+             str(AUDIO_FILE), "-y"],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
     else:
         # Linux - use pulse or alsa
+        audio_filter = "highpass=f=80,lowpass=f=16000,dynaudnorm=p=0.9:s=5"
         proc = subprocess.Popen(
             ["ffmpeg", "-f", "pulse", "-i", "default",
-             "-ar", "24000", "-ac", "1", str(AUDIO_FILE), "-y"],
+             "-af", audio_filter,
+             "-ar", "44100", "-ac", "1",
+             "-acodec", "pcm_s16le",
+             str(AUDIO_FILE), "-y"],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
 

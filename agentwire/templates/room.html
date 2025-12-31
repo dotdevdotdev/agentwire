@@ -34,7 +34,7 @@
         .header-logo { width: 28px; height: 28px; border-radius: 6px; margin-right: 0.5rem; vertical-align: middle; }
         .header-left { display: flex; align-items: center; }
         .header-right { display: flex; align-items: center; gap: 0.75rem; }
-        .voice-select, .mode-toggle {
+        .voice-select, .mode-toggle, .mic-select, .speaker-select {
             padding: 0.25rem 0.5rem;
             background: #1a1a1a;
             border: 1px solid #333;
@@ -43,6 +43,7 @@
             font-size: 0.75rem;
             cursor: pointer;
         }
+        .mic-select, .speaker-select { max-width: 120px; }
         .status { font-size: 0.7rem; color: #666; }
         .status.connected { color: #4a9; }
         .tts-controls {
@@ -306,7 +307,7 @@
             50% { opacity: 0.85; transform: scale(0.98); }
         }
         .transcript {
-            margin-top: 0.5rem;
+            margin-bottom: 0.5rem;
             padding: 0.5rem 0.75rem;
             background: #1a1a1a;
             border-radius: 8px;
@@ -331,7 +332,13 @@
         </div>
         <div class="header-right">
             <button class="mode-toggle" id="modeToggle" onclick="toggleMode()">ambient</button>
-            <select class="voice-select" id="voiceSelect" onchange="updateVoice()">
+            <select class="mic-select" id="micSelect" onchange="updateMic()" title="Microphone">
+                <option value="">Default Mic</option>
+            </select>
+            <select class="speaker-select" id="speakerSelect" onchange="updateSpeaker()" title="Speaker">
+                <option value="">Default Speaker</option>
+            </select>
+            <select class="voice-select" id="voiceSelect" onchange="updateVoice()" title="TTS Voice">
                 {% for voice in voices %}
                 <option value="{{ voice }}"{% if voice == current_voice %} selected{% endif %}>{{ voice }}</option>
                 {% endfor %}
@@ -360,8 +367,8 @@
         </div>
     </div>
     <div class="controls">
-        <button class="mic-btn idle" id="micBtn">Hold to Talk</button>
         <div class="transcript" id="transcript">Tap and hold to speak</div>
+        <button class="mic-btn idle" id="micBtn">Hold to Talk</button>
     </div>
 
     <script>
@@ -377,8 +384,63 @@
             micBtn: document.getElementById('micBtn'),
             transcript: document.getElementById('transcript'),
             modeToggle: document.getElementById('modeToggle'),
-            ttsControls: document.getElementById('ttsControls')
+            ttsControls: document.getElementById('ttsControls'),
+            micSelect: document.getElementById('micSelect'),
+            speakerSelect: document.getElementById('speakerSelect')
         };
+
+        // Audio device selection
+        let selectedMicId = localStorage.getItem('agentwire-mic-id') || '';
+        let selectedSpeakerId = localStorage.getItem('agentwire-speaker-id') || '';
+
+        async function populateAudioDevices() {
+            try {
+                // Request permission first to get device labels
+                await navigator.mediaDevices.getUserMedia({ audio: true })
+                    .then(stream => stream.getTracks().forEach(t => t.stop()));
+
+                const devices = await navigator.mediaDevices.enumerateDevices();
+
+                // Populate microphones
+                const mics = devices.filter(d => d.kind === 'audioinput');
+                elements.micSelect.innerHTML = '<option value="">Default Mic</option>';
+                mics.forEach(mic => {
+                    const opt = document.createElement('option');
+                    opt.value = mic.deviceId;
+                    opt.textContent = mic.label || `Microphone ${mic.deviceId.slice(0, 8)}`;
+                    if (mic.deviceId === selectedMicId) opt.selected = true;
+                    elements.micSelect.appendChild(opt);
+                });
+
+                // Populate speakers
+                const speakers = devices.filter(d => d.kind === 'audiooutput');
+                elements.speakerSelect.innerHTML = '<option value="">Default Speaker</option>';
+                speakers.forEach(speaker => {
+                    const opt = document.createElement('option');
+                    opt.value = speaker.deviceId;
+                    opt.textContent = speaker.label || `Speaker ${speaker.deviceId.slice(0, 8)}`;
+                    if (speaker.deviceId === selectedSpeakerId) opt.selected = true;
+                    elements.speakerSelect.appendChild(opt);
+                });
+
+                // Hide speaker select if setSinkId not supported
+                if (!('setSinkId' in HTMLAudioElement.prototype)) {
+                    elements.speakerSelect.style.display = 'none';
+                }
+            } catch (e) {
+                console.log('Could not enumerate audio devices:', e);
+            }
+        }
+
+        function updateMic() {
+            selectedMicId = elements.micSelect.value;
+            localStorage.setItem('agentwire-mic-id', selectedMicId);
+        }
+
+        function updateSpeaker() {
+            selectedSpeakerId = elements.speakerSelect.value;
+            localStorage.setItem('agentwire-speaker-id', selectedSpeakerId);
+        }
 
         // ANSI to HTML converter
         function ansiToHtml(text) {
@@ -547,7 +609,7 @@
             };
         }
 
-        function playAudio(base64Data) {
+        async function playAudio(base64Data) {
             if (processingTimeout) {
                 clearTimeout(processingTimeout);
                 processingTimeout = null;
@@ -559,6 +621,16 @@
             }
 
             currentAudio = new Audio('data:audio/wav;base64,' + base64Data);
+
+            // Set output device if selected and supported
+            if (selectedSpeakerId && 'setSinkId' in currentAudio) {
+                try {
+                    await currentAudio.setSinkId(selectedSpeakerId);
+                } catch (e) {
+                    console.log('Could not set speaker:', e);
+                }
+            }
+
             setState(STATES.SPEAKING);
 
             currentAudio.onended = () => {
@@ -589,7 +661,10 @@
 
         async function startAudioMonitor() {
             try {
-                mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                const constraints = selectedMicId
+                    ? { audio: { deviceId: { exact: selectedMicId } } }
+                    : { audio: true };
+                mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
                 audioContext = new AudioContext();
                 analyser = audioContext.createAnalyser();
                 const source = audioContext.createMediaStreamSource(mediaStream);
@@ -637,14 +712,16 @@
             }
 
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    audio: {
-                        sampleRate: 16000,
-                        channelCount: 1,
-                        echoCancellation: true,
-                        noiseSuppression: true
-                    }
-                });
+                const audioConstraints = {
+                    sampleRate: 16000,
+                    channelCount: 1,
+                    echoCancellation: true,
+                    noiseSuppression: true
+                };
+                if (selectedMicId) {
+                    audioConstraints.deviceId = { exact: selectedMicId };
+                }
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
 
                 audioChunks = [];
                 mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
@@ -755,6 +832,7 @@
         // Start in ambient mode by default
         toggleMode();
         connect();
+        populateAudioDevices();
     </script>
 </body>
 </html>

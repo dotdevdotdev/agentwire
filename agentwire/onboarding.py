@@ -126,6 +126,42 @@ def test_ssh_connection(host: str, user: str, timeout: int = 5) -> bool:
         return False
 
 
+def list_audio_devices() -> list[tuple[int, str]]:
+    """List available audio input devices on macOS. Returns list of (index, name)."""
+    if sys.platform != "darwin":
+        return []
+
+    try:
+        result = subprocess.run(
+            ["ffmpeg", "-f", "avfoundation", "-list_devices", "true", "-i", ""],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        # Parse stderr for audio devices (ffmpeg outputs device list to stderr)
+        output = result.stderr
+        devices = []
+        in_audio_section = False
+
+        for line in output.split("\n"):
+            if "AVFoundation audio devices:" in line:
+                in_audio_section = True
+                continue
+            if in_audio_section:
+                # Lines look like: [AVFoundation indev @ 0x...] [0] Device Name
+                if "[AVFoundation" in line and "]" in line:
+                    # Extract device index and name
+                    import re
+                    match = re.search(r'\[(\d+)\]\s+(.+)$', line)
+                    if match:
+                        idx = int(match.group(1))
+                        name = match.group(2).strip()
+                        devices.append((idx, name))
+        return devices
+    except Exception:
+        return []
+
+
 def load_existing_config() -> Optional[dict]:
     """Load existing config if present."""
     config_path = CONFIG_DIR / "config.yaml"
@@ -221,6 +257,7 @@ def run_onboarding() -> int:
         "tts_voice": "default",
         "stt_backend": "whisperkit" if detect_platform() == "macos" else "whispercpp",
         "stt_language": "en",
+        "audio_input_device": "default",
         "generate_certs": True,
         "machines": [],
     }
@@ -233,6 +270,7 @@ def run_onboarding() -> int:
         config["tts_url"] = existing_config.get("tts", {}).get("url", config["tts_url"])
         config["tts_voice"] = existing_config.get("tts", {}).get("default_voice", config["tts_voice"])
         config["stt_backend"] = existing_config.get("stt", {}).get("backend", config["stt_backend"])
+        config["audio_input_device"] = existing_config.get("audio", {}).get("input_device", "default")
         config["generate_certs"] = False  # Already have certs if existing
 
     if existing_machines:
@@ -347,6 +385,25 @@ def run_onboarding() -> int:
 
     else:
         print_info("Voice output disabled. Agents will respond with text only.")
+
+    # Audio input device (for voice cloning, STT, etc.) - only on macOS
+    config["audio_input_device"] = "default"
+    if platform == "macos":
+        print()
+        print(f"{DIM}Audio Input Device:{RESET}")
+        print_info("Select which microphone to use for voice input and cloning.")
+        print()
+
+        # List available audio devices
+        audio_devices = list_audio_devices()
+        if audio_devices:
+            device_options = [("default", "System default input device")]
+            for idx, name in audio_devices:
+                device_options.append((str(idx), f"{name} (device {idx})"))
+
+            device_choice = prompt_choice("Which microphone?", device_options, default=1)
+            config["audio_input_device"] = device_choice
+            print_success(f"Audio input will use: {device_choice}")
 
     # ─────────────────────────────────────────────────────────────
     # Section 4: Speech-to-Text
@@ -498,6 +555,9 @@ tts:
 stt:
   backend: "{config['stt_backend']}"
   language: "{config['stt_language']}"
+
+audio:
+  input_device: {config['audio_input_device']}  # Microphone for voice input & cloning
 
 agent:
   command: "{config['agent_command']}"

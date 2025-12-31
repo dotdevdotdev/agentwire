@@ -32,12 +32,20 @@ class ChatterboxTTS(TTSBackend):
             self._session = aiohttp.ClientSession()
         return self._session
 
-    async def generate(self, text: str, voice: str) -> bytes | None:
+    async def generate(
+        self,
+        text: str,
+        voice: str,
+        exaggeration: float | None = None,
+        cfg_weight: float | None = None,
+    ) -> bytes | None:
         """Generate audio from text using Chatterbox API.
 
         Args:
             text: The text to synthesize.
             voice: The voice ID to use.
+            exaggeration: Override voice exaggeration (0.0-1.0).
+            cfg_weight: Override CFG weight (0.0-1.0).
 
         Returns:
             WAV audio bytes, or None if generation failed.
@@ -46,8 +54,8 @@ class ChatterboxTTS(TTSBackend):
         payload = {
             "text": text,
             "voice": voice,
-            "exaggeration": self.exaggeration,
-            "cfg_weight": self.cfg_weight,
+            "exaggeration": exaggeration if exaggeration is not None else self.exaggeration,
+            "cfg_weight": cfg_weight if cfg_weight is not None else self.cfg_weight,
         }
 
         try:

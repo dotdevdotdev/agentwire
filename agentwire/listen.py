@@ -73,6 +73,16 @@ def get_whisperkit_model_path() -> str:
     return ""
 
 
+def get_audio_device() -> str:
+    """Get audio input device from config. Returns device index for ffmpeg."""
+    config = load_config()
+    # audio.input_device can be an integer index or "default"
+    device = config.get("audio", {}).get("input_device", "default")
+    if device == "default":
+        return "default"
+    return str(device)
+
+
 def tmux_session_exists(name: str) -> bool:
     """Check if tmux session exists (exact match)."""
     result = subprocess.run(
@@ -98,17 +108,29 @@ def start_recording() -> int:
     beep("start")
 
     # Record audio (16kHz mono for whisper)
+    device = get_audio_device()
+
     if sys.platform == "darwin":
+        # Build input specifier: ":N" for specific device, or ":default"
+        if device == "default":
+            input_spec = ":default"
+        else:
+            input_spec = f":{device}"
+
         proc = subprocess.Popen(
-            ["ffmpeg", "-f", "avfoundation", "-i", ":0",
-             "-ar", "16000", "-ac", "1", str(AUDIO_FILE), "-y"],
+            ["ffmpeg", "-f", "avfoundation", "-i", input_spec,
+             "-ar", "16000", "-ac", "1",
+             "-acodec", "pcm_s16le",  # Uncompressed for quality
+             str(AUDIO_FILE), "-y"],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
     else:
         # Linux - use pulse or alsa
         proc = subprocess.Popen(
             ["ffmpeg", "-f", "pulse", "-i", "default",
-             "-ar", "16000", "-ac", "1", str(AUDIO_FILE), "-y"],
+             "-ar", "16000", "-ac", "1",
+             "-acodec", "pcm_s16le",
+             str(AUDIO_FILE), "-y"],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
 

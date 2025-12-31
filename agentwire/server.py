@@ -6,11 +6,14 @@ Multi-room voice web interface for AI coding agents.
 
 import asyncio
 import base64
+import io
 import json
 import logging
 import re
 import ssl
+import struct
 import tempfile
+import wave
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -47,6 +50,7 @@ class Room:
     locked_by: str | None = None
     last_output: str = ""
     output_task: asyncio.Task | None = None
+    played_says: set = field(default_factory=set)
 
 
 class AgentWireServer:
@@ -71,6 +75,7 @@ class AgentWireServer:
         self.app.router.add_post("/api/room/{name}/config", self.api_room_config)
         self.app.router.add_post("/transcribe", self.handle_transcribe)
         self.app.router.add_post("/send/{name}", self.handle_send)
+        self.app.router.add_post("/api/say/{name}", self.api_say)
         self.app.router.add_get("/api/voices", self.api_voices)
         self.app.router.add_static("/static", Path(__file__).parent / "static")
 
@@ -277,6 +282,17 @@ class AgentWireServer:
         client_id = str(id(ws))
         room.clients.add(ws)
 
+        # Send current output immediately on connect
+        try:
+            output = await asyncio.get_event_loop().run_in_executor(
+                None, lambda: self.agent.get_output(name, lines=100)
+            )
+            if output:
+                room.last_output = output
+                await ws.send_json({"type": "output", "data": output})
+        except Exception as e:
+            logger.debug(f"Initial output fetch failed for {name}: {e}")
+
         # Start output polling if not running
         if room.output_task is None or room.output_task.done():
             room.output_task = asyncio.create_task(self._poll_output(room))
@@ -321,16 +337,58 @@ class AgentWireServer:
             # Unlock will happen after TTS completes or on disconnect
             pass
 
+    # Patterns for say command detection
+    SAY_PATTERN = re.compile(r'(?:remote-)?say\s+(?:"([^"]+)"|\'([^\']+)\')', re.IGNORECASE)
+    ANSI_PATTERN = re.compile(r'\x1b\[[0-9;]*m|\x1b\].*?\x07')
+
     async def _poll_output(self, room: Room):
         """Poll agent output and broadcast to room clients."""
-        project, branch, machine = parse_session_name(room.name)
-
         while room.clients:
             try:
-                output = await self.agent.get_output(room.name, lines=100)
+                # Run sync get_output in thread pool to avoid blocking
+                output = await asyncio.get_event_loop().run_in_executor(
+                    None, lambda: self.agent.get_output(room.name, lines=100)
+                )
                 if output != room.last_output:
+                    old_output = room.last_output
                     room.last_output = output
                     await self._broadcast(room, {"type": "output", "data": output})
+
+                    # Detect say commands in NEW content only
+                    # If output doesn't start with old_output (terminal scrolled),
+                    # skip say detection to avoid re-playing old commands
+                    if old_output and output.startswith(old_output):
+                        new_content = output[len(old_output):]
+                    elif not old_output:
+                        # First poll - don't play historical say commands
+                        new_content = ""
+                    else:
+                        # Terminal scrolled/changed - skip to avoid duplicates
+                        new_content = ""
+
+                    for match in self.SAY_PATTERN.finditer(new_content):
+                        say_text = match.group(1) or match.group(2)
+                        if not say_text:
+                            continue
+                        # Strip ANSI codes
+                        say_text = self.ANSI_PATTERN.sub('', say_text).strip()
+
+                        # Skip if empty or already played
+                        if not say_text or say_text in room.played_says:
+                            continue
+
+                        room.played_says.add(say_text)
+
+                        # Keep played_says from growing indefinitely (as list for order)
+                        if len(room.played_says) > 100:
+                            # Convert to list, keep last 50, convert back
+                            room.played_says = set(list(room.played_says)[-50:])
+
+                        logger.info(f"[{room.name}] TTS: {say_text[:50]}...")
+
+                        # Generate and broadcast TTS
+                        await self._say_to_room(room.name, say_text)
+
             except Exception as e:
                 logger.debug(f"Output poll error for {room.name}: {e}")
 
@@ -478,17 +536,33 @@ class AgentWireServer:
             if not audio_data:
                 return web.json_response({"error": "Empty audio data"})
 
-            # Save to temp file
+            # Save webm to temp file
             with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as f:
                 f.write(audio_data)
-                temp_path = Path(f.name)
+                webm_path = f.name
 
+            # Convert webm to wav (16kHz mono for Whisper)
+            wav_path = webm_path.replace(".webm", ".wav")
             try:
-                # Transcribe
-                text = await self.stt.transcribe(temp_path)
+                proc = await asyncio.create_subprocess_exec(
+                    "ffmpeg", "-i", webm_path,
+                    "-ar", "16000", "-ac", "1", "-y", wav_path,
+                    stdout=asyncio.subprocess.DEVNULL,
+                    stderr=asyncio.subprocess.DEVNULL,
+                )
+                await proc.wait()
+
+                if proc.returncode != 0 or not Path(wav_path).exists():
+                    logger.error("Failed to convert webm to wav (ffmpeg returned %d)", proc.returncode)
+                    return web.json_response({"error": "Audio conversion failed"})
+
+                # Transcribe the wav file
+                logger.debug("Transcribing %s", wav_path)
+                text = await self.stt.transcribe(Path(wav_path))
                 return web.json_response({"text": text})
             finally:
-                temp_path.unlink(missing_ok=True)
+                Path(webm_path).unlink(missing_ok=True)
+                Path(wav_path).unlink(missing_ok=True)
 
         except Exception as e:
             logger.error(f"Transcription failed: {e}")
@@ -504,7 +578,7 @@ class AgentWireServer:
             if not text:
                 return web.json_response({"error": "No text provided"})
 
-            success = await self.agent.send_input(name, text)
+            success = self.agent.send_input(name, text)
 
             if not success:
                 return web.json_response({"error": "Failed to send to session"})
@@ -516,6 +590,110 @@ class AgentWireServer:
             return web.json_response({"error": str(e)})
 
     # TTS Integration
+
+    def _prepend_silence(self, wav_data: bytes, ms: int = 300) -> bytes:
+        """Prepend silence to WAV audio to prevent first syllable cutoff.
+
+        Works with any WAV format (PCM, IEEE Float, etc.) by directly
+        manipulating the raw bytes.
+
+        Args:
+            wav_data: Original WAV file bytes
+            ms: Milliseconds of silence to prepend
+
+        Returns:
+            New WAV bytes with silence prepended
+        """
+        try:
+            # Parse WAV header to get format info
+            # RIFF header: 12 bytes, fmt chunk: variable, data chunk: variable
+            if len(wav_data) < 44 or wav_data[:4] != b'RIFF' or wav_data[8:12] != b'WAVE':
+                return wav_data
+
+            # Find fmt chunk
+            pos = 12
+            sample_rate = 24000  # default
+            bytes_per_sample = 4  # default for float32
+            channels = 1
+
+            while pos < len(wav_data) - 8:
+                chunk_id = wav_data[pos:pos+4]
+                chunk_size = struct.unpack('<I', wav_data[pos+4:pos+8])[0]
+
+                if chunk_id == b'fmt ':
+                    # fmt chunk: format(2), channels(2), sample_rate(4), byte_rate(4), block_align(2), bits_per_sample(2)
+                    channels = struct.unpack('<H', wav_data[pos+10:pos+12])[0]
+                    sample_rate = struct.unpack('<I', wav_data[pos+12:pos+16])[0]
+                    bits_per_sample = struct.unpack('<H', wav_data[pos+22:pos+24])[0]
+                    bytes_per_sample = bits_per_sample // 8
+
+                elif chunk_id == b'data':
+                    # Found data chunk - insert silence here
+                    data_start = pos + 8
+                    original_data = wav_data[data_start:data_start + chunk_size]
+
+                    # Calculate silence
+                    silence_samples = int(sample_rate * ms / 1000)
+                    silence_bytes = b'\x00' * (silence_samples * bytes_per_sample * channels)
+
+                    # New data size
+                    new_data_size = len(silence_bytes) + len(original_data)
+                    new_file_size = len(wav_data) - chunk_size + new_data_size - 8
+
+                    # Rebuild WAV
+                    result = bytearray(wav_data[:4])  # RIFF
+                    result += struct.pack('<I', new_file_size)  # New file size
+                    result += wav_data[8:pos+4]  # Up to data chunk id
+                    result += struct.pack('<I', new_data_size)  # New data size
+                    result += silence_bytes  # Prepended silence
+                    result += original_data  # Original audio
+
+                    return bytes(result)
+
+                pos += 8 + chunk_size
+                if chunk_size % 2:  # Chunks are word-aligned
+                    pos += 1
+
+            return wav_data
+        except Exception as e:
+            logger.warning(f"Failed to prepend silence: {e}")
+            return wav_data
+
+    async def _say_to_room(self, room_name: str, text: str):
+        """Generate TTS audio and send to room clients (internal)."""
+        await self.speak(room_name, text)
+
+    async def api_say(self, request: web.Request) -> web.Response:
+        """POST /api/say/{room} - Generate TTS and broadcast to room."""
+        name = request.match_info["name"]
+        try:
+            data = await request.json()
+            text = data.get("text", "").strip()
+
+            if not text:
+                return web.json_response({"error": "No text provided"}, status=400)
+
+            # Ensure room exists (create if not)
+            if name not in self.rooms:
+                self.rooms[name] = Room(name=name, config=self._get_room_config(name))
+
+            room = self.rooms[name]
+
+            # Track this text to avoid duplicate TTS from output polling
+            room.played_says.add(text)
+            if len(room.played_says) > 50:
+                room.played_says = set(list(room.played_says)[-25:])
+
+            logger.info(f"[{name}] API say: {text[:50]}...")
+
+            # Generate and broadcast TTS
+            await self.speak(name, text)
+
+            return web.json_response({"success": True})
+
+        except Exception as e:
+            logger.error(f"Say API failed: {e}")
+            return web.json_response({"error": str(e)}, status=500)
 
     async def speak(self, room_name: str, text: str):
         """Generate TTS audio and send to room clients."""
@@ -531,6 +709,7 @@ class AgentWireServer:
 
         try:
             # Generate audio
+            logger.info(f"[{room_name}] TTS voice: {room.config.voice}")
             audio_data = await self.tts.generate(
                 text=text,
                 voice=room.config.voice,
@@ -539,6 +718,8 @@ class AgentWireServer:
             )
 
             if audio_data:
+                # Prepend silence to prevent first syllable cutoff
+                audio_data = self._prepend_silence(audio_data, ms=300)
                 # Send base64 encoded audio
                 audio_b64 = base64.b64encode(audio_data).decode()
                 await self._broadcast(room, {"type": "audio", "data": audio_b64})

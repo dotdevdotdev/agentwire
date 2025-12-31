@@ -304,6 +304,30 @@ Send text to a session.
 }
 ```
 
+## Audio Device Configuration
+
+### Server-side (CLI voice commands)
+
+Configure the audio input device for CLI commands like `agentwire listen` and `agentwire voiceclone`:
+
+```yaml
+# ~/.agentwire/config.yaml
+audio:
+  input_device: 1  # Device index (run `agentwire init` to select)
+```
+
+List available devices on macOS:
+```bash
+ffmpeg -f avfoundation -list_devices true -i "" 2>&1 | grep -A20 "audio devices"
+```
+
+### Browser-side (Portal)
+
+The portal UI includes mic and speaker selectors in the room header. These use browser APIs and are saved per-device in localStorage:
+
+- **Mic selector** - Choose which microphone to use for push-to-talk
+- **Speaker selector** - Choose which output device for TTS (Chrome/Edge only)
+
 ## Tips
 
 1. **Low latency:** Use 16kHz mono audio to minimize transcription time
@@ -311,6 +335,7 @@ Send text to a session.
 3. **Target room:** Configure your hotkey script to send to your most-used session
 4. **SSL certs:** Use `-k` with curl to accept self-signed certificates
 5. **Multiple rooms:** Create multiple hotkeys targeting different rooms
+6. **Silence padding:** TTS audio includes 300ms silence at start to prevent first-syllable cutoff
 
 ## Troubleshooting
 
