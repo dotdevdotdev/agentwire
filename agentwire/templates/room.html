@@ -367,9 +367,10 @@
             50% { transform: scale(1.2); opacity: 0.9; }
         }
 
-        /* User bubble - bottom, above controls */
+        /* User bubble - bottom, above floating controls */
         .user-bubble-container {
-            padding: 0 1rem 1rem;
+            padding: 0 1rem;
+            padding-bottom: 100px; /* Space for floating controls */
         }
         .user-bubble {
             background: var(--primary-subtle);
@@ -936,6 +937,7 @@
         let isAmbientMode = false;
         let processingTimeout = null;
         let lastAiMessage = '';
+        let pendingAiText = null;
 
         const stateConfig = {
             idle: { label: 'Ready', btnText: 'Hold to Talk' },
@@ -984,9 +986,15 @@
             elements.userBubble.classList.remove('visible');
         }
 
+        function cleanText(text) {
+            // Remove escape sequences like \! \? etc.
+            return text.replace(/\\([!?.,;:'"])/g, '$1');
+        }
+
         function showAiBubble(text) {
-            lastAiMessage = text;
-            elements.aiBubble.textContent = text;
+            const cleaned = cleanText(text);
+            lastAiMessage = cleaned;
+            elements.aiBubble.textContent = cleaned;
             elements.aiBubble.classList.add('visible');
         }
 
@@ -1049,11 +1057,16 @@
                         processingTimeout = null;
                     }
                     setState(STATES.GENERATING);
-                    // Show the text that's being spoken
+                    // Store text but don't show yet - wait for audio to play
                     if (msg.text) {
-                        showAiBubble(msg.text);
+                        pendingAiText = msg.text;
                     }
                 } else if (msg.type === 'audio') {
+                    // Show AI bubble now that audio is ready
+                    if (pendingAiText) {
+                        showAiBubble(pendingAiText);
+                        pendingAiText = null;
+                    }
                     playAudio(msg.data);
                 } else if (msg.type === 'room_locked') {
                     if (currentState === STATES.IDLE) {
