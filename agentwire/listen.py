@@ -235,11 +235,11 @@ def stop_recording(session: str, voice_prompt: bool = True) -> int:
 
     subprocess.run(["tmux", "load-buffer", tmpfile], check=True)
     Path(tmpfile).unlink()
-    subprocess.run(["tmux", "paste-buffer", "-t", f"={session}"], check=True)
+    subprocess.run(["tmux", "paste-buffer", "-t", session], check=True)
     time.sleep(0.2)
-    subprocess.run(["tmux", "send-keys", "-t", f"={session}", "Enter"], check=True)
+    subprocess.run(["tmux", "send-keys", "-t", session, "Enter"], check=True)
     time.sleep(0.1)
-    subprocess.run(["tmux", "send-keys", "-t", f"={session}", "Enter"], check=True)
+    subprocess.run(["tmux", "send-keys", "-t", session, "Enter"], check=True)
 
     beep("done")
     log("SUCCESS: Sent to session")

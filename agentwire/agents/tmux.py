@@ -1,5 +1,6 @@
 """Tmux-based agent backend."""
 
+import json
 import logging
 import shlex
 import subprocess
@@ -22,11 +23,34 @@ class TmuxAgent(AgentBackend):
             config: Configuration dict with optional keys:
                 - agent.command: Command to start agent (default: claude --dangerously-skip-permissions)
                 - agent.model: Model to use (for {model} placeholder)
+                - machines.file: Path to machines.json
         """
         self.config = config
         agent_config = config.get("agent", {})
         self.agent_command = agent_config.get("command", DEFAULT_AGENT_COMMAND)
         self.default_model = agent_config.get("model", "")
+
+        # Load machines from file
+        self._load_machines()
+
+    def _load_machines(self):
+        """Load machines configuration from file."""
+        machines_config = self.config.get("machines", {})
+        machines_file = machines_config.get("file")
+
+        if machines_file:
+            machines_path = Path(machines_file).expanduser()
+            if machines_path.exists():
+                try:
+                    with open(machines_path) as f:
+                        data = json.load(f)
+                        self.machines = data.get("machines", [])
+                        logger.debug(f"Loaded {len(self.machines)} machines from {machines_path}")
+                        return
+                except (json.JSONDecodeError, IOError) as e:
+                    logger.warning(f"Failed to load machines: {e}")
+
+        self.machines = []
 
     def _run_local(self, cmd: list[str], capture: bool = True) -> subprocess.CompletedProcess:
         """Run a command locally.
@@ -86,9 +110,8 @@ class TmuxAgent(AgentBackend):
         """
         if "@" in name:
             session, machine_id = name.rsplit("@", 1)
-            machines = self.config.get("machines", [])
-            for machine in machines:
-                if machine.get("id") == machine_id:
+            for machine in self.machines:
+                if machine.get("id") == machine_id or machine.get("host") == machine_id:
                     return session, machine
             logger.warning(f"Unknown machine: {machine_id}, treating as local")
             return name, None
@@ -238,14 +261,24 @@ class TmuxAgent(AgentBackend):
         return True
 
     def list_sessions(self) -> list[str]:
-        """List all tmux sessions (local only for now)."""
+        """List all tmux sessions (local and remote)."""
+        sessions = []
+
+        # Local sessions
         result = self._run_local([
             "tmux", "list-sessions", "-F", "#{session_name}",
         ])
+        if result.returncode == 0 and result.stdout.strip():
+            sessions.extend(s for s in result.stdout.strip().split("\n") if s)
 
-        if result.returncode != 0:
-            # tmux returns error when no sessions exist
-            return []
+        # Remote sessions from configured machines
+        for machine in self.machines:
+            machine_id = machine.get("id", machine.get("host", ""))
+            cmd = "tmux list-sessions -F '#{session_name}' 2>/dev/null"
+            result = self._run_remote(machine, cmd)
+            if result.returncode == 0 and result.stdout.strip():
+                for name in result.stdout.strip().split("\n"):
+                    if name:
+                        sessions.append(f"{name}@{machine_id}")
 
-        sessions = result.stdout.strip().split("\n")
-        return [s for s in sessions if s]  # Filter empty strings
+        return sessions
