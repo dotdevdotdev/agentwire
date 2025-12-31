@@ -65,9 +65,9 @@ def generate_certs() -> int:
 
 
 def tmux_session_exists(name: str) -> bool:
-    """Check if a tmux session exists."""
+    """Check if a tmux session exists (exact match)."""
     result = subprocess.run(
-        ["tmux", "has-session", "-t", name],
+        ["tmux", "has-session", "-t", f"={name}"],  # = prefix for exact match
         capture_output=True,
     )
     return result.returncode == 0
