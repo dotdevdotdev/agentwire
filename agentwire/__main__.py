@@ -184,15 +184,21 @@ def cmd_tts_start(args) -> int:
     config = load_config()
     tts_config = config.get("tts", {})
     port = args.port or tts_config.get("port", 8100)
-    model = args.model or tts_config.get("model", "chatterbox")
+    host = args.host or tts_config.get("host", "0.0.0.0")
 
-    # Build chatterbox command
-    # This assumes chatterbox is installed and available
-    tts_cmd = f"chatterbox serve --port {port}"
-    if args.gpu:
-        tts_cmd += " --device cuda"
+    # Find the tts_server.py module path
+    import agentwire
+    module_dir = Path(agentwire.__file__).parent
+    server_path = module_dir / "tts_server.py"
 
-    print(f"Starting TTS server on port {port}...")
+    if not server_path.exists():
+        print(f"TTS server not found at {server_path}", file=sys.stderr)
+        return 1
+
+    # Build uvicorn command
+    tts_cmd = f"uvicorn agentwire.tts_server:app --host {host} --port {port}"
+
+    print(f"Starting TTS server on {host}:{port}...")
     subprocess.run([
         "tmux", "new-session", "-d", "-s", session_name,
     ])
@@ -579,10 +585,9 @@ def main() -> int:
     tts_subparsers = tts_parser.add_subparsers(dest="tts_command")
 
     # tts start
-    tts_start = tts_subparsers.add_parser("start", help="Start TTS server")
+    tts_start = tts_subparsers.add_parser("start", help="Start TTS server in tmux")
     tts_start.add_argument("--port", type=int, help="Server port (default: 8100)")
-    tts_start.add_argument("--model", type=str, help="TTS model")
-    tts_start.add_argument("--gpu", action="store_true", help="Use GPU acceleration")
+    tts_start.add_argument("--host", type=str, help="Server host (default: 0.0.0.0)")
     tts_start.set_defaults(func=cmd_tts_start)
 
     # tts stop
