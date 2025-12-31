@@ -68,15 +68,22 @@ class AgentWireServer:
     def _setup_routes(self):
         """Configure HTTP and WebSocket routes."""
         self.app.router.add_get("/", self.handle_dashboard)
-        self.app.router.add_get("/room/{name}", self.handle_room)
-        self.app.router.add_get("/ws/{name}", self.handle_websocket)
+        self.app.router.add_get("/room/{name:.+}", self.handle_room)
+        self.app.router.add_get("/ws/{name:.+}", self.handle_websocket)
         self.app.router.add_get("/api/sessions", self.api_sessions)
         self.app.router.add_post("/api/create", self.api_create_session)
-        self.app.router.add_post("/api/room/{name}/config", self.api_room_config)
+        self.app.router.add_post("/api/room/{name:.+}/config", self.api_room_config)
         self.app.router.add_post("/transcribe", self.handle_transcribe)
-        self.app.router.add_post("/send/{name}", self.handle_send)
-        self.app.router.add_post("/api/say/{name}", self.api_say)
+        self.app.router.add_post("/send/{name:.+}", self.handle_send)
+        self.app.router.add_post("/api/say/{name:.+}", self.api_say)
         self.app.router.add_get("/api/voices", self.api_voices)
+        self.app.router.add_delete("/api/sessions/{name:.+}", self.api_close_session)
+        self.app.router.add_get("/api/sessions/archive", self.api_archived_sessions)
+        self.app.router.add_get("/api/machines", self.api_machines)
+        self.app.router.add_post("/api/machines", self.api_add_machine)
+        self.app.router.add_get("/api/config", self.api_get_config)
+        self.app.router.add_post("/api/config", self.api_save_config)
+        self.app.router.add_post("/api/config/reload", self.api_reload_config)
         self.app.router.add_static("/static", Path(__file__).parent / "static")
 
     async def init_backends(self):
@@ -469,7 +476,7 @@ class AgentWireServer:
                 work_dir = self.config.projects.dir / project
 
             # Create session
-            success = await self.agent.create_session(name, str(work_dir))
+            success = self.agent.create_session(name, str(work_dir))
             if not success:
                 return web.json_response({"error": "Failed to create session"})
 
@@ -485,6 +492,79 @@ class AgentWireServer:
         except Exception as e:
             logger.error(f"Failed to create session: {e}")
             return web.json_response({"error": str(e)})
+
+    def _load_archive(self) -> list[dict]:
+        """Load archived sessions from file."""
+        archive_file = Path.home() / ".agentwire" / "archive.json"
+        if archive_file.exists():
+            try:
+                with open(archive_file) as f:
+                    return json.load(f)
+            except (json.JSONDecodeError, IOError):
+                pass
+        return []
+
+    def _save_archive(self, archive: list[dict]):
+        """Save archived sessions to file."""
+        archive_file = Path.home() / ".agentwire" / "archive.json"
+        archive_file.parent.mkdir(parents=True, exist_ok=True)
+        with open(archive_file, "w") as f:
+            json.dump(archive, f, indent=2)
+
+    async def api_close_session(self, request: web.Request) -> web.Response:
+        """Close/kill a session and archive it."""
+        name = request.match_info["name"]
+        try:
+            # Get session info before closing
+            room_configs = self._load_room_configs()
+            session_config = room_configs.get(name, {})
+
+            project, branch, machine = parse_session_name(name)
+            if branch:
+                path = get_session_path(
+                    name,
+                    self.config.projects.dir,
+                    self.config.projects.worktrees.suffix,
+                )
+            else:
+                path = self.config.projects.dir / project
+
+            # Kill the tmux session
+            success = self.agent.kill_session(name)
+            if not success:
+                return web.json_response({"error": "Failed to close session"})
+
+            # Archive the session
+            import time
+            archive = self._load_archive()
+            archive.insert(0, {
+                "name": name,
+                "path": str(path),
+                "machine": machine,
+                "voice": session_config.get("voice", self.config.tts.default_voice),
+                "closed_at": int(time.time()),
+            })
+            # Keep last 50 archived sessions
+            archive = archive[:50]
+            self._save_archive(archive)
+
+            # Clean up room if exists
+            if name in self.rooms:
+                room = self.rooms[name]
+                if room.output_task:
+                    room.output_task.cancel()
+                del self.rooms[name]
+
+            return web.json_response({"success": True})
+
+        except Exception as e:
+            logger.error(f"Failed to close session: {e}")
+            return web.json_response({"error": str(e)})
+
+    async def api_archived_sessions(self, request: web.Request) -> web.Response:
+        """Get list of archived sessions."""
+        archive = self._load_archive()
+        return web.json_response(archive)
 
     async def api_room_config(self, request: web.Request) -> web.Response:
         """Update room configuration."""
@@ -520,6 +600,176 @@ class AgentWireServer:
         """Get available TTS voices."""
         voices = await self._get_voices()
         return web.json_response(voices)
+
+    async def api_machines(self, request: web.Request) -> web.Response:
+        """Get list of all machines (local + configured remotes)."""
+        import socket
+
+        machines = []
+
+        # Always include local machine first
+        machines.append({
+            "id": "local",
+            "host": socket.gethostname(),
+            "local": True,
+            "status": "online",
+        })
+
+        # Add configured remote machines
+        machines_file = self.config.machines.file
+        if machines_file.exists():
+            try:
+                with open(machines_file) as f:
+                    data = json.load(f)
+                    for m in data.get("machines", []):
+                        m["local"] = False
+                        # Check if reachable (quick SSH check)
+                        m["status"] = await self._check_machine_status(m)
+                        machines.append(m)
+            except (json.JSONDecodeError, IOError):
+                pass
+
+        return web.json_response(machines)
+
+    async def _check_machine_status(self, machine: dict) -> str:
+        """Check if a remote machine is reachable via SSH."""
+        host = machine.get("host", "")
+        user = machine.get("user", "")
+        ssh_target = f"{user}@{host}" if user else host
+
+        try:
+            proc = await asyncio.wait_for(
+                asyncio.create_subprocess_exec(
+                    "ssh", "-o", "ConnectTimeout=2", "-o", "BatchMode=yes",
+                    ssh_target, "echo ok",
+                    stdout=asyncio.subprocess.DEVNULL,
+                    stderr=asyncio.subprocess.DEVNULL,
+                ),
+                timeout=3.0
+            )
+            await proc.wait()
+            return "online" if proc.returncode == 0 else "offline"
+        except (asyncio.TimeoutError, Exception):
+            return "offline"
+
+    async def api_add_machine(self, request: web.Request) -> web.Response:
+        """Add a new machine to the registry."""
+        try:
+            data = await request.json()
+            machine_id = data.get("id", "").strip()
+            host = data.get("host", "").strip()
+            user = data.get("user", "").strip()
+            projects_dir = data.get("projects_dir", "").strip()
+
+            if not machine_id or not host:
+                return web.json_response({"error": "ID and host are required"})
+
+            machines_file = self.config.machines.file
+            machines_file.parent.mkdir(parents=True, exist_ok=True)
+
+            # Load existing machines
+            machines = []
+            if machines_file.exists():
+                try:
+                    with open(machines_file) as f:
+                        machines = json.load(f).get("machines", [])
+                except (json.JSONDecodeError, IOError):
+                    pass
+
+            # Check for duplicate ID
+            if any(m.get("id") == machine_id for m in machines):
+                return web.json_response({"error": f"Machine '{machine_id}' already exists"})
+
+            # Add new machine
+            new_machine = {"id": machine_id, "host": host}
+            if user:
+                new_machine["user"] = user
+            if projects_dir:
+                new_machine["projects_dir"] = projects_dir
+
+            machines.append(new_machine)
+
+            # Save
+            with open(machines_file, "w") as f:
+                json.dump({"machines": machines}, f, indent=2)
+
+            # Reload agent backend to pick up new machines
+            if self.agent and hasattr(self.agent, '_load_machines'):
+                self.agent._load_machines()
+
+            return web.json_response({"success": True, "machine": new_machine})
+        except Exception as e:
+            return web.json_response({"error": str(e)})
+
+    async def api_get_config(self, request: web.Request) -> web.Response:
+        """Get config file contents."""
+        config_path = Path.home() / ".agentwire" / "config.yaml"
+        content = ""
+        if config_path.exists():
+            try:
+                content = config_path.read_text()
+            except IOError as e:
+                return web.json_response({"error": str(e)})
+        else:
+            # Return default config template
+            content = """# AgentWire Configuration
+server:
+  host: "0.0.0.0"
+  port: 8765
+
+tts:
+  backend: "chatterbox"
+  url: "http://localhost:8100"
+  default_voice: "bashbunni"
+
+stt:
+  backend: "whisperkit"  # whisperkit | whispercpp | openai | none
+
+projects:
+  dir: "~/projects"
+  worktrees:
+    enabled: true
+    suffix: "-worktrees"
+"""
+        return web.json_response({
+            "path": str(config_path),
+            "content": content,
+            "exists": config_path.exists(),
+        })
+
+    async def api_save_config(self, request: web.Request) -> web.Response:
+        """Save config file contents."""
+        try:
+            data = await request.json()
+            content = data.get("content", "")
+
+            # Validate YAML syntax
+            import yaml
+            try:
+                yaml.safe_load(content)
+            except yaml.YAMLError as e:
+                return web.json_response({"error": f"Invalid YAML: {e}"})
+
+            config_path = Path.home() / ".agentwire" / "config.yaml"
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            config_path.write_text(content)
+
+            return web.json_response({"success": True})
+        except Exception as e:
+            return web.json_response({"error": str(e)})
+
+    async def api_reload_config(self, request: web.Request) -> web.Response:
+        """Reload configuration from disk."""
+        try:
+            from .config import reload_config
+            self.config = reload_config()
+
+            # Reinitialize backends with new config
+            await self.init_backends()
+
+            return web.json_response({"success": True})
+        except Exception as e:
+            return web.json_response({"error": str(e)})
 
     async def handle_transcribe(self, request: web.Request) -> web.Response:
         """Transcribe audio to text."""

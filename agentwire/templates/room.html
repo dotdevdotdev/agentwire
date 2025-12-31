@@ -10,7 +10,7 @@
             /* Layout */
             --header-height: 52px;
             --tts-height: 40px;
-            --controls-height: 140px;
+            --controls-height: 190px;
 
             /* Theme colors - Electric Green */
             --primary: #00DD00;
@@ -404,6 +404,45 @@
             text-align: center;
             line-height: 1.3;
         }
+        .text-input-row {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 0.5rem;
+        }
+        .text-input {
+            flex: 1;
+            padding: 0.75rem 1rem;
+            background: var(--bg-light);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-size: 0.95rem;
+        }
+        .text-input:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+        .text-input::placeholder {
+            color: var(--text-muted);
+        }
+        .send-btn {
+            padding: 0.75rem 1rem;
+            background: var(--primary-subtle);
+            border: 1px solid rgba(0, 221, 0, 0.3);
+            border-radius: 8px;
+            color: var(--primary);
+            font-size: 1.1rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .send-btn:hover {
+            background: rgba(0, 221, 0, 0.25);
+            border-color: var(--primary);
+        }
+        .send-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
     </style>
 </head>
 <body>
@@ -468,6 +507,10 @@
     <div class="controls">
         <div class="transcript" id="transcript">Tap and hold to speak</div>
         <button class="mic-btn idle" id="micBtn">Hold to Talk</button>
+        <div class="text-input-row">
+            <input type="text" class="text-input" id="textInput" placeholder="Type a message..." autocomplete="off">
+            <button class="send-btn" id="sendBtn" onclick="sendTextInput()">↵</button>
+        </div>
     </div>
 
     <script>
@@ -940,6 +983,53 @@
                 setState(STATES.IDLE);
             }
         }
+
+        // Text input handling
+        async function sendTextInput() {
+            const input = document.getElementById('textInput');
+            const text = input.value.trim();
+            if (!text) return;
+
+            const sendBtn = document.getElementById('sendBtn');
+            sendBtn.disabled = true;
+            input.disabled = true;
+
+            try {
+                await fetch('/send/' + ROOM, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text: '[Remote text - use remote-say] ' + text })
+                });
+                input.value = '';
+
+                // Update state to processing
+                elements.transcript.textContent = text;
+                setState(STATES.PROCESSING);
+
+                // Timeout to return to idle if no TTS response
+                if (processingTimeout) clearTimeout(processingTimeout);
+                processingTimeout = setTimeout(() => {
+                    if (currentState === STATES.PROCESSING) {
+                        setState(STATES.IDLE);
+                        elements.transcript.textContent = 'Tap and hold to speak';
+                    }
+                }, 30000);
+
+            } catch (err) {
+                console.error('Send error:', err);
+            } finally {
+                sendBtn.disabled = false;
+                input.disabled = false;
+                input.focus();
+            }
+        }
+
+        document.getElementById('textInput').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendTextInput();
+            }
+        });
 
         // Event listeners
         elements.micBtn.addEventListener('mousedown', startListening);
