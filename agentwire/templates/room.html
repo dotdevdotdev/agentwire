@@ -2,6 +2,7 @@
 <html>
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <link rel="icon" type="image/jpeg" href="/static/favicon.jpeg">
     <title>{{ room_name }} - AgentWire</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -72,7 +73,8 @@
         }
         .header h1 { font-size: 1.1rem; color: var(--text-secondary); }
         .header a { color: var(--text-muted); text-decoration: none; font-size: 0.9rem; }
-        .header-brand { color: var(--primary); font-weight: 600; font-size: 0.9rem; margin-right: 0.75rem; text-decoration: none; }
+        .header-brand { color: var(--primary); font-weight: 600; font-size: 0.9rem; margin-right: 0.75rem; text-decoration: none; display: flex; align-items: center; gap: 0.4rem; }
+        .header-logo { width: 24px; height: 24px; border-radius: 4px; }
         .header-left { display: flex; align-items: center; }
         .header-right { display: flex; align-items: center; gap: 0.75rem; }
         .settings-btn {
@@ -407,7 +409,7 @@
 <body>
     <div class="header">
         <div class="header-left">
-            <a href="/" class="header-brand">‹ AgentWire</a>
+            <a href="/" class="header-brand"><img src="/static/logo.jpeg" alt="" class="header-logo">AgentWire</a>
             <div>
                 <h1>{{ room_name }}{% if config.machine %}<span style="color:var(--text-muted);font-weight:normal">@{{ config.machine }}</span>{% endif %}</h1>
                 <div class="status" id="status">connecting...</div>
