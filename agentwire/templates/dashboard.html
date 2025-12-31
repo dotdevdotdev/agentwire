@@ -37,36 +37,41 @@
             background: var(--bg-dark);
             color: var(--text-primary);
             min-height: 100vh;
-            padding: 1rem;
         }
-        .header {
-            text-align: center;
-            padding: 1rem 0 2rem;
+        .layout {
+            display: flex;
+            min-height: 100vh;
+        }
+        .left-column {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+            border-right: 1px solid var(--border);
         }
         .splash-logo {
             max-width: 280px;
             width: 100%;
             height: auto;
-            margin-bottom: 1rem;
             border-radius: 12px;
         }
-        .header-content {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 0.75rem;
+        .tagline { color: var(--text-muted); margin-top: 1rem; font-size: 0.9rem; }
+        .version { font-size: 0.7rem; color: var(--text-muted); margin-top: 0.5rem; }
+        .right-column {
+            flex: 1;
+            padding: 2rem;
+            overflow-y: auto;
         }
-        .logo {
-            width: 32px;
-            height: 32px;
-            border-radius: 6px;
-        }
-        .header h1 { font-size: 1.5rem; color: var(--text-secondary); }
-        .header p { color: var(--text-muted); margin-top: 0.5rem; }
-        .version { font-size: 0.7rem; color: var(--text-muted); margin-top: 0.25rem; }
         .sessions {
-            max-width: 500px;
-            margin: 0 auto;
+            max-width: 600px;
+        }
+        .section-title {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 1rem;
         }
         .session-card {
             display: flex;
@@ -87,8 +92,8 @@
         .session-voice { color: var(--primary); }
         .session-arrow { color: var(--border-light); font-size: 1.2rem; }
         .create-form {
-            max-width: 500px;
-            margin: 2rem auto 0;
+            max-width: 600px;
+            margin-top: 2rem;
             background: var(--bg-mid);
             border: 1px solid var(--border);
             border-radius: 8px;
@@ -124,40 +129,62 @@
             border-color: var(--primary);
         }
         .error { color: var(--error); margin-top: 0.5rem; font-size: 0.9rem; }
-        .no-sessions { text-align: center; color: var(--text-muted); padding: 2rem; }
+        .no-sessions { color: var(--text-muted); padding: 1rem 0; }
+
+        /* Mobile: stack vertically */
+        @media (max-width: 768px) {
+            .layout {
+                flex-direction: column;
+            }
+            .left-column {
+                border-right: none;
+                border-bottom: 1px solid var(--border);
+                padding: 1.5rem;
+            }
+            .splash-logo {
+                max-width: 200px;
+            }
+            .right-column {
+                padding: 1.5rem;
+            }
+        }
     </style>
 </head>
 <body>
-    <div class="header">
-        <img src="/static/agentwire-logo-splash-green.jpeg" alt="AgentWire" class="splash-logo">
-        <p>Voice Agent Interface</p>
-        <div class="version">v{{ version }}</div>
-    </div>
+    <div class="layout">
+        <div class="left-column">
+            <img src="/static/agentwire-logo-splash-green.jpeg" alt="AgentWire" class="splash-logo">
+            <p class="tagline">Voice Agent Interface</p>
+            <div class="version">v{{ version }}</div>
+        </div>
+        <div class="right-column">
+            <div class="section-title">Active Sessions</div>
+            <div class="sessions" id="sessions">
+                <div class="no-sessions">Loading sessions...</div>
+            </div>
 
-    <div class="sessions" id="sessions">
-        <div class="no-sessions">Loading sessions...</div>
-    </div>
-
-    <div class="create-form">
-        <h2>Create New Session</h2>
-        <div class="form-row">
-            <label>Session Name</label>
-            <input type="text" id="sessionName" placeholder="e.g., assistant">
+            <div class="create-form">
+                <h2>Create New Session</h2>
+                <div class="form-row">
+                    <label>Session Name</label>
+                    <input type="text" id="sessionName" placeholder="e.g., assistant">
+                </div>
+                <div class="form-row">
+                    <label>Project Path (optional, defaults to ~/projects/name)</label>
+                    <input type="text" id="projectPath" placeholder="e.g., ~/projects/my-app">
+                </div>
+                <div class="form-row">
+                    <label>Voice</label>
+                    <select id="sessionVoice">
+                        {% for voice in voices %}
+                        <option value="{{ voice }}"{% if voice == default_voice %} selected{% endif %}>{{ voice }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <button class="create-btn" onclick="createSession()">Create Session</button>
+                <div class="error" id="error"></div>
+            </div>
         </div>
-        <div class="form-row">
-            <label>Project Path (optional, defaults to ~/projects/name)</label>
-            <input type="text" id="projectPath" placeholder="e.g., ~/projects/my-app">
-        </div>
-        <div class="form-row">
-            <label>Voice</label>
-            <select id="sessionVoice">
-                {% for voice in voices %}
-                <option value="{{ voice }}"{% if voice == default_voice %} selected{% endif %}>{{ voice }}</option>
-                {% endfor %}
-            </select>
-        </div>
-        <button class="create-btn" onclick="createSession()">Create Session</button>
-        <div class="error" id="error"></div>
     </div>
 
     <script>
