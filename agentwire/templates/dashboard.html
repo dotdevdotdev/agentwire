@@ -16,6 +16,13 @@
             text-align: center;
             padding: 1rem 0 2rem;
         }
+        .splash-logo {
+            max-width: 280px;
+            width: 100%;
+            height: auto;
+            margin-bottom: 1rem;
+            border-radius: 12px;
+        }
         .header-content {
             display: flex;
             align-items: center;
@@ -25,6 +32,7 @@
         .logo {
             width: 32px;
             height: 32px;
+            border-radius: 6px;
         }
         .header h1 { font-size: 1.5rem; color: #888; }
         .header p { color: #555; margin-top: 0.5rem; }
@@ -89,10 +97,7 @@
 </head>
 <body>
     <div class="header">
-        <div class="header-content">
-            <img src="/static/logo.png" alt="AgentWire" class="logo">
-            <h1>AgentWire</h1>
-        </div>
+        <img src="/static/agentwire-logo-splash.jpeg" alt="AgentWire" class="splash-logo">
         <p>Voice Agent Interface</p>
         <div class="version">v{{ version }}</div>
     </div>
