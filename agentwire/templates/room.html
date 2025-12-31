@@ -150,6 +150,8 @@
             color: var(--text-muted);
         }
         .tts-control input[type="range"] { width: 60px; accent-color: var(--primary); }
+
+        /* Terminal mode */
         .output {
             flex: 1;
             padding: 1rem;
@@ -165,22 +167,68 @@
             white-space: pre-wrap;
             word-wrap: break-word;
         }
+
+        /* Ambient mode container */
         .ambient {
             flex: 1;
             display: none;
             flex-direction: column;
-            align-items: center;
-            justify-content: center;
             background: var(--bg-dark);
-            gap: 2rem;
             min-height: 0;
+            position: relative;
         }
         .ambient.active { display: flex; }
         .output.hidden { display: none; }
 
+        /* AI Speech bubble - top */
+        .ai-bubble-container {
+            padding: 1rem;
+            padding-bottom: 0;
+        }
+        .ai-bubble {
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            border-top-left-radius: 4px;
+            padding: 0.875rem 1rem;
+            font-size: 1rem;
+            line-height: 1.4;
+            color: var(--text-primary);
+            max-width: 85%;
+            position: relative;
+            opacity: 0;
+            transform: translateY(-10px);
+            transition: all 0.3s ease;
+        }
+        .ai-bubble.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        .ai-bubble.speaking {
+            border-color: var(--orb-speaking);
+            box-shadow: 0 0 20px rgba(74, 222, 128, 0.2);
+        }
+        .ai-bubble::before {
+            content: '🤖';
+            position: absolute;
+            top: -0.5rem;
+            left: -0.5rem;
+            font-size: 0.9rem;
+        }
+
+        /* Orb area - center */
+        .orb-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 1.5rem;
+        }
+
         /* State label */
         .state-label {
-            font-size: 1.8rem;
+            font-size: 1.5rem;
             font-weight: 300;
             letter-spacing: 0.2em;
             text-transform: uppercase;
@@ -195,8 +243,8 @@
         /* Orb container */
         .orb-container {
             position: relative;
-            width: min(50vw, 50vh, 300px);
-            height: min(50vw, 50vh, 300px);
+            width: min(40vw, 40vh, 220px);
+            height: min(40vw, 40vh, 220px);
         }
         .orb {
             position: absolute;
@@ -212,7 +260,7 @@
             transition: all 0.3s ease;
         }
 
-        /* Idle state - calm blue breathing */
+        /* Orb states */
         .orb.idle {
             background: radial-gradient(circle at 30% 30%, var(--orb-idle), var(--orb-idle-dark));
             animation: breathe 4s ease-in-out infinite;
@@ -222,8 +270,6 @@
             animation: ring-breathe 4s ease-in-out infinite;
             border-color: var(--primary-subtle);
         }
-
-        /* Listening state - warm amber pulse */
         .orb.listening {
             background: radial-gradient(circle at 30% 30%, var(--orb-listening), var(--orb-listening-dark));
             animation: listen 0.8s ease-in-out infinite;
@@ -233,8 +279,6 @@
             animation: ring-listen 0.8s ease-in-out infinite;
             border-color: rgba(245, 158, 11, 0.4);
         }
-
-        /* Processing state - purple spin */
         .orb.processing {
             background: conic-gradient(from 0deg, var(--orb-processing), var(--orb-processing-dark), var(--orb-processing));
             animation: spin 1.5s linear infinite, pulse-processing 0.8s ease-in-out infinite;
@@ -246,8 +290,6 @@
             border-width: 3px;
             border-style: dashed;
         }
-
-        /* Generating state - sky blue wave pulse */
         .orb.generating {
             background: radial-gradient(circle at 30% 30%, var(--orb-generating), var(--orb-generating-dark));
             animation: generate 0.6s ease-in-out infinite;
@@ -258,8 +300,6 @@
             border-color: rgba(56, 189, 248, 0.5);
             border-width: 3px;
         }
-
-        /* Speaking state - teal rapid pulse */
         .orb.speaking {
             background: radial-gradient(circle at 30% 30%, var(--orb-speaking), var(--orb-speaking-dark));
             animation: speak 0.25s ease-in-out infinite;
@@ -270,8 +310,6 @@
             border-color: rgba(45, 212, 191, 0.5);
             border-width: 3px;
         }
-
-        /* Locked state - dimmed, someone else is talking */
         .orb.locked {
             background: radial-gradient(circle at 30% 30%, var(--text-muted), var(--bg-elevated));
             animation: breathe 4s ease-in-out infinite;
@@ -282,14 +320,7 @@
             animation: ring-breathe 4s ease-in-out infinite;
             border-color: rgba(92, 107, 122, 0.3);
         }
-        .mic-btn.locked {
-            background: linear-gradient(145deg, var(--bg-elevated), var(--bg-light));
-            cursor: not-allowed;
-            opacity: 0.6;
-        }
-        .state-label.locked {
-            color: var(--text-secondary);
-        }
+        .state-label.locked { color: var(--text-secondary); }
 
         @keyframes breathe {
             0%, 100% { transform: scale(1); opacity: 0.8; }
@@ -336,7 +367,198 @@
             50% { transform: scale(1.2); opacity: 0.9; }
         }
 
-        /* Controls - always at bottom */
+        /* User bubble - bottom, above controls */
+        .user-bubble-container {
+            padding: 0 1rem 1rem;
+        }
+        .user-bubble {
+            background: var(--primary-subtle);
+            border: 1px solid rgba(0, 221, 0, 0.3);
+            border-radius: 16px;
+            border-bottom-right-radius: 4px;
+            padding: 0.75rem 1rem;
+            font-size: 0.95rem;
+            line-height: 1.3;
+            color: var(--text-primary);
+            max-width: 85%;
+            margin-left: auto;
+            position: relative;
+            opacity: 0;
+            transform: translateY(10px);
+            transition: all 0.3s ease;
+        }
+        .user-bubble.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        .user-bubble.listening {
+            border-color: var(--orb-listening);
+            background: rgba(245, 158, 11, 0.15);
+        }
+        .user-bubble::after {
+            content: '👤';
+            position: absolute;
+            bottom: -0.5rem;
+            right: -0.5rem;
+            font-size: 0.8rem;
+        }
+
+        /* Floating controls container */
+        .floating-controls {
+            position: absolute;
+            bottom: 1rem;
+            left: 1rem;
+            right: 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            pointer-events: none;
+            z-index: 50;
+        }
+        .floating-controls > * {
+            pointer-events: auto;
+        }
+
+        /* Text input - left side */
+        .text-input-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .text-toggle-btn {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            background: var(--bg-elevated);
+            border: 2px solid var(--border);
+            color: var(--text-secondary);
+            font-size: 1.4rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .text-toggle-btn:hover {
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+        .text-toggle-btn.active {
+            background: var(--primary-subtle);
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+        .text-input-expanded {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: 28px;
+            padding: 0.25rem 0.5rem 0.25rem 1rem;
+            max-width: 0;
+            overflow: hidden;
+            opacity: 0;
+            transition: all 0.3s ease;
+        }
+        .text-input-expanded.open {
+            max-width: 280px;
+            opacity: 1;
+        }
+        .text-input-expanded input {
+            flex: 1;
+            min-width: 0;
+            width: 180px;
+            padding: 0.5rem 0;
+            background: transparent;
+            border: none;
+            color: var(--text-primary);
+            font-size: 0.95rem;
+        }
+        .text-input-expanded input:focus {
+            outline: none;
+        }
+        .text-input-expanded input::placeholder {
+            color: var(--text-muted);
+        }
+        .send-btn {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: var(--primary);
+            border: none;
+            color: #000;
+            font-size: 1.1rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+        .send-btn:hover {
+            background: var(--primary-dim);
+            transform: scale(1.05);
+        }
+        .send-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* Mic button - right side */
+        .mic-btn {
+            width: 72px;
+            height: 72px;
+            border-radius: 50%;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s;
+            -webkit-tap-highlight-color: transparent;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.8rem;
+        }
+        .mic-btn.idle {
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            color: #000;
+            box-shadow: 0 4px 20px var(--primary-glow);
+        }
+        .mic-btn.listening {
+            background: linear-gradient(135deg, var(--orb-listening), var(--orb-listening-dark));
+            color: #000;
+            animation: mic-pulse 0.8s ease-in-out infinite;
+            box-shadow: 0 4px 30px rgba(245, 158, 11, 0.5);
+        }
+        .mic-btn.processing {
+            background: linear-gradient(135deg, var(--orb-processing), var(--orb-processing-dark));
+            color: #fff;
+            cursor: not-allowed;
+            opacity: 0.8;
+        }
+        .mic-btn.generating {
+            background: linear-gradient(135deg, var(--orb-generating), var(--orb-generating-dark));
+            color: #fff;
+            cursor: not-allowed;
+            animation: mic-pulse 0.6s ease-in-out infinite;
+        }
+        .mic-btn.speaking {
+            background: linear-gradient(135deg, var(--orb-speaking), var(--orb-speaking-dark));
+            color: #000;
+        }
+        .mic-btn.locked {
+            background: linear-gradient(135deg, var(--bg-elevated), var(--bg-light));
+            color: var(--text-muted);
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+        @keyframes mic-pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.08); }
+        }
+
+        /* Terminal mode controls */
         .controls {
             height: var(--controls-height);
             padding: 1rem;
@@ -345,53 +567,7 @@
             flex-shrink: 0;
             margin-top: auto;
         }
-        .mic-btn {
-            width: 100%;
-            padding: 1.25rem;
-            font-size: 1.1rem;
-            font-weight: 500;
-            border: none;
-            border-radius: 12px;
-            cursor: pointer;
-            transition: all 0.2s;
-            -webkit-tap-highlight-color: transparent;
-        }
-        .mic-btn.idle {
-            background: linear-gradient(135deg, rgba(0, 221, 0, 0.15), rgba(0, 153, 0, 0.15));
-            color: var(--primary);
-            border: 2px solid rgba(0, 221, 0, 0.3);
-        }
-        .mic-btn.listening {
-            background: linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(180, 83, 9, 0.15));
-            color: var(--orb-listening);
-            border: 2px solid rgba(245, 158, 11, 0.4);
-            animation: btn-pulse 0.8s ease-in-out infinite;
-        }
-        .mic-btn.processing {
-            background: linear-gradient(135deg, rgba(168, 85, 247, 0.15), rgba(124, 58, 237, 0.15));
-            color: var(--orb-processing);
-            border: 2px solid rgba(168, 85, 247, 0.3);
-            cursor: not-allowed;
-            opacity: 0.7;
-        }
-        .mic-btn.generating {
-            background: linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(29, 78, 216, 0.15));
-            color: var(--orb-generating);
-            border: 2px solid rgba(59, 130, 246, 0.3);
-            cursor: not-allowed;
-            opacity: 0.7;
-            animation: btn-pulse 0.6s ease-in-out infinite;
-        }
-        .mic-btn.speaking {
-            background: linear-gradient(135deg, rgba(74, 222, 128, 0.15), rgba(34, 197, 94, 0.15));
-            color: var(--orb-speaking);
-            border: 2px solid rgba(74, 222, 128, 0.3);
-        }
-        @keyframes btn-pulse {
-            0%, 100% { opacity: 1; transform: scale(1); }
-            50% { opacity: 0.85; transform: scale(0.98); }
-        }
-        .transcript {
+        .controls .transcript {
             margin-bottom: 0.5rem;
             padding: 0.5rem 0.75rem;
             background: var(--bg-light);
@@ -404,12 +580,51 @@
             text-align: center;
             line-height: 1.3;
         }
-        .text-input-row {
+        .controls .mic-btn-terminal {
+            width: 100%;
+            padding: 1.25rem;
+            font-size: 1.1rem;
+            font-weight: 500;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .controls .mic-btn-terminal.idle {
+            background: linear-gradient(135deg, rgba(0, 221, 0, 0.15), rgba(0, 153, 0, 0.15));
+            color: var(--primary);
+            border: 2px solid rgba(0, 221, 0, 0.3);
+        }
+        .controls .mic-btn-terminal.listening {
+            background: linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(180, 83, 9, 0.15));
+            color: var(--orb-listening);
+            border: 2px solid rgba(245, 158, 11, 0.4);
+            animation: btn-pulse 0.8s ease-in-out infinite;
+        }
+        .controls .mic-btn-terminal.processing,
+        .controls .mic-btn-terminal.generating {
+            background: linear-gradient(135deg, rgba(168, 85, 247, 0.15), rgba(124, 58, 237, 0.15));
+            color: var(--orb-processing);
+            border: 2px solid rgba(168, 85, 247, 0.3);
+            cursor: not-allowed;
+            opacity: 0.7;
+        }
+        .controls .mic-btn-terminal.speaking {
+            background: linear-gradient(135deg, rgba(74, 222, 128, 0.15), rgba(34, 197, 94, 0.15));
+            color: var(--orb-speaking);
+            border: 2px solid rgba(74, 222, 128, 0.3);
+        }
+        @keyframes btn-pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.85; transform: scale(0.98); }
+        }
+        .controls .text-input-row {
             display: flex;
             gap: 0.5rem;
             margin-top: 0.5rem;
         }
-        .text-input {
+        .controls .text-input {
             flex: 1;
             padding: 0.75rem 1rem;
             background: var(--bg-light);
@@ -418,14 +633,14 @@
             color: var(--text-primary);
             font-size: 0.95rem;
         }
-        .text-input:focus {
+        .controls .text-input:focus {
             outline: none;
             border-color: var(--primary);
         }
-        .text-input::placeholder {
+        .controls .text-input::placeholder {
             color: var(--text-muted);
         }
-        .send-btn {
+        .controls .send-btn-terminal {
             padding: 0.75rem 1rem;
             background: var(--primary-subtle);
             border: 1px solid rgba(0, 221, 0, 0.3);
@@ -435,11 +650,11 @@
             cursor: pointer;
             transition: all 0.2s;
         }
-        .send-btn:hover {
+        .controls .send-btn-terminal:hover {
             background: rgba(0, 221, 0, 0.25);
             border-color: var(--primary);
         }
-        .send-btn:disabled {
+        .controls .send-btn-terminal:disabled {
             opacity: 0.5;
             cursor: not-allowed;
         }
@@ -496,20 +711,54 @@
             <span id="cfgVal">{{ config.cfg_weight }}</span>
         </div>
     </div>
+
+    <!-- Terminal Mode -->
     <div class="output" id="output"><div class="output-content" id="outputContent"></div></div>
+
+    <!-- Ambient Mode -->
     <div class="ambient" id="ambient">
-        <div class="state-label idle" id="stateLabel">Ready</div>
-        <div class="orb-container">
-            <div class="orb-ring idle" id="orbRing"></div>
-            <div class="orb idle" id="orb"></div>
+        <!-- AI message at top -->
+        <div class="ai-bubble-container">
+            <div class="ai-bubble" id="aiBubble"></div>
+        </div>
+
+        <!-- Orb in center -->
+        <div class="orb-area">
+            <div class="state-label idle" id="stateLabel">Ready</div>
+            <div class="orb-container">
+                <div class="orb-ring idle" id="orbRing"></div>
+                <div class="orb idle" id="orb"></div>
+            </div>
+        </div>
+
+        <!-- User message bubble -->
+        <div class="user-bubble-container">
+            <div class="user-bubble" id="userBubble"></div>
+        </div>
+
+        <!-- Floating controls -->
+        <div class="floating-controls">
+            <!-- Text input on left -->
+            <div class="text-input-wrapper">
+                <button class="text-toggle-btn" id="textToggleBtn" onclick="toggleTextInput()">⌨</button>
+                <div class="text-input-expanded" id="textInputExpanded">
+                    <input type="text" id="textInputAmbient" placeholder="Type a message..." autocomplete="off">
+                    <button class="send-btn" id="sendBtnAmbient" onclick="sendTextInputAmbient()">↑</button>
+                </div>
+            </div>
+
+            <!-- Mic button on right -->
+            <button class="mic-btn idle" id="micBtn">🎤</button>
         </div>
     </div>
-    <div class="controls">
+
+    <!-- Terminal Mode Controls -->
+    <div class="controls" id="terminalControls">
         <div class="transcript" id="transcript">Tap and hold to speak</div>
-        <button class="mic-btn idle" id="micBtn">Hold to Talk</button>
+        <button class="mic-btn-terminal idle" id="micBtnTerminal">Hold to Talk</button>
         <div class="text-input-row">
             <input type="text" class="text-input" id="textInput" placeholder="Type a message..." autocomplete="off">
-            <button class="send-btn" id="sendBtn" onclick="sendTextInput()">↵</button>
+            <button class="send-btn-terminal" id="sendBtn" onclick="sendTextInput()">↵</button>
         </div>
     </div>
 
@@ -524,13 +773,31 @@
             stateLabel: document.getElementById('stateLabel'),
             status: document.getElementById('status'),
             micBtn: document.getElementById('micBtn'),
+            micBtnTerminal: document.getElementById('micBtnTerminal'),
             transcript: document.getElementById('transcript'),
             modeToggle: document.getElementById('modeToggle'),
             ttsControls: document.getElementById('ttsControls'),
+            terminalControls: document.getElementById('terminalControls'),
             micSelect: document.getElementById('micSelect'),
             speakerSelect: document.getElementById('speakerSelect'),
-            settingsDropdown: document.getElementById('settingsDropdown')
+            settingsDropdown: document.getElementById('settingsDropdown'),
+            aiBubble: document.getElementById('aiBubble'),
+            userBubble: document.getElementById('userBubble'),
+            textToggleBtn: document.getElementById('textToggleBtn'),
+            textInputExpanded: document.getElementById('textInputExpanded'),
+            textInputAmbient: document.getElementById('textInputAmbient')
         };
+
+        let textInputOpen = false;
+
+        function toggleTextInput() {
+            textInputOpen = !textInputOpen;
+            elements.textToggleBtn.classList.toggle('active', textInputOpen);
+            elements.textInputExpanded.classList.toggle('open', textInputOpen);
+            if (textInputOpen) {
+                setTimeout(() => elements.textInputAmbient.focus(), 100);
+            }
+        }
 
         function toggleSettings() {
             elements.settingsDropdown.classList.toggle('open');
@@ -549,13 +816,11 @@
 
         async function populateAudioDevices() {
             try {
-                // Request permission first to get device labels
                 await navigator.mediaDevices.getUserMedia({ audio: true })
                     .then(stream => stream.getTracks().forEach(t => t.stop()));
 
                 const devices = await navigator.mediaDevices.enumerateDevices();
 
-                // Populate microphones
                 const mics = devices.filter(d => d.kind === 'audioinput');
                 elements.micSelect.innerHTML = '<option value="">Default Mic</option>';
                 mics.forEach(mic => {
@@ -566,7 +831,6 @@
                     elements.micSelect.appendChild(opt);
                 });
 
-                // Populate speakers
                 const speakers = devices.filter(d => d.kind === 'audiooutput');
                 elements.speakerSelect.innerHTML = '<option value="">Default Speaker</option>';
                 speakers.forEach(speaker => {
@@ -577,7 +841,6 @@
                     elements.speakerSelect.appendChild(opt);
                 });
 
-                // Hide speaker select if setSinkId not supported
                 if (!('setSinkId' in HTMLAudioElement.prototype)) {
                     elements.speakerSelect.style.display = 'none';
                 }
@@ -672,6 +935,7 @@
         let ws, recognition, currentAudio;
         let isAmbientMode = false;
         let processingTimeout = null;
+        let lastAiMessage = '';
 
         const stateConfig = {
             idle: { label: 'Ready', btnText: 'Hold to Talk' },
@@ -693,7 +957,37 @@
             elements.stateLabel.textContent = config.label;
 
             elements.micBtn.className = 'mic-btn ' + newState;
-            elements.micBtn.textContent = config.btnText;
+            elements.micBtnTerminal.className = 'mic-btn-terminal ' + newState;
+            elements.micBtnTerminal.textContent = config.btnText;
+
+            // Update AI bubble speaking state
+            if (newState === STATES.SPEAKING) {
+                elements.aiBubble.classList.add('speaking');
+            } else {
+                elements.aiBubble.classList.remove('speaking');
+            }
+
+            // Update user bubble listening state
+            if (newState === STATES.LISTENING) {
+                elements.userBubble.classList.add('listening');
+            } else {
+                elements.userBubble.classList.remove('listening');
+            }
+        }
+
+        function showUserBubble(text) {
+            elements.userBubble.textContent = text;
+            elements.userBubble.classList.add('visible');
+        }
+
+        function hideUserBubble() {
+            elements.userBubble.classList.remove('visible');
+        }
+
+        function showAiBubble(text) {
+            lastAiMessage = text;
+            elements.aiBubble.textContent = text;
+            elements.aiBubble.classList.add('visible');
         }
 
         function toggleMode() {
@@ -701,10 +995,10 @@
             elements.output.classList.toggle('hidden', isAmbientMode);
             elements.ambient.classList.toggle('active', isAmbientMode);
             elements.ttsControls.classList.toggle('visible', !isAmbientMode);
+            elements.terminalControls.style.display = isAmbientMode ? 'none' : 'block';
             elements.modeToggle.textContent = isAmbientMode ? 'Switch to Terminal' : 'Switch to Ambient';
             elements.settingsDropdown.classList.remove('open');
 
-            // Scroll to bottom when switching to terminal
             if (!isAmbientMode) {
                 setTimeout(() => {
                     elements.output.scrollTop = elements.output.scrollHeight;
@@ -755,6 +1049,10 @@
                         processingTimeout = null;
                     }
                     setState(STATES.GENERATING);
+                    // Show the text that's being spoken
+                    if (msg.text) {
+                        showAiBubble(msg.text);
+                    }
                 } else if (msg.type === 'audio') {
                     playAudio(msg.data);
                 } else if (msg.type === 'room_locked') {
@@ -784,7 +1082,6 @@
 
             currentAudio = new Audio('data:audio/wav;base64,' + base64Data);
 
-            // Set output device if selected and supported
             if (selectedSpeakerId && 'setSinkId' in currentAudio) {
                 try {
                     await currentAudio.setSinkId(selectedSpeakerId);
@@ -839,9 +1136,11 @@
                         analyser.getByteFrequencyData(dataArray);
                         const avg = dataArray.reduce((a, b) => a + b) / dataArray.length;
                         const level = Math.min(100, avg * 2);
-                        elements.micBtn.style.boxShadow = level > 10
-                            ? `0 0 ${level/2}px ${level/4}px rgba(239, 68, 68, ${level/100})`
+                        const shadow = level > 10
+                            ? `0 0 ${level/2}px ${level/4}px rgba(245, 158, 11, ${level/100})`
                             : 'none';
+                        elements.micBtn.style.boxShadow = shadow;
+                        elements.micBtnTerminal.style.boxShadow = shadow;
                     }
                 }, 50);
             } catch (e) {
@@ -853,12 +1152,13 @@
             if (levelInterval) clearInterval(levelInterval);
             if (mediaStream) mediaStream.getTracks().forEach(t => t.stop());
             if (audioContext) audioContext.close();
-            elements.micBtn.style.boxShadow = 'none';
+            elements.micBtn.style.boxShadow = '';
+            elements.micBtnTerminal.style.boxShadow = 'none';
             audioContext = null;
             mediaStream = null;
         }
 
-        // Audio recording setup (MediaRecorder + server-side Whisper)
+        // Audio recording
         let mediaRecorder = null;
         let audioChunks = [];
 
@@ -898,6 +1198,7 @@
                     if (audioChunks.length === 0) {
                         setState(STATES.IDLE);
                         elements.transcript.textContent = 'Tap and hold to speak';
+                        hideUserBubble();
                         return;
                     }
 
@@ -908,6 +1209,7 @@
                 mediaRecorder.start(100);
                 setState(STATES.LISTENING);
                 elements.transcript.textContent = 'Recording...';
+                showUserBubble('Recording...');
                 startAudioMonitor();
 
             } catch (err) {
@@ -922,6 +1224,7 @@
 
             stopAudioMonitor();
             elements.transcript.textContent = 'Transcribing...';
+            showUserBubble('Transcribing...');
 
             if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({ type: 'recording_stopped' }));
@@ -952,6 +1255,7 @@
 
                 if (data.error) {
                     elements.transcript.textContent = 'Transcription failed';
+                    hideUserBubble();
                     setState(STATES.IDLE);
                     return;
                 }
@@ -959,11 +1263,14 @@
                 const text = data.text?.trim();
                 if (!text) {
                     elements.transcript.textContent = 'No speech detected';
+                    hideUserBubble();
                     setState(STATES.IDLE);
                     return;
                 }
 
                 elements.transcript.textContent = text;
+                showUserBubble(text);
+
                 await fetch('/send/' + ROOM, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -980,11 +1287,12 @@
             } catch (err) {
                 console.error('Transcribe error:', err);
                 elements.transcript.textContent = 'Error: ' + err.message;
+                hideUserBubble();
                 setState(STATES.IDLE);
             }
         }
 
-        // Text input handling
+        // Text input handling - Terminal mode
         async function sendTextInput() {
             const input = document.getElementById('textInput');
             const text = input.value.trim();
@@ -1002,11 +1310,9 @@
                 });
                 input.value = '';
 
-                // Update state to processing
                 elements.transcript.textContent = text;
                 setState(STATES.PROCESSING);
 
-                // Timeout to return to idle if no TTS response
                 if (processingTimeout) clearTimeout(processingTimeout);
                 processingTimeout = setTimeout(() => {
                     if (currentState === STATES.PROCESSING) {
@@ -1024,6 +1330,48 @@
             }
         }
 
+        // Text input handling - Ambient mode
+        async function sendTextInputAmbient() {
+            const input = elements.textInputAmbient;
+            const text = input.value.trim();
+            if (!text) return;
+
+            const sendBtn = document.getElementById('sendBtnAmbient');
+            sendBtn.disabled = true;
+            input.disabled = true;
+
+            showUserBubble(text);
+
+            try {
+                await fetch('/send/' + ROOM, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text: '[Remote text - use remote-say] ' + text })
+                });
+                input.value = '';
+
+                setState(STATES.PROCESSING);
+
+                // Close text input
+                textInputOpen = false;
+                elements.textToggleBtn.classList.remove('active');
+                elements.textInputExpanded.classList.remove('open');
+
+                if (processingTimeout) clearTimeout(processingTimeout);
+                processingTimeout = setTimeout(() => {
+                    if (currentState === STATES.PROCESSING) {
+                        setState(STATES.IDLE);
+                    }
+                }, 30000);
+
+            } catch (err) {
+                console.error('Send error:', err);
+            } finally {
+                sendBtn.disabled = false;
+                input.disabled = false;
+            }
+        }
+
         document.getElementById('textInput').addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
@@ -1031,12 +1379,26 @@
             }
         });
 
-        // Event listeners
+        elements.textInputAmbient.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendTextInputAmbient();
+            }
+        });
+
+        // Event listeners - Ambient mode mic
         elements.micBtn.addEventListener('mousedown', startListening);
         elements.micBtn.addEventListener('mouseup', stopListening);
         elements.micBtn.addEventListener('mouseleave', stopListening);
         elements.micBtn.addEventListener('touchstart', (e) => { e.preventDefault(); startListening(); });
         elements.micBtn.addEventListener('touchend', (e) => { e.preventDefault(); stopListening(); });
+
+        // Event listeners - Terminal mode mic
+        elements.micBtnTerminal.addEventListener('mousedown', startListening);
+        elements.micBtnTerminal.addEventListener('mouseup', stopListening);
+        elements.micBtnTerminal.addEventListener('mouseleave', stopListening);
+        elements.micBtnTerminal.addEventListener('touchstart', (e) => { e.preventDefault(); startListening(); });
+        elements.micBtnTerminal.addEventListener('touchend', (e) => { e.preventDefault(); stopListening(); });
 
         // Start in ambient mode by default
         toggleMode();

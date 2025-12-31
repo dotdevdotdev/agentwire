@@ -954,8 +954,8 @@ projects:
         if not room.clients:
             return
 
-        # Notify clients TTS is starting
-        await self._broadcast(room, {"type": "tts_start"})
+        # Notify clients TTS is starting (include text for display)
+        await self._broadcast(room, {"type": "tts_start", "text": text})
 
         try:
             # Generate audio
