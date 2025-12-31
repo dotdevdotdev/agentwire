@@ -351,12 +351,11 @@ class AgentWireServer:
     async def api_sessions(self, request: web.Request) -> web.Response:
         """List all active sessions."""
         try:
-            sessions = await self.agent.list_sessions()
+            sessions = self.agent.list_sessions()
             room_configs = self._load_room_configs()
 
             result = []
-            for session in sessions:
-                name = session.get("name", "")
+            for name in sessions:
                 project, branch, machine = parse_session_name(name)
 
                 # Get path for session
