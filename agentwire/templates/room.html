@@ -659,6 +659,95 @@
             opacity: 0.5;
             cursor: not-allowed;
         }
+
+        /* Mobile styles - larger fonts and better spacing */
+        @media (max-width: 768px) {
+            :root {
+                --header-height: 56px;
+            }
+
+            .header h1 {
+                font-size: 1.3rem;
+            }
+
+            .header-brand {
+                font-size: 1.1rem;
+            }
+
+            .state-label {
+                font-size: 2rem;
+            }
+
+            .orb-container {
+                width: min(55vw, 55vh, 280px);
+                height: min(55vw, 55vh, 280px);
+            }
+
+            .ai-bubble {
+                font-size: 1.2rem;
+                padding: 1rem 1.25rem;
+                max-width: 90%;
+            }
+
+            .ai-bubble::before {
+                font-size: 1.1rem;
+            }
+
+            .user-bubble {
+                font-size: 1.15rem;
+                padding: 1rem 1.25rem;
+                max-width: 90%;
+            }
+
+            .user-bubble::after {
+                font-size: 1rem;
+            }
+
+            .mic-btn {
+                width: 80px;
+                height: 80px;
+                font-size: 2.2rem;
+            }
+
+            .text-toggle-btn {
+                width: 64px;
+                height: 64px;
+                font-size: 1.6rem;
+            }
+
+            .text-input-expanded input {
+                font-size: 1.1rem;
+            }
+
+            .send-btn {
+                width: 48px;
+                height: 48px;
+                font-size: 1.3rem;
+            }
+
+            .floating-controls {
+                bottom: 1.5rem;
+                left: 1.5rem;
+                right: 1.5rem;
+            }
+
+            .user-bubble-container {
+                padding-bottom: 120px;
+            }
+
+            .status {
+                font-size: 0.85rem;
+            }
+
+            .settings-btn {
+                font-size: 1.5rem;
+            }
+        }
+
+        /* Start in ambient mode by default via CSS */
+        .output.ambient-default { display: none; }
+        .ambient.ambient-default { display: flex; }
+        .controls.ambient-default { display: none; }
     </style>
 </head>
 <body>
@@ -714,10 +803,10 @@
     </div>
 
     <!-- Terminal Mode -->
-    <div class="output" id="output"><div class="output-content" id="outputContent"></div></div>
+    <div class="output ambient-default" id="output"><div class="output-content" id="outputContent"></div></div>
 
     <!-- Ambient Mode -->
-    <div class="ambient" id="ambient">
+    <div class="ambient ambient-default" id="ambient">
         <!-- AI message at top -->
         <div class="ai-bubble-container">
             <div class="ai-bubble" id="aiBubble"></div>
@@ -754,7 +843,7 @@
     </div>
 
     <!-- Terminal Mode Controls -->
-    <div class="controls" id="terminalControls">
+    <div class="controls ambient-default" id="terminalControls">
         <div class="transcript" id="transcript">Tap and hold to speak</div>
         <button class="mic-btn-terminal idle" id="micBtnTerminal">Hold to Talk</button>
         <div class="text-input-row">
@@ -934,7 +1023,7 @@
         const STATES = { IDLE: 'idle', LISTENING: 'listening', PROCESSING: 'processing', GENERATING: 'generating', SPEAKING: 'speaking', LOCKED: 'locked' };
         let currentState = STATES.IDLE;
         let ws, recognition, currentAudio;
-        let isAmbientMode = false;
+        let isAmbientMode = true;
         let processingTimeout = null;
         let lastAiMessage = '';
         let pendingAiText = null;
@@ -1000,6 +1089,13 @@
 
         function toggleMode() {
             isAmbientMode = !isAmbientMode;
+
+            // Remove initial CSS classes on first toggle
+            elements.output.classList.remove('ambient-default');
+            elements.ambient.classList.remove('ambient-default');
+            elements.terminalControls.classList.remove('ambient-default');
+
+            // Apply the correct display states
             elements.output.classList.toggle('hidden', isAmbientMode);
             elements.ambient.classList.toggle('active', isAmbientMode);
             elements.ttsControls.classList.toggle('visible', !isAmbientMode);
@@ -1413,8 +1509,7 @@
         elements.micBtnTerminal.addEventListener('touchstart', (e) => { e.preventDefault(); startListening(); });
         elements.micBtnTerminal.addEventListener('touchend', (e) => { e.preventDefault(); stopListening(); });
 
-        // Start in ambient mode by default
-        toggleMode();
+        // Start in ambient mode by default (via CSS classes)
         connect();
         populateAudioDevices();
     </script>
