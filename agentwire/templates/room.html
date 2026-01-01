@@ -663,84 +663,111 @@
         /* Mobile styles - larger fonts and better spacing */
         @media (max-width: 768px) {
             :root {
-                --header-height: 56px;
+                --header-height: 60px;
             }
 
             .header h1 {
-                font-size: 1.3rem;
+                font-size: 1.5rem;
             }
 
             .header-brand {
-                font-size: 1.1rem;
-            }
-
-            .state-label {
-                font-size: 2rem;
-            }
-
-            .orb-container {
-                width: min(55vw, 55vh, 280px);
-                height: min(55vw, 55vh, 280px);
-            }
-
-            .ai-bubble {
-                font-size: 1.2rem;
-                padding: 1rem 1.25rem;
-                max-width: 90%;
-            }
-
-            .ai-bubble::before {
-                font-size: 1.1rem;
-            }
-
-            .user-bubble {
-                font-size: 1.15rem;
-                padding: 1rem 1.25rem;
-                max-width: 90%;
-            }
-
-            .user-bubble::after {
-                font-size: 1rem;
-            }
-
-            .mic-btn {
-                width: 80px;
-                height: 80px;
-                font-size: 2.2rem;
-            }
-
-            .text-toggle-btn {
-                width: 64px;
-                height: 64px;
-                font-size: 1.6rem;
-            }
-
-            .text-input-expanded input {
-                font-size: 1.1rem;
-            }
-
-            .send-btn {
-                width: 48px;
-                height: 48px;
                 font-size: 1.3rem;
             }
 
+            .header-logo {
+                width: 32px;
+                height: 32px;
+            }
+
+            .state-label {
+                font-size: 2.5rem;
+            }
+
+            .orb-container {
+                width: min(60vw, 50vh, 300px);
+                height: min(60vw, 50vh, 300px);
+            }
+
+            .ai-bubble {
+                font-size: 1.4rem;
+                padding: 1.25rem 1.5rem;
+                max-width: 92%;
+                line-height: 1.5;
+            }
+
+            .ai-bubble::before {
+                font-size: 1.3rem;
+            }
+
+            .user-bubble {
+                font-size: 1.35rem;
+                padding: 1.25rem 1.5rem;
+                max-width: 92%;
+                line-height: 1.5;
+            }
+
+            .user-bubble::after {
+                font-size: 1.2rem;
+            }
+
+            .mic-btn {
+                width: 88px;
+                height: 88px;
+                font-size: 2.5rem;
+            }
+
+            .text-toggle-btn {
+                width: 72px;
+                height: 72px;
+                font-size: 2rem;
+            }
+
+            .text-input-expanded input {
+                font-size: 1.25rem;
+                width: 200px;
+            }
+
+            .send-btn {
+                width: 52px;
+                height: 52px;
+                font-size: 1.5rem;
+            }
+
             .floating-controls {
-                bottom: 1.5rem;
+                bottom: 2rem;
                 left: 1.5rem;
                 right: 1.5rem;
             }
 
             .user-bubble-container {
-                padding-bottom: 120px;
+                padding-bottom: 140px;
+            }
+
+            .ai-bubble-container {
+                padding: 1.25rem;
+                padding-bottom: 0;
             }
 
             .status {
-                font-size: 0.85rem;
+                font-size: 1rem;
             }
 
             .settings-btn {
-                font-size: 1.5rem;
+                font-size: 1.8rem;
+            }
+
+            .settings-dropdown {
+                font-size: 1rem;
+            }
+
+            .settings-group label {
+                font-size: 0.8rem;
+            }
+
+            .settings-group select,
+            .settings-group button {
+                font-size: 1rem;
+                padding: 0.6rem 0.75rem;
             }
         }
 
