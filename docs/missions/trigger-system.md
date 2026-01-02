@@ -105,6 +105,14 @@ Global triggers in `config.yaml`, room-specific overrides in `rooms.json`:
 
 All matching triggers fire. A `say` command inside an AskUserQuestion block triggers both. Composable, no priority complexity.
 
+### Client Scope
+
+When a trigger fires, it broadcasts to **all connected clients** in that room. Everyone sees the popup, everyone hears the TTS. This is the right behavior for:
+- Solo use (one client, no issue)
+- Presentations (audience sees/hears what's happening)
+
+Per-client triggers or selective broadcasting is a future enhancement if needed.
+
 ### Hot Reload
 
 Portal restart required to apply trigger changes. Simple, predictable.
