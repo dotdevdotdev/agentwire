@@ -176,6 +176,28 @@ remote-say "Task complete"  # Also posts to /api/say/{room}
 
 TTS audio includes 300ms silence padding to prevent first-syllable cutoff.
 
+### AskUserQuestion Integration
+
+The portal detects Claude Code's `AskUserQuestion` tool prompts and presents them as interactive popups:
+
+| Feature | Description |
+|---------|-------------|
+| **Detection** | Monitors tmux output for question UI patterns (`☐ Header`, numbered options) |
+| **Popup Modal** | Shows question as full-screen modal with clickable options |
+| **TTS** | Reads question and options aloud via TTS |
+| **Answer** | Clicking an option sends the selection back to tmux |
+
+**How it works:**
+1. Claude uses `AskUserQuestion` tool → terminal shows numbered options
+2. Portal detects the pattern and broadcasts `question` event to room
+3. Browser shows popup modal with clickable option buttons
+4. User clicks option → POST to `/api/answer/{room}`
+5. Portal sends keypress to tmux (just the number, no Enter)
+6. Claude receives answer and continues
+
+**API:**
+- `POST /api/answer/{room}` - Submit answer (`{"answer": "1"}` or `{"answer": "custom text", "custom": true}`)
+
 ### Portal API
 
 | Endpoint | Method | Purpose |
@@ -184,6 +206,7 @@ TTS audio includes 300ms silence padding to prevent first-syllable cutoff.
 | `/api/create` | POST | Create new session |
 | `/api/room/{name}/config` | POST | Update room config (voice, etc.) |
 | `/api/say/{name}` | POST | Generate TTS and broadcast to room |
+| `/api/answer/{name}` | POST | Answer an AskUserQuestion prompt |
 | `/api/voices` | GET | List available TTS voices |
 | `/transcribe` | POST | Transcribe audio (multipart form) |
 | `/upload` | POST | Upload image (multipart form) |

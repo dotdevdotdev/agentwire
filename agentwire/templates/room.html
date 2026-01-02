@@ -766,6 +766,102 @@
         .output.ambient-default { display: none; }
         .ambient.ambient-default { display: flex; }
         .controls.ambient-default { display: none; }
+
+        /* Question popup modal */
+        .question-modal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.85);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            padding: 1.5rem;
+        }
+        .question-modal.visible { display: flex; }
+        .question-card {
+            background: var(--bg-elevated);
+            border: 2px solid var(--primary);
+            border-radius: 16px;
+            padding: 1.5rem;
+            max-width: 400px;
+            width: 100%;
+            box-shadow: 0 0 40px var(--primary-glow);
+        }
+        .question-header {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 0.75rem;
+        }
+        .question-header .badge {
+            background: var(--primary-subtle);
+            color: var(--primary);
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .question-text {
+            font-size: 1.2rem;
+            color: var(--text-primary);
+            margin-bottom: 1.25rem;
+            line-height: 1.4;
+        }
+        .question-options {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+        .question-option {
+            background: var(--bg-light);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 0.875rem 1rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-align: left;
+        }
+        .question-option:hover {
+            border-color: var(--primary);
+            background: var(--primary-subtle);
+        }
+        .question-option:active {
+            transform: scale(0.98);
+        }
+        .question-option .option-number {
+            display: inline-block;
+            width: 24px;
+            height: 24px;
+            line-height: 24px;
+            text-align: center;
+            background: var(--primary);
+            color: #000;
+            border-radius: 4px;
+            font-weight: 600;
+            font-size: 0.85rem;
+            margin-right: 0.75rem;
+        }
+        .question-option .option-label {
+            font-weight: 500;
+            color: var(--text-primary);
+        }
+        .question-option .option-desc {
+            display: block;
+            margin-top: 0.25rem;
+            margin-left: 2.4rem;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+        .question-option.other-option {
+            background: transparent;
+            border-style: dashed;
+        }
+        .question-option.other-option:hover {
+            background: var(--bg-light);
+        }
     </style>
 </head>
 <body>
@@ -879,6 +975,17 @@
         <input type="file" id="fileInput" accept="image/*" style="display:none" onchange="handleFileSelect(event)">
     </div>
 
+    <!-- Question popup modal -->
+    <div class="question-modal" id="questionModal">
+        <div class="question-card">
+            <div class="question-header">
+                <span class="badge" id="questionBadge">Question</span>
+            </div>
+            <div class="question-text" id="questionText"></div>
+            <div class="question-options" id="questionOptions"></div>
+        </div>
+    </div>
+
     <script>
         const ROOM = '{{ room_name }}';
         const elements = {
@@ -909,7 +1016,11 @@
             attachBtn: document.getElementById('attachBtn'),
             attachBtnAmbient: document.getElementById('attachBtnAmbient'),
             ambientImagePreview: document.getElementById('ambientImagePreview'),
-            fileInput: document.getElementById('fileInput')
+            fileInput: document.getElementById('fileInput'),
+            questionModal: document.getElementById('questionModal'),
+            questionBadge: document.getElementById('questionBadge'),
+            questionText: document.getElementById('questionText'),
+            questionOptions: document.getElementById('questionOptions')
         };
 
         let textInputOpen = false;
@@ -1340,6 +1451,10 @@
                         setState(STATES.IDLE);
                         elements.transcript.textContent = 'Tap and hold to speak';
                     }
+                } else if (msg.type === 'question') {
+                    showQuestionModal(msg.header, msg.question, msg.options);
+                } else if (msg.type === 'question_answered') {
+                    hideQuestionModal();
                 }
             };
         }
@@ -1682,6 +1797,69 @@
                 sendTextInputAmbient();
             }
         });
+
+        // Question modal functions
+        function showQuestionModal(header, question, options) {
+            elements.questionBadge.textContent = header || 'Question';
+            elements.questionText.textContent = question;
+
+            // Clear and rebuild options
+            elements.questionOptions.innerHTML = '';
+
+            for (const opt of options) {
+                const isOther = opt.label === 'Type something.';
+                const btn = document.createElement('button');
+                btn.className = 'question-option' + (isOther ? ' other-option' : '');
+
+                if (isOther) {
+                    btn.innerHTML = `
+                        <span class="option-number">${opt.number}</span>
+                        <span class="option-label">Other...</span>
+                    `;
+                    btn.onclick = () => handleCustomAnswer();
+                } else {
+                    btn.innerHTML = `
+                        <span class="option-number">${opt.number}</span>
+                        <span class="option-label">${escapeHtml(opt.label)}</span>
+                        ${opt.description ? `<span class="option-desc">${escapeHtml(opt.description)}</span>` : ''}
+                    `;
+                    btn.onclick = () => submitAnswer(opt.number);
+                }
+
+                elements.questionOptions.appendChild(btn);
+            }
+
+            elements.questionModal.classList.add('visible');
+        }
+
+        function hideQuestionModal() {
+            elements.questionModal.classList.remove('visible');
+        }
+
+        async function submitAnswer(answer, isCustom = false) {
+            try {
+                const resp = await fetch('/api/answer/' + ROOM, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ answer: String(answer), custom: isCustom })
+                });
+
+                if (resp.ok) {
+                    hideQuestionModal();
+                } else {
+                    console.error('Failed to submit answer');
+                }
+            } catch (err) {
+                console.error('Answer submission error:', err);
+            }
+        }
+
+        function handleCustomAnswer() {
+            const customText = prompt('Enter your response:');
+            if (customText && customText.trim()) {
+                submitAnswer(customText.trim(), true);
+            }
+        }
 
         // Event listeners - Ambient mode mic
         elements.micBtn.addEventListener('mousedown', startListening);
