@@ -133,6 +133,21 @@ The room page header provides device and voice controls:
 | Speaker selector | Choose audio output device (Chrome/Edge only) |
 | Voice selector | TTS voice for this room (saved to rooms.json) |
 
+### Orb States
+
+The ambient mode orb shows the current interaction state:
+
+| State | Color | Meaning |
+|-------|-------|---------|
+| Ready | Green | Idle, waiting for input |
+| Listening | Yellow | Recording voice input |
+| Thinking | Purple | Processing/transcribing |
+| Working | Orange | Agent actively running (output changing) |
+| Generating | Blue | TTS generating voice |
+| Speaking | Green | Playing audio response |
+
+The Working state detects when the agent is actively producing output (e.g., during web research or code generation) but hasn't yet spoken. Users can interrupt during Working state.
+
 ### Say Command Detection
 
 The portal monitors terminal output for `say` and `remote-say` commands:
