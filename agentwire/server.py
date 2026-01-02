@@ -950,21 +950,27 @@ projects:
             return web.json_response({"error": str(e)})
 
     async def api_restart_portal(self, request: web.Request) -> web.Response:
-        """Restart the portal via tmux."""
+        """Restart the portal by recreating tmux session."""
         import subprocess
 
         try:
-            # Send Ctrl+C to stop current server, then restart
-            subprocess.run(
-                ["tmux", "send-keys", "-t", "agentwire-portal", "C-c"],
-                capture_output=True,
+            # Spawn restart in background:
+            # 1. Sleep briefly to let response be sent
+            # 2. Kill existing tmux session
+            # 3. Create new session with portal serve
+            restart_cmd = (
+                "sleep 0.5; "
+                "tmux kill-session -t agentwire-portal 2>/dev/null; "
+                "tmux new-session -d -s agentwire-portal 'agentwire portal serve'"
             )
-            subprocess.run(
-                ["tmux", "send-keys", "-t", "agentwire-portal", "agentwire portal serve", "Enter"],
-                capture_output=True,
+            subprocess.Popen(
+                ["bash", "-c", restart_cmd],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
             )
 
-            return web.json_response({"success": True})
+            return web.json_response({"success": True, "message": "Restarting..."})
         except Exception as e:
             return web.json_response({"error": str(e)})
 
