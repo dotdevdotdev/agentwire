@@ -345,7 +345,7 @@ ssh-keygen -t ed25519 -f ~/.ssh/github-<project> -N "" -C "machine-<project>"
 
 # Add to SSH config
 cat >> ~/.ssh/config << 'EOF'
-Host github.com
+Host github-agentwire
     HostName github.com
     User git
     IdentityFile ~/.ssh/github-agentwire
@@ -374,15 +374,29 @@ gh repo deploy-key add <(cat pubkey) --repo owner/repo --title "machine-name"
 ### Step 4: Clone Repos and Install
 
 ```bash
-# Clone agentwire
-git clone git@github.com:user/agentwire.git
-cd agentwire && uv tool install -e . && cd ~
+# Create projects directory
+mkdir -p ~/projects
+
+# Clone agentwire (use github-agentwire host alias)
+cd ~/projects
+git clone git@github-agentwire:user/agentwire.git
+cd agentwire
+
+# Install agentwire in isolated environment
+uv venv ~/.local/share/agentwire-venv
+source ~/.local/share/agentwire-venv/bin/activate
+uv pip install -e .
+deactivate
+
+# Add to PATH
+echo 'export PATH="$HOME/.local/share/agentwire-venv/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+
+# Verify installation
+agentwire --help
 
 # Clone .claude config (use host alias for different key)
 git clone git@github-claude:user/.claude.git ~/.claude
-
-# Create projects directory
-mkdir -p ~/projects
 
 # Clone project repos (use host alias if needed)
 git clone git@github-<project>:user/<project>.git ~/projects/<project>
@@ -420,31 +434,114 @@ Restart the portal to pick up the new machine:
 agentwire portal stop && agentwire portal start
 ```
 
-### Step 7: Voice Commands (Optional)
+### Step 7: Connect to AgentWire Network
 
-For `remote-say` to work, the remote machine needs to reach your portal. Options:
+Remote machines need a tunnel back to the portal for voice commands. This connects them to your existing AgentWire network.
 
-1. **Reverse SSH tunnel** (simplest):
-   ```bash
-   # On remote machine, tunnel to portal
-   ssh -R 8765:localhost:8765 your-mac
-   ```
-
-2. **Public URL**: Set `server.public_url` in config.yaml and open firewall
-
-3. **Skip voice**: Sessions work without TTS - just no spoken responses
-
-Install remote-say script if using tunnels:
+**Generate SSH key for connecting back to main machine:**
 ```bash
+ssh-keygen -t ed25519 -f ~/.ssh/tunnel-key -N "" -C "do-1-tunnel"
+cat ~/.ssh/tunnel-key.pub
+# Add this to ~/.ssh/authorized_keys on your main machine (portal host)
+```
+
+**Install autossh for persistent tunnel:**
+```bash
+sudo apt-get install -y autossh
+```
+
+**Create tunnel service** (connects back to portal):
+```bash
+# Replace 'main-machine' with your portal host's SSH config name
+cat > ~/.local/bin/agentwire-tunnel << 'EOF'
+#!/bin/bash
+# Reverse tunnel to AgentWire portal
+# Port 8765 = portal, Port 8100 = TTS server
+PORTAL_HOST="${AGENTWIRE_PORTAL_HOST:-main-machine}"
+autossh -M 0 -f -N \
+    -o "ServerAliveInterval=30" \
+    -o "ServerAliveCountMax=3" \
+    -o "ExitOnForwardFailure=yes" \
+    -i ~/.ssh/tunnel-key \
+    -R 8765:localhost:8765 \
+    -R 8100:localhost:8100 \
+    "$PORTAL_HOST"
+EOF
+chmod +x ~/.local/bin/agentwire-tunnel
+```
+
+**Add SSH config for main machine:**
+```bash
+cat >> ~/.ssh/config << 'EOF'
+
+Host main-machine
+    HostName <your-portal-ip-or-hostname>
+    User <your-user>
+    IdentityFile ~/.ssh/tunnel-key
+EOF
+```
+
+**Start tunnel on boot** (add to crontab or systemd):
+```bash
+# Quick: add to crontab
+(crontab -l 2>/dev/null; echo "@reboot ~/.local/bin/agentwire-tunnel") | crontab -
+
+# Or start now
+~/.local/bin/agentwire-tunnel
+```
+
+**Install voice commands:**
+```bash
+# remote-say - sends TTS to portal
 cat > ~/.local/bin/remote-say << 'EOF'
 #!/bin/bash
 TEXT="$1"
 ROOM=$(tmux display-message -p '#S' 2>/dev/null || echo "default")
+[ -z "$TEXT" ] && echo "Usage: remote-say \"message\"" && exit 1
 curl -sk -X POST "https://localhost:8765/api/say/$ROOM" \
     -H "Content-Type: application/json" \
     -d "{\"text\": $(echo "$TEXT" | jq -Rs .)}" >/dev/null 2>&1 &
 EOF
 chmod +x ~/.local/bin/remote-say
+
+# say - alias to remote-say (no local audio on servers)
+cat > ~/.local/bin/say << 'EOF'
+#!/bin/bash
+exec remote-say "$@"
+EOF
+chmod +x ~/.local/bin/say
+```
+
+**Create agentwire config:**
+```bash
+mkdir -p ~/.agentwire
+cat > ~/.agentwire/config.yaml << 'EOF'
+# Remote machine config - TTS/STT via tunnel to main portal
+
+projects:
+  dir: "~/projects"
+
+tts:
+  backend: "none"  # Portal handles TTS via tunnel
+
+stt:
+  backend: "none"  # Portal handles STT
+
+agent:
+  command: "claude --dangerously-skip-permissions"
+EOF
+```
+
+**Test the connection:**
+```bash
+# Check tunnel is running
+pgrep -f autossh && echo "Tunnel running"
+
+# Test portal access
+curl -sk https://localhost:8765/api/sessions | head -c 100
+
+# Test voice
+remote-say "Hello from remote machine"
 ```
 
 ### Troubleshooting
