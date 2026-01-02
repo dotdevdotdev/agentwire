@@ -373,6 +373,32 @@ def _remote_say(text: str, room: str, portal_url: str) -> int:
         return 1
 
 
+# === Send Command ===
+
+def cmd_send(args) -> int:
+    """Send a command to a tmux session with proper timing."""
+    import time
+
+    session = args.session
+    command = args.command
+
+    if not command:
+        print("Usage: agentwire send --session <name> <command>", file=sys.stderr)
+        return 1
+
+    # Check session exists
+    if not tmux_session_exists(session):
+        print(f"Session '{session}' does not exist.", file=sys.stderr)
+        return 1
+
+    # Send keys with slight delay before Enter to ensure input is registered
+    subprocess.run(["tmux", "send-keys", "-t", session, command])
+    time.sleep(0.2)  # Allow tmux to process the input
+    subprocess.run(["tmux", "send-keys", "-t", session, "Enter"])
+
+    return 0
+
+
 # === Dev Command ===
 
 def cmd_dev(args) -> int:
@@ -622,6 +648,17 @@ def main() -> int:
     say_parser.add_argument("--exaggeration", type=float, help="Voice exaggeration (0-1)")
     say_parser.add_argument("--cfg", type=float, help="CFG weight (0-1)")
     say_parser.set_defaults(func=cmd_say)
+
+    # === send command ===
+    send_parser = subparsers.add_parser(
+        "send", help="Send command to a tmux session"
+    )
+    send_parser.add_argument(
+        "--session", "-s", type=str, default="agentwire",
+        help="Target session (default: agentwire)"
+    )
+    send_parser.add_argument("command", nargs="?", help="Command to send")
+    send_parser.set_defaults(func=cmd_send)
 
     # === dev command ===
     dev_parser = subparsers.add_parser(

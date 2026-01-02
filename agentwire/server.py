@@ -113,6 +113,9 @@ class AgentWireServer:
         self.stt = None
         self.agent = None
         self.app = web.Application()
+        # Per-session dedup history - persists across client reconnects
+        # Key: session name, Value: dict of (trigger_name, match_text) -> timestamp
+        self._session_dedup_history: dict[str, dict[tuple[str, str], float]] = {}
         self._setup_routes()
 
     def _setup_routes(self):
@@ -325,12 +328,18 @@ class AgentWireServer:
         # Build triggers for this room (merging global + room-specific)
         triggers = self._build_triggers(name, room_config)
 
+        # Get or create dedup history for this session (persists across reconnects)
+        if name not in self._session_dedup_history:
+            self._session_dedup_history[name] = {}
+        dedup_history = self._session_dedup_history[name]
+
         # Create and start watcher
         watcher = SessionWatcher(
             session=name,
             triggers=triggers,
             actions=default_registry,
             room=room,
+            dedup_history=dedup_history,
         )
         room.watcher = watcher
 

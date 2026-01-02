@@ -12,6 +12,7 @@ import logging
 import os
 import re
 import subprocess
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
@@ -25,6 +26,9 @@ logger = logging.getLogger(__name__)
 
 # ANSI escape sequence pattern for stripping terminal formatting
 ANSI_PATTERN = re.compile(r'\x1b\[[0-9;]*m|\x1b\].*?\x07')
+
+# Deduplication TTL - same match text won't fire again within this window
+DEDUP_TTL_SECONDS = 2.0
 
 
 def strip_ansi(text: str) -> str:
@@ -290,6 +294,8 @@ class SessionWatcher:
     actions: ActionRegistry | None = None
     room: Any = None
     buffer: RollingBuffer = field(default_factory=lambda: RollingBuffer(max_lines=100))
+    # Dedup history - shared reference from server, persists across reconnects
+    dedup_history: dict[tuple[str, str], float] | None = None
 
     # Internal state
     _pipe_path: Path | None = field(default=None, init=False, repr=False)
@@ -553,6 +559,10 @@ class SessionWatcher:
     async def _fire_action(self, trigger: Trigger, match: re.Match[str] | None) -> None:
         """Fire the action for a trigger match.
 
+        Includes time-based deduplication to prevent the same match text
+        from firing multiple times within DEDUP_TTL_SECONDS (e.g., when
+        typing echo and shell output both contain the same text).
+
         Args:
             trigger: The trigger that matched.
             match: The regex match object (may be None for disappear events).
@@ -566,11 +576,47 @@ class SessionWatcher:
             )
             return
 
+        # Deduplication: check if we've seen this exact match recently
+        # Use first capture group if available (the actual content), else full match
+        # This ensures "say "hello"" and variations all dedupe to the same key
+        if match.lastindex and match.lastindex >= 1:
+            # Use first non-None capture group
+            dedup_text = next(
+                (g for g in match.groups() if g is not None),
+                match.group(0)
+            )
+        else:
+            dedup_text = match.group(0)
+        dedup_key = (trigger.name, dedup_text.strip())
+        now = time.monotonic()
+
+        # Use shared dedup history (persists across reconnects) or fallback to local dict
+        dedup_dict = self.dedup_history if self.dedup_history is not None else {}
+
+        last_fire = dedup_dict.get(dedup_key)
+        if last_fire is not None and (now - last_fire) < DEDUP_TTL_SECONDS:
+            logger.debug(
+                "Dedup skip '%s': '%s' (fired %.1fs ago)",
+                trigger.name,
+                dedup_text[:30],
+                now - last_fire,
+            )
+            return
+
+        # Record this match
+        dedup_dict[dedup_key] = now
+
+        # Cleanup old entries (older than 2x TTL) - mutate in place for shared dict
+        cutoff = now - (DEDUP_TTL_SECONDS * 2)
+        keys_to_remove = [k for k, v in dedup_dict.items() if v <= cutoff]
+        for k in keys_to_remove:
+            del dedup_dict[k]
+
         logger.debug(
             "Firing trigger '%s' action '%s' for match: %s",
             trigger.name,
             trigger.action,
-            match.group(0)[:50],
+            dedup_text[:50],
         )
 
         await self.actions.fire(trigger.action, trigger, match, self.room)
