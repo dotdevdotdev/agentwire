@@ -1010,8 +1010,12 @@
         }
 
         async function uploadImage() {
-            if (!pendingImage) return null;
+            if (!pendingImage) {
+                console.log('uploadImage: no pending image');
+                return null;
+            }
 
+            console.log('uploadImage: uploading', pendingImage.filename);
             const formData = new FormData();
             formData.append('image', pendingImage.file);
 
@@ -1021,13 +1025,17 @@
                     body: formData
                 });
                 const data = await resp.json();
+                console.log('uploadImage response:', data);
                 if (data.error) {
                     console.error('Upload failed:', data.error);
+                    alert('Image upload failed: ' + data.error);
                     return null;
                 }
+                console.log('uploadImage success:', data.path);
                 return data.path;
             } catch (err) {
                 console.error('Upload error:', err);
+                alert('Image upload error: ' + err.message);
                 return null;
             }
         }
