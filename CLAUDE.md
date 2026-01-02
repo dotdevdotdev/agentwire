@@ -326,6 +326,7 @@ sudo apt-get install -y nodejs
 # Install uv (Python package manager)
 curl -LsSf https://astral.sh/uv/install.sh | sh
 echo 'source ~/.local/bin/env' >> ~/.bashrc
+echo 'export COLORTERM=truecolor' >> ~/.bashrc
 source ~/.local/bin/env
 
 # Install Claude Code
