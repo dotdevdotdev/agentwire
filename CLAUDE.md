@@ -141,12 +141,11 @@ The ambient mode orb shows the current interaction state:
 |-------|-------|---------|
 | Ready | Green | Idle, waiting for input |
 | Listening | Yellow | Recording voice input |
-| Thinking | Purple | Processing/transcribing |
-| Working | Orange | Agent actively running (output changing) |
+| Processing | Purple | Transcribing or agent working |
 | Generating | Blue | TTS generating voice |
 | Speaking | Green | Playing audio response |
 
-The Working state detects when the agent is actively producing output (e.g., during web research or code generation) but hasn't yet spoken. Users can interrupt during Working state.
+The portal auto-detects session activity - if any output appears (even from manual commands), it switches to Processing. Returns to Ready after 10s of inactivity.
 
 ### Image Attachments
 
