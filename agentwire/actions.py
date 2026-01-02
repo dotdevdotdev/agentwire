@@ -101,3 +101,70 @@ class ActionRegistry:
 
 # Global registry instance for built-in actions
 default_registry = ActionRegistry()
+
+
+# --- Built-in Action Handlers ---
+
+
+@default_registry.handler("notify")
+async def notify_action(trigger: "Trigger", match: re.Match[str], room: Any) -> None:
+    """Send browser notification to connected clients.
+
+    Config options:
+        title: Notification title (default: "AgentWire")
+        body: Body template with format placeholders for match groups
+
+    Example trigger config:
+        action: notify
+        title: "Build Status"
+        body: "Build {0} completed"
+    """
+    title = trigger.config.get("title", "AgentWire")
+    body_template = trigger.config.get("body", "{0}")
+    body = body_template.format(*match.groups(), **match.groupdict())
+
+    await room.broadcast({
+        "type": "notify",
+        "title": title,
+        "body": body,
+    })
+
+
+@default_registry.handler("send_keys")
+async def send_keys_action(trigger: "Trigger", match: re.Match[str], room: Any) -> None:
+    """Send keystrokes to the tmux session.
+
+    Config options:
+        keys: Key sequence template with format placeholders for match groups
+
+    Example trigger config:
+        action: send_keys
+        keys: "y\n"  # Send 'y' followed by Enter
+    """
+    keys_template = trigger.config.get("keys", "")
+    keys = keys_template.format(*match.groups(), **match.groupdict())
+
+    await room.send_input(keys)
+
+
+@default_registry.handler("broadcast")
+async def broadcast_action(trigger: "Trigger", match: re.Match[str], room: Any) -> None:
+    """Broadcast custom WebSocket message to room clients.
+
+    Config options:
+        type: Message type for the WebSocket payload (default: "custom")
+        data: Data template with format placeholders for match groups
+
+    Example trigger config:
+        action: broadcast
+        type: "deploy_complete"
+        data: "https://{url}"
+    """
+    msg_type = trigger.config.get("type", "custom")
+    data_template = trigger.config.get("data", "{}")
+    data = data_template.format(*match.groups(), **match.groupdict())
+
+    await room.broadcast({
+        "type": msg_type,
+        "data": data,
+    })
