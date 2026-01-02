@@ -33,6 +33,15 @@ dev = [
     "pytest>=7.0",
     "ruff>=0.1.0",
 ]
+# TTS server dependencies (for GPU machines running the TTS backend)
+tts = [
+    "fastapi>=0.104.0",
+    "uvicorn>=0.24.0",
+    "torch>=2.0.0",
+    "torchaudio>=2.0.0",
+    "faster-whisper>=1.0.0",
+    "chatterbox-tts",
+]
 
 [project.scripts]
 agentwire = "agentwire.__main__:main"

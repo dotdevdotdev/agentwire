@@ -186,17 +186,8 @@ def cmd_tts_start(args) -> int:
     port = args.port or tts_config.get("port", 8100)
     host = args.host or tts_config.get("host", "0.0.0.0")
 
-    # Find the tts_server.py module path
-    import agentwire
-    module_dir = Path(agentwire.__file__).parent
-    server_path = module_dir / "tts_server.py"
-
-    if not server_path.exists():
-        print(f"TTS server not found at {server_path}", file=sys.stderr)
-        return 1
-
-    # Build uvicorn command
-    tts_cmd = f"uvicorn agentwire.tts_server:app --host {host} --port {port}"
+    # Build the serve command
+    tts_cmd = f"agentwire tts serve --host {host} --port {port}"
 
     print(f"Starting TTS server on {host}:{port}...")
     subprocess.run([
@@ -208,6 +199,25 @@ def cmd_tts_start(args) -> int:
 
     print(f"TTS server started. Attaching... (Ctrl+B D to detach)")
     subprocess.run(["tmux", "attach-session", "-t", session_name])
+    return 0
+
+
+def cmd_tts_serve(args) -> int:
+    """Run the TTS server directly (foreground)."""
+    import uvicorn
+
+    config = load_config()
+    tts_config = config.get("tts", {})
+    port = args.port or tts_config.get("port", 8100)
+    host = args.host or tts_config.get("host", "0.0.0.0")
+
+    print(f"Starting TTS server on {host}:{port}...")
+    uvicorn.run(
+        "agentwire.tts_server:app",
+        host=host,
+        port=port,
+        log_level="info",
+    )
     return 0
 
 
@@ -589,6 +599,12 @@ def main() -> int:
     tts_start.add_argument("--port", type=int, help="Server port (default: 8100)")
     tts_start.add_argument("--host", type=str, help="Server host (default: 0.0.0.0)")
     tts_start.set_defaults(func=cmd_tts_start)
+
+    # tts serve (run in foreground)
+    tts_serve = tts_subparsers.add_parser("serve", help="Run TTS server in foreground")
+    tts_serve.add_argument("--port", type=int, help="Server port (default: 8100)")
+    tts_serve.add_argument("--host", type=str, help="Server host (default: 0.0.0.0)")
+    tts_serve.set_defaults(func=cmd_tts_serve)
 
     # tts stop
     tts_stop = tts_subparsers.add_parser("stop", help="Stop TTS server")

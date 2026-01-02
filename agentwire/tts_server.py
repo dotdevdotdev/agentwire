@@ -1,5 +1,14 @@
 #!/usr/bin/env python3
-"""AgentWire TTS Server - Chatterbox TTS with Voice Cloning + Whisper Transcription"""
+"""AgentWire TTS Server - Chatterbox TTS with Voice Cloning + Whisper Transcription
+
+This is the canonical TTS server for AgentWire. Run via:
+    agentwire tts start       # Start in tmux session
+    agentwire tts stop        # Stop the server
+    agentwire tts status      # Check status
+
+Or run directly:
+    uvicorn agentwire.tts_server:app --host 0.0.0.0 --port 8100
+"""
 
 import io
 import os
@@ -13,6 +22,10 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from faster_whisper import WhisperModel
+
+# GPU Optimizations (significant speedup on CUDA devices)
+torch.backends.cudnn.benchmark = True  # Auto-tune for input sizes
+torch.set_float32_matmul_precision('high')  # TensorFloat-32 on Ampere GPUs
 
 # Global model references
 model = None
@@ -29,6 +42,8 @@ async def lifespan(app: FastAPI):
     VOICES_DIR.mkdir(parents=True, exist_ok=True)
 
     print("Loading Chatterbox Turbo model...")
+    print(f"  cuDNN benchmark: {torch.backends.cudnn.benchmark}")
+    print(f"  TF32 matmul: {torch.get_float32_matmul_precision()}")
     from chatterbox.tts_turbo import ChatterboxTurboTTS
     model = ChatterboxTurboTTS.from_pretrained(device="cuda")
     print(f"TTS model loaded! Sample rate: {model.sr}")
