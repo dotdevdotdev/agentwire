@@ -628,7 +628,12 @@ class AgentWireServer:
         return options
 
     async def _poll_output(self, room: Room):
-        """Poll agent output and broadcast to room clients."""
+        """Poll agent output and broadcast to room clients.
+
+        NOTE: This polling-based approach is kept for output display.
+        The watcher-based trigger system will eventually replace the
+        SAY_PATTERN and ASK_PATTERN detection here.
+        """
         while room.clients:
             try:
                 # Run sync get_output in thread pool to avoid blocking
@@ -638,11 +643,11 @@ class AgentWireServer:
                 if output != room.last_output:
                     old_output = room.last_output
                     room.last_output = output
-                    await self._broadcast(room, {"type": "output", "data": output})
+                    await room.broadcast({"type": "output", "data": output})
 
                     # Notify clients that agent is actively working
                     if old_output:  # Skip first poll
-                        await self._broadcast(room, {"type": "activity"})
+                        await room.broadcast({"type": "activity"})
 
                     # Detect say commands in NEW content only
                     # If output doesn't start with old_output (terminal scrolled),
@@ -698,7 +703,7 @@ class AgentWireServer:
                         logger.info(f"[{room.name}] Question detected: {question[:50]}...")
 
                         # Broadcast question to room
-                        await self._broadcast(room, {
+                        await room.broadcast({
                             "type": "question",
                             "header": header,
                             "question": question,
@@ -715,22 +720,12 @@ class AgentWireServer:
                 elif room.last_question and not ask_match:
                     # Question was answered (UI disappeared)
                     room.last_question = None
-                    await self._broadcast(room, {"type": "question_answered"})
+                    await room.broadcast({"type": "question_answered"})
 
             except Exception as e:
                 logger.debug(f"Output poll error for {room.name}: {e}")
 
             await asyncio.sleep(0.5)
-
-    async def _broadcast(self, room: Room, message: dict):
-        """Broadcast message to all room clients."""
-        dead_clients = set()
-        for client in room.clients:
-            try:
-                await client.send_json(message)
-            except Exception:
-                dead_clients.add(client)
-        room.clients -= dead_clients
 
     # API Handlers
 
@@ -1362,8 +1357,9 @@ projects:
 
             # Clear the question tracking
             if name in self.rooms:
-                self.rooms[name].last_question = None
-                await self._broadcast(self.rooms[name], {"type": "question_answered"})
+                room = self.rooms[name]
+                room.last_question = None
+                await room.broadcast({"type": "question_answered"})
 
             logger.info(f"[{name}] Answered: {answer}")
             return web.json_response({"success": True})
@@ -1382,7 +1378,7 @@ projects:
             return
 
         # Notify clients TTS is starting (include text for display)
-        await self._broadcast(room, {"type": "tts_start", "text": text})
+        await room.broadcast({"type": "tts_start", "text": text})
 
         try:
             # Generate audio
@@ -1399,7 +1395,7 @@ projects:
                 audio_data = self._prepend_silence(audio_data, ms=300)
                 # Send base64 encoded audio
                 audio_b64 = base64.b64encode(audio_data).decode()
-                await self._broadcast(room, {"type": "audio", "data": audio_b64})
+                await room.broadcast({"type": "audio", "data": audio_b64})
 
         except Exception as e:
             logger.error(f"TTS failed for {room_name}: {e}")
@@ -1407,7 +1403,7 @@ projects:
             # Unlock room after TTS
             if room.locked_by:
                 room.locked_by = None
-                await self._broadcast(room, {"type": "room_unlocked"})
+                await room.broadcast({"type": "room_unlocked"})
 
 
 async def run_server(config: Config):
