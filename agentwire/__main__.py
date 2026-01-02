@@ -280,7 +280,7 @@ def cmd_say(args) -> int:
     # Check if this is a remote session (room specified)
     if args.room:
         # Use remote-say: POST to portal
-        portal_url = config.get("server", {}).get("url", "https://localhost:8765")
+        portal_url = config.get("portal", {}).get("url", "https://localhost:8765")
         return _remote_say(text, args.room, portal_url)
 
     # Local TTS: generate and play

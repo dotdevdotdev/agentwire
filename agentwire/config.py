@@ -145,6 +145,13 @@ class UploadsConfig:
 
 
 @dataclass
+class PortalConfig:
+    """Portal connection settings (for remote machines)."""
+
+    url: str = "https://localhost:8765"  # URL to reach the portal
+
+
+@dataclass
 class Config:
     """Root configuration for AgentWire."""
 
@@ -156,6 +163,7 @@ class Config:
     machines: MachinesConfig = field(default_factory=MachinesConfig)
     rooms: RoomsConfig = field(default_factory=RoomsConfig)
     uploads: UploadsConfig = field(default_factory=UploadsConfig)
+    portal: PortalConfig = field(default_factory=PortalConfig)
 
 
 def _merge_dict(base: dict, override: dict) -> dict:
@@ -291,6 +299,12 @@ def _dict_to_config(data: dict) -> Config:
         cleanup_days=uploads_data.get("cleanup_days", 7),
     )
 
+    # Portal
+    portal_data = data.get("portal", {})
+    portal = PortalConfig(
+        url=portal_data.get("url", "https://localhost:8765"),
+    )
+
     return Config(
         server=server,
         projects=projects,
@@ -300,6 +314,7 @@ def _dict_to_config(data: dict) -> Config:
         machines=machines,
         rooms=rooms,
         uploads=uploads,
+        portal=portal,
     )
 
 

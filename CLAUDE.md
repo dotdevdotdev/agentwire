@@ -490,39 +490,22 @@ EOF
 ~/.local/bin/agentwire-tunnel
 ```
 
-**Install voice commands:**
-```bash
-# remote-say - sends TTS to portal
-cat > ~/.local/bin/remote-say << 'EOF'
-#!/bin/bash
-TEXT="$1"
-ROOM=$(tmux display-message -p '#S' 2>/dev/null || echo "default")
-[ -z "$TEXT" ] && echo "Usage: remote-say \"message\"" && exit 1
-curl -sk -X POST "https://localhost:8765/api/say/$ROOM" \
-    -H "Content-Type: application/json" \
-    -d "{\"text\": $(echo "$TEXT" | jq -Rs .)}" >/dev/null 2>&1 &
-EOF
-chmod +x ~/.local/bin/remote-say
-
-# say - alias to remote-say (no local audio on servers)
-cat > ~/.local/bin/say << 'EOF'
-#!/bin/bash
-exec remote-say "$@"
-EOF
-chmod +x ~/.local/bin/say
-```
-
 **Create agentwire config:**
 ```bash
 mkdir -p ~/.agentwire
 cat > ~/.agentwire/config.yaml << 'EOF'
-# Remote machine config - TTS/STT via tunnel to main portal
+# Remote machine config - points to network portal
 
 projects:
   dir: "~/projects"
 
+# Portal URL - where the agentwire portal is running
+# This must be reachable from this machine
+portal:
+  url: "https://<portal-host-ip>:8765"
+
 tts:
-  backend: "none"  # Portal handles TTS via tunnel
+  backend: "none"  # Portal handles TTS
 
 stt:
   backend: "none"  # Portal handles STT
@@ -530,6 +513,22 @@ stt:
 agent:
   command: "claude --dangerously-skip-permissions"
 EOF
+```
+
+**Install voice commands:**
+```bash
+# remote-say - uses agentwire say which reads portal.url from config
+cat > ~/.local/bin/remote-say << 'EOF'
+#!/bin/bash
+TEXT="$1"
+ROOM=$(tmux display-message -p '#S' 2>/dev/null || echo "default")
+[ -z "$TEXT" ] && echo "Usage: remote-say \"message\"" && exit 1
+exec agentwire say --room "$ROOM" "$TEXT"
+EOF
+chmod +x ~/.local/bin/remote-say
+
+# say - alias to remote-say (no local audio on servers)
+ln -sf ~/.local/bin/remote-say ~/.local/bin/say
 ```
 
 **Test the connection:**
