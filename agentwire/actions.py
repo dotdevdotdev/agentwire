@@ -168,3 +168,162 @@ async def broadcast_action(trigger: "Trigger", match: re.Match[str], room: Any) 
         "type": msg_type,
         "data": data,
     })
+
+
+@default_registry.handler("tts")
+async def tts_action(trigger: "Trigger", match: re.Match[str], room: Any) -> None:
+    """Speak text via TTS and broadcast audio to room clients.
+
+    Migrated from server.py _say_to_room() / speak() methods.
+    The room.speak() method handles TTS generation with configured voice
+    and broadcasts base64-encoded audio to connected clients.
+
+    Config options:
+        template: Format string with placeholders for match groups
+                  Defaults to "{0}" (first capturing group)
+
+    Example trigger configs:
+        # Simple say command detection
+        pattern: 'say\\s+"([^"]+)"'
+        action: tts
+        # Uses first capture group by default
+
+        # Custom template
+        pattern: 'All (?P<count>\\d+) tests? passed'
+        action: tts
+        template: "{count} tests passed!"
+    """
+    template = trigger.config.get("template")
+
+    if template:
+        # Format template with named and positional groups
+        try:
+            text = template.format(*match.groups(), **match.groupdict())
+        except (IndexError, KeyError):
+            # Fallback if template formatting fails
+            text = match.group(1) if match.lastindex else match.group(0)
+    else:
+        # No template: use first capturing group or full match
+        text = match.group(1) if match.lastindex else match.group(0)
+
+    if not text or not text.strip():
+        return
+
+    await room.speak(text.strip())
+
+
+@default_registry.handler("popup")
+async def popup_action(trigger: "Trigger", match: re.Match[str], room: Any) -> None:
+    """Show popup modal in browser clients for AskUserQuestion prompts.
+
+    Migrated from server.py ASK_PATTERN detection and _parse_ask_options().
+    Broadcasts a 'question' event with header, question text, and parsed options.
+    Also speaks the question via TTS.
+
+    Expected match groups (by name or position):
+        1. header: The question header/title (e.g., "Confirm Action")
+        2. question: The question text ending with ? (e.g., "Do you want to proceed?")
+        3. options_block: Raw text containing numbered options in format:
+           ❯ 1. Label
+                Description
+             2. Label
+                Description
+
+    The room.broadcast() method sends the question event to clients.
+    The room.speak() method reads the question aloud.
+    """
+    # Extract components - try named groups first, fall back to positional
+    header = _safe_group(match, "header", 1)
+    question = _safe_group(match, "question", 2)
+    options_block = _safe_group(match, "options_block", 3)
+
+    if not question:
+        return
+
+    # Parse options from the options block
+    options = _parse_ask_options(options_block) if options_block else []
+
+    # Broadcast question to room
+    await room.broadcast({
+        "type": "question",
+        "header": header.strip() if header else "",
+        "question": question.strip(),
+        "options": options,
+    })
+
+    # Also speak the question via TTS
+    tts_text = question.strip() + ". "
+    for opt in options:
+        label = opt.get("label", "")
+        if label and label != "Type something.":
+            tts_text += f"{opt.get('number', '')}: {label}. "
+
+    await room.speak(tts_text)
+
+
+def _safe_group(match: re.Match[str], name: str, index: int) -> str:
+    """Safely extract a group from match by name or index.
+
+    Args:
+        match: The regex match object
+        name: Named group to try first
+        index: Positional index to fall back to
+
+    Returns:
+        The group value or empty string if not found
+    """
+    try:
+        return match.group(name) or ""
+    except (IndexError, re.error):
+        pass
+    try:
+        if match.lastindex and match.lastindex >= index:
+            return match.group(index) or ""
+    except (IndexError, re.error):
+        pass
+    return ""
+
+
+def _parse_ask_options(options_block: str) -> list[dict]:
+    """Parse numbered options from AskUserQuestion block.
+
+    Migrated from server.py _parse_ask_options() method.
+
+    Args:
+        options_block: Raw text containing options in format:
+            ❯ 1. Label
+                 Description
+               2. Label
+                 Description
+
+    Returns:
+        List of {number, label, description} dicts.
+    """
+    # Pattern to strip ANSI escape codes
+    ansi_pattern = re.compile(r'\x1b\[[0-9;]*m|\x1b\].*?\x07')
+
+    options: list[dict] = []
+    current_option: dict | None = None
+
+    for line in options_block.split('\n'):
+        # Strip ANSI codes
+        line = ansi_pattern.sub('', line)
+
+        # Match numbered option: "❯ 1. Label" or "  2. Label"
+        option_match = re.match(r'[❯\s]*(\d+)\.\s+(.+)', line)
+        if option_match:
+            if current_option:
+                options.append(current_option)
+            current_option = {
+                'number': int(option_match.group(1)),
+                'label': option_match.group(2).strip(),
+                'description': '',
+            }
+        elif current_option and line.strip():
+            # Description line (indented)
+            current_option['description'] = line.strip()
+
+    if current_option:
+        options.append(current_option)
+
+    return options
