@@ -530,6 +530,77 @@ A 1GB droplet runs 1-2 Claude sessions comfortably. The LLM runs on Anthropic's 
 
 ---
 
+## Portal Machine Setup (After Adding Remote Machines)
+
+After setting up a remote machine, run these commands on the **portal machine** (where agentwire portal runs):
+
+### 1. Install autossh (one-time)
+
+```bash
+# macOS
+brew install autossh
+
+# Linux
+sudo apt-get install -y autossh
+```
+
+### 2. Start Tunnel to New Machine
+
+```bash
+# Start persistent reverse tunnel (exposes portal on remote's localhost:8765)
+autossh -M 0 -f -N -o "ServerAliveInterval=30" -o "ServerAliveCountMax=3" -R 8765:localhost:8765 <machine-name>
+```
+
+### 3. Add to Startup
+
+Create a script to start all tunnels:
+
+```bash
+cat > ~/.local/bin/agentwire-tunnels << 'EOF'
+#!/bin/bash
+# Start reverse tunnels to all remote machines
+
+MACHINES="do-1"  # Add more: "do-1 gpu-server devbox-2"
+
+for machine in $MACHINES; do
+    if ! pgrep -f "autossh.*$machine" > /dev/null; then
+        echo "Starting tunnel to $machine..."
+        autossh -M 0 -f -N \
+            -o "ServerAliveInterval=30" \
+            -o "ServerAliveCountMax=3" \
+            -R 8765:localhost:8765 \
+            "$machine"
+    fi
+done
+echo "All tunnels running"
+EOF
+chmod +x ~/.local/bin/agentwire-tunnels
+```
+
+Run on login or via cron:
+```bash
+# Add to crontab
+(crontab -l 2>/dev/null; echo "@reboot ~/.local/bin/agentwire-tunnels") | crontab -
+```
+
+### 4. Register Machine
+
+Add to `~/.agentwire/machines.json`:
+```json
+{
+  "machines": [
+    {"id": "do-1", "host": "do-1", "projects_dir": "/home/agentwire/projects"}
+  ]
+}
+```
+
+Restart portal to pick up new machine:
+```bash
+agentwire portal stop && agentwire portal start
+```
+
+---
+
 ## Development
 
 ```bash
