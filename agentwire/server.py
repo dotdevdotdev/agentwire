@@ -138,7 +138,7 @@ class AgentWireServer:
         self.app.router.add_post("/api/machines", self.api_add_machine)
         self.app.router.add_get("/api/config", self.api_get_config)
         self.app.router.add_post("/api/config", self.api_save_config)
-        self.app.router.add_post("/api/config/reload", self.api_reload_config)
+        self.app.router.add_post("/api/portal/restart", self.api_restart_portal)
         self.app.router.add_static("/static", Path(__file__).parent / "static")
 
     async def init_backends(self):
@@ -949,14 +949,20 @@ projects:
         except Exception as e:
             return web.json_response({"error": str(e)})
 
-    async def api_reload_config(self, request: web.Request) -> web.Response:
-        """Reload configuration from disk."""
-        try:
-            from .config import reload_config
-            self.config = reload_config()
+    async def api_restart_portal(self, request: web.Request) -> web.Response:
+        """Restart the portal via tmux."""
+        import subprocess
 
-            # Reinitialize backends with new config
-            await self.init_backends()
+        try:
+            # Send Ctrl+C to stop current server, then restart
+            subprocess.run(
+                ["tmux", "send-keys", "-t", "agentwire-portal", "C-c"],
+                capture_output=True,
+            )
+            subprocess.run(
+                ["tmux", "send-keys", "-t", "agentwire-portal", "agentwire portal serve", "Enter"],
+                capture_output=True,
+            )
 
             return web.json_response({"success": True})
         except Exception as e:

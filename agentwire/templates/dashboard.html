@@ -472,7 +472,7 @@
                         <textarea id="configEditor" class="config-editor" spellcheck="false"></textarea>
                         <div class="config-buttons">
                             <button class="action-btn" onclick="saveConfig()">Save</button>
-                            <button class="action-btn secondary" onclick="reloadConfig()">Save & Reload</button>
+                            <button class="action-btn secondary" onclick="restartPortal()">Save & Restart</button>
                             <button class="action-btn secondary" onclick="openConfigModal()" title="Fullscreen editor">⛶</button>
                         </div>
                         <div class="success" id="configSuccess"></div>
@@ -505,7 +505,7 @@
                 <div class="modal-buttons">
                     <button class="action-btn secondary" onclick="closeConfigModal()">Close</button>
                     <button class="action-btn secondary" onclick="saveConfigModal()">Save</button>
-                    <button class="action-btn" onclick="reloadConfigModal()">Save & Reload</button>
+                    <button class="action-btn" onclick="restartPortalModal()">Save & Restart</button>
                 </div>
             </div>
         </div>
@@ -691,7 +691,7 @@
             }
         }
 
-        async function reloadConfigModal() {
+        async function restartPortalModal() {
             const error = document.getElementById('modalConfigError');
             const success = document.getElementById('modalConfigSuccess');
             const content = document.getElementById('modalConfigEditor').value;
@@ -711,17 +711,12 @@
                 return;
             }
 
-            // Then reload
-            res = await fetch('/api/config/reload', { method: 'POST' });
-            data = await res.json();
+            // Then restart portal
+            success.textContent = 'Restarting portal...';
+            res = await fetch('/api/portal/restart', { method: 'POST' });
 
-            if (data.error) {
-                error.textContent = data.error;
-            } else {
-                // Sync to inline editor and close modal
-                document.getElementById('configEditor').value = content;
-                document.getElementById('configModal').classList.remove('open');
-            }
+            // Page will reload when portal comes back up
+            setTimeout(() => { location.reload(); }, 2000);
         }
 
         async function saveConfig() {
@@ -746,7 +741,7 @@
             }
         }
 
-        async function reloadConfig() {
+        async function restartPortal() {
             const error = document.getElementById('configError');
             const success = document.getElementById('configSuccess');
             error.textContent = '';
@@ -766,16 +761,12 @@
                 return;
             }
 
-            // Then reload
-            res = await fetch('/api/config/reload', { method: 'POST' });
-            data = await res.json();
+            // Then restart portal
+            success.textContent = 'Restarting portal...';
+            res = await fetch('/api/portal/restart', { method: 'POST' });
 
-            if (data.error) {
-                error.textContent = data.error;
-            } else {
-                success.textContent = 'Config saved & reloaded';
-                setTimeout(() => { success.textContent = ''; }, 3000);
-            }
+            // Page will reload when portal comes back up
+            setTimeout(() => { location.reload(); }, 2000);
         }
 
         async function closeSession(name) {
