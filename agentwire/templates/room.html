@@ -51,8 +51,6 @@
             --orb-listening-dark: #D97706;
             --orb-processing: #A855F7;
             --orb-processing-dark: #7C3AED;
-            --orb-working: #F97316;
-            --orb-working-dark: #EA580C;
             --orb-generating: #3B82F6;
             --orb-generating-dark: #1D4ED8;
             --orb-speaking: #4ADE80;
@@ -249,7 +247,6 @@
         .state-label.idle { color: var(--orb-idle); }
         .state-label.listening { color: var(--orb-listening); }
         .state-label.processing { color: var(--orb-processing); }
-        .state-label.working { color: var(--orb-working); }
         .state-label.generating { color: var(--orb-generating); }
         .state-label.speaking { color: var(--orb-speaking); }
 
@@ -302,16 +299,6 @@
             border-color: rgba(168, 85, 247, 0.4);
             border-width: 3px;
             border-style: dashed;
-        }
-        .orb.working {
-            background: radial-gradient(circle at 30% 30%, var(--orb-working), var(--orb-working-dark));
-            animation: work 2s ease-in-out infinite;
-            box-shadow: 0 0 70px rgba(249, 115, 22, 0.4);
-        }
-        .orb-ring.working {
-            animation: ring-work 2s ease-in-out infinite;
-            border-color: rgba(249, 115, 22, 0.4);
-            border-width: 2px;
         }
         .orb.generating {
             background: radial-gradient(circle at 30% 30%, var(--orb-generating), var(--orb-generating-dark));
@@ -577,11 +564,6 @@
             cursor: not-allowed;
             opacity: 0.8;
         }
-        .mic-btn.working {
-            background: linear-gradient(135deg, var(--orb-working), var(--orb-working-dark));
-            color: #fff;
-            box-shadow: 0 4px 25px rgba(249, 115, 22, 0.4);
-        }
         .mic-btn.generating {
             background: linear-gradient(135deg, var(--orb-generating), var(--orb-generating-dark));
             color: #fff;
@@ -654,11 +636,6 @@
             border: 2px solid rgba(168, 85, 247, 0.3);
             cursor: not-allowed;
             opacity: 0.7;
-        }
-        .controls .mic-btn-terminal.working {
-            background: linear-gradient(135deg, rgba(249, 115, 22, 0.15), rgba(234, 88, 12, 0.15));
-            color: var(--orb-working);
-            border: 2px solid rgba(249, 115, 22, 0.3);
         }
         .controls .mic-btn-terminal.speaking {
             background: linear-gradient(135deg, rgba(74, 222, 128, 0.15), rgba(34, 197, 94, 0.15));
@@ -1184,7 +1161,7 @@
         }
 
         // State machine
-        const STATES = { IDLE: 'idle', LISTENING: 'listening', PROCESSING: 'processing', WORKING: 'working', GENERATING: 'generating', SPEAKING: 'speaking', LOCKED: 'locked' };
+        const STATES = { IDLE: 'idle', LISTENING: 'listening', PROCESSING: 'processing', GENERATING: 'generating', SPEAKING: 'speaking', LOCKED: 'locked' };
         let currentState = STATES.IDLE;
         let ws, recognition, currentAudio;
         let isAmbientMode = true;
@@ -1195,8 +1172,7 @@
         const stateConfig = {
             idle: { label: 'Ready', btnText: 'Hold to Talk' },
             listening: { label: 'Listening', btnText: 'Release to Send' },
-            processing: { label: 'Thinking', btnText: 'Processing...' },
-            working: { label: 'Working', btnText: 'Working...' },
+            processing: { label: 'Processing', btnText: 'Processing...' },
             generating: { label: 'Generating', btnText: 'Generating Voice...' },
             speaking: { label: 'Speaking', btnText: 'Tap to Interrupt' },
             locked: { label: 'Busy', btnText: 'Someone else is talking...' }
@@ -1228,6 +1204,26 @@
                 elements.userBubble.classList.add('listening');
             } else {
                 elements.userBubble.classList.remove('listening');
+            }
+        }
+
+        // Handle session activity - switch to PROCESSING if idle, reset timeout
+        function handleSessionActivity() {
+            // Only react if we're IDLE - don't interrupt other states
+            if (currentState === STATES.IDLE) {
+                setState(STATES.PROCESSING);
+                elements.transcript.textContent = 'Processing...';
+            }
+
+            // Reset timeout while activity continues (regardless of current state)
+            if (currentState === STATES.PROCESSING) {
+                if (processingTimeout) clearTimeout(processingTimeout);
+                processingTimeout = setTimeout(() => {
+                    if (currentState === STATES.PROCESSING) {
+                        setState(STATES.IDLE);
+                        elements.transcript.textContent = 'Tap and hold to speak';
+                    }
+                }, 10000);  // 10s of no activity = return to idle
             }
         }
 
@@ -1312,20 +1308,11 @@
                 if (msg.type === 'output') {
                     elements.outputContent.innerHTML = ansiToHtml(msg.data);
                     elements.output.scrollTop = elements.output.scrollHeight;
+                    // Output received = session is processing something
+                    handleSessionActivity();
                 } else if (msg.type === 'activity') {
-                    // Agent is actively working (output changed)
-                    if (currentState === STATES.IDLE || currentState === STATES.PROCESSING || currentState === STATES.WORKING) {
-                        setState(STATES.WORKING);
-                        elements.transcript.textContent = 'Working...';
-                        // Reset timeout on each activity
-                        if (processingTimeout) clearTimeout(processingTimeout);
-                        processingTimeout = setTimeout(() => {
-                            if (currentState === STATES.WORKING) {
-                                setState(STATES.IDLE);
-                                elements.transcript.textContent = 'Tap and hold to speak';
-                            }
-                        }, 15000); // 15s of no activity → idle
-                    }
+                    // Agent is actively working
+                    handleSessionActivity();
                 } else if (msg.type === 'tts_start') {
                     if (processingTimeout) {
                         clearTimeout(processingTimeout);
@@ -1566,7 +1553,7 @@
                 });
 
                 processingTimeout = setTimeout(() => {
-                    if (currentState === STATES.PROCESSING || currentState === STATES.WORKING) {
+                    if (currentState === STATES.PROCESSING) {
                         setState(STATES.IDLE);
                         elements.transcript.textContent = 'Tap and hold to speak';
                     }
@@ -1614,7 +1601,7 @@
 
                 if (processingTimeout) clearTimeout(processingTimeout);
                 processingTimeout = setTimeout(() => {
-                    if (currentState === STATES.PROCESSING || currentState === STATES.WORKING) {
+                    if (currentState === STATES.PROCESSING) {
                         setState(STATES.IDLE);
                         elements.transcript.textContent = 'Tap and hold to speak';
                     }
@@ -1669,7 +1656,7 @@
 
                 if (processingTimeout) clearTimeout(processingTimeout);
                 processingTimeout = setTimeout(() => {
-                    if (currentState === STATES.PROCESSING || currentState === STATES.WORKING) {
+                    if (currentState === STATES.PROCESSING) {
                         setState(STATES.IDLE);
                     }
                 }, 30000);
