@@ -436,73 +436,40 @@ agentwire portal stop && agentwire portal start
 
 ### Step 7: Connect to AgentWire Network
 
-Remote machines need a tunnel back to the portal for voice commands. This connects them to your existing AgentWire network.
+Remote machines need access to the portal for voice commands (`remote-say`). Since the portal machine is often behind NAT, use a **reverse tunnel** from the portal machine to the remote machine.
 
-**Generate SSH key for connecting back to main machine:**
+**On the PORTAL machine (your Mac/main machine), run:**
 ```bash
-ssh-keygen -t ed25519 -f ~/.ssh/tunnel-key -N "" -C "do-1-tunnel"
-cat ~/.ssh/tunnel-key.pub
-# Add this to ~/.ssh/authorized_keys on your main machine (portal host)
+# One-time tunnel (for testing)
+ssh -f -N -R 8765:localhost:8765 do-1
+
+# Persistent tunnel with autossh
+brew install autossh  # or apt-get install autossh
+autossh -M 0 -f -N -o "ServerAliveInterval=30" -R 8765:localhost:8765 do-1
 ```
 
-**Install autossh for persistent tunnel:**
+This exposes the portal's port 8765 on the remote machine's localhost:8765.
+
+**For multiple remote machines**, run a tunnel to each:
 ```bash
-sudo apt-get install -y autossh
+autossh -M 0 -f -N -R 8765:localhost:8765 do-1
+autossh -M 0 -f -N -R 8765:localhost:8765 gpu-server
+# etc.
 ```
 
-**Create tunnel service** (connects back to portal):
-```bash
-# Replace 'main-machine' with your portal host's SSH config name
-cat > ~/.local/bin/agentwire-tunnel << 'EOF'
-#!/bin/bash
-# Reverse tunnel to AgentWire portal
-# Port 8765 = portal, Port 8100 = TTS server
-PORTAL_HOST="${AGENTWIRE_PORTAL_HOST:-main-machine}"
-autossh -M 0 -f -N \
-    -o "ServerAliveInterval=30" \
-    -o "ServerAliveCountMax=3" \
-    -o "ExitOnForwardFailure=yes" \
-    -i ~/.ssh/tunnel-key \
-    -R 8765:localhost:8765 \
-    -R 8100:localhost:8100 \
-    "$PORTAL_HOST"
-EOF
-chmod +x ~/.local/bin/agentwire-tunnel
-```
-
-**Add SSH config for main machine:**
-```bash
-cat >> ~/.ssh/config << 'EOF'
-
-Host main-machine
-    HostName <your-portal-ip-or-hostname>
-    User <your-user>
-    IdentityFile ~/.ssh/tunnel-key
-EOF
-```
-
-**Start tunnel on boot** (add to crontab or systemd):
-```bash
-# Quick: add to crontab
-(crontab -l 2>/dev/null; echo "@reboot ~/.local/bin/agentwire-tunnel") | crontab -
-
-# Or start now
-~/.local/bin/agentwire-tunnel
-```
-
-**Create agentwire config:**
+**Create agentwire config (on remote machine):**
 ```bash
 mkdir -p ~/.agentwire
 cat > ~/.agentwire/config.yaml << 'EOF'
-# Remote machine config - points to network portal
+# Remote machine config - portal accessed via reverse tunnel
 
 projects:
   dir: "~/projects"
 
-# Portal URL - where the agentwire portal is running
-# This must be reachable from this machine
+# Portal URL - localhost because portal tunnels here
+# (default is https://localhost:8765, so this line is optional)
 portal:
-  url: "https://<portal-host-ip>:8765"
+  url: "https://localhost:8765"
 
 tts:
   backend: "none"  # Portal handles TTS
@@ -533,10 +500,7 @@ ln -sf ~/.local/bin/remote-say ~/.local/bin/say
 
 **Test the connection:**
 ```bash
-# Check tunnel is running
-pgrep -f autossh && echo "Tunnel running"
-
-# Test portal access
+# Test portal access (requires tunnel from portal machine)
 curl -sk https://localhost:8765/api/sessions | head -c 100
 
 # Test voice
@@ -551,7 +515,8 @@ remote-say "Hello from remote machine"
 | Session not in portal | Restart portal after adding machine |
 | Deploy key "already in use" | Each repo needs a unique key |
 | Permission denied (SSH) | Check user in ~/.ssh/config matches |
-| `remote-say` fails | Need tunnel or public URL to portal |
+| `remote-say` fails | Start reverse tunnel from portal: `ssh -f -N -R 8765:localhost:8765 machine` |
+| `curl localhost:8765` fails | Tunnel not running - start it from portal machine |
 
 ### Minimum Specs
 
