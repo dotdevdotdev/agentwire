@@ -37,6 +37,7 @@ dev = [
 tts = [
     "fastapi>=0.104.0",
     "uvicorn>=0.24.0",
+    "python-multipart>=0.0.6",
     "torch>=2.0.0",
     "torchaudio>=2.0.0",
     "faster-whisper>=1.0.0",
