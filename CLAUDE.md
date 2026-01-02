@@ -485,17 +485,18 @@ EOF
 **Install voice commands:**
 ```bash
 # remote-say - uses agentwire say which reads portal.url from config
-cat > ~/.local/bin/remote-say << 'EOF'
+# Install to /usr/local/bin so it's in PATH for all shells (including Claude Code)
+sudo tee /usr/local/bin/remote-say << 'EOF'
 #!/bin/bash
 TEXT="$1"
 ROOM=$(tmux display-message -p '#S' 2>/dev/null || echo "default")
 [ -z "$TEXT" ] && echo "Usage: remote-say \"message\"" && exit 1
-exec agentwire say --room "$ROOM" "$TEXT"
+exec /home/agentwire/.local/share/agentwire-venv/bin/agentwire say --room "$ROOM" "$TEXT"
 EOF
-chmod +x ~/.local/bin/remote-say
+sudo chmod +x /usr/local/bin/remote-say
 
 # say - alias to remote-say (no local audio on servers)
-ln -sf ~/.local/bin/remote-say ~/.local/bin/say
+sudo ln -sf /usr/local/bin/remote-say /usr/local/bin/say
 ```
 
 **Test the connection:**
