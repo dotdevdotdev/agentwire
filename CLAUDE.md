@@ -317,7 +317,7 @@ ssh do-1  # Now connects as agentwire user
 
 # Install system packages (as agentwire with sudo)
 sudo apt-get update
-sudo apt-get install -y python3 python3-pip tmux git curl
+sudo apt-get install -y python3 python3-pip tmux git curl jq
 
 # Install Node.js 22.x
 curl -fsSL https://deb.nodesource.com/setup_22.x | sudo bash -
