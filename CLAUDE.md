@@ -214,6 +214,112 @@ The portal detects Claude Code's `AskUserQuestion` tool prompts and presents the
 
 ---
 
+## Triggers
+
+Real-time MUD-style pattern matching on tmux output with configurable actions.
+
+The portal monitors terminal output via `tmux pipe-pane` (zero-latency streaming) and fires configured actions when patterns match. This powers built-in features like `say` command detection and AskUserQuestion popups.
+
+### Built-in Triggers
+
+| Name | Pattern | Action | Description |
+|------|---------|--------|-------------|
+| `say_command` | `say "..."` | tts | Speaks matched text via TTS |
+| `ask_question` | AskUserQuestion UI | popup | Shows interactive question modal |
+
+Built-in triggers can be disabled but not removed.
+
+### Custom Triggers
+
+Configure in `~/.agentwire/config.yaml`:
+
+```yaml
+triggers:
+  # Disable a built-in trigger
+  say_command:
+    enabled: false
+
+  # Custom trigger: notify on build errors
+  build_failed:
+    pattern: 'npm ERR!|BUILD FAILED|error:'
+    mode: transient
+    action: notify
+    title: "Build Failed"
+
+  # Custom trigger: TTS with variable extraction
+  tests_passed:
+    pattern: 'All (?P<count>\d+) tests? passed'
+    mode: transient
+    action: tts
+    template: "{count} tests passed!"
+
+  # Custom trigger: detect deployment URLs
+  deployed:
+    pattern: 'Deployed to (?P<url>https://\S+)'
+    action: broadcast
+    event: "deployment"
+```
+
+### Trigger Modes
+
+| Mode | Behavior | Use Case |
+|------|----------|----------|
+| `transient` | Match against stream chunks as they arrive | One-time events: `say`, errors, build output |
+| `persistent` | Match against rolling buffer of recent output | Multi-line UI: AskUserQuestion, prompts that stay visible |
+
+### Actions
+
+| Action | Description | Config Fields |
+|--------|-------------|---------------|
+| `tts` | Speak text via TTS | `template` - text with `{var}` substitution |
+| `popup` | Show browser popup modal | `title`, popup content from match |
+| `notify` | Browser notification | `title`, `body` |
+| `send_keys` | Send keystrokes to tmux | `keys` - tmux key sequence |
+| `broadcast` | Send custom WebSocket event | `event`, `data` - JSON payload |
+
+### Variable Extraction
+
+Use Python named capture groups `(?P<name>...)` to extract values:
+
+```yaml
+tests_passed:
+  pattern: '(?P<passed>\d+) passed, (?P<failed>\d+) failed'
+  action: tts
+  template: "{passed} passed, {failed} failed"
+```
+
+Captured groups become available as `{name}` in templates.
+
+### Per-Room Overrides
+
+Override global triggers for specific rooms in `~/.agentwire/rooms.json`:
+
+```json
+{
+  "my-project": {
+    "triggers": {
+      "build_failed": { "enabled": false },
+      "deploy_alert": {
+        "pattern": "Deployed to (?P<url>\\S+)",
+        "action": "tts",
+        "template": "Deployed to production!"
+      }
+    }
+  }
+}
+```
+
+Room-level triggers merge with global triggers. Set `enabled: false` to disable.
+
+### Matching Semantics
+
+- **All matching triggers fire** - a `say` inside AskUserQuestion triggers both
+- **Each stream appearance fires once** - no deduplication tracking needed
+- **ANSI codes stripped** - patterns match clean text
+- **Broadcasts to all room clients** - everyone sees popups, hears TTS
+
+---
+
 ## TTS Server Setup (GPU Machine)
 
 The TTS server runs Chatterbox TurboTTS and requires a CUDA GPU. Install on a GPU machine:

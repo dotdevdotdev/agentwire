@@ -212,6 +212,36 @@ async def tts_action(trigger: "Trigger", match: re.Match[str], room: Any) -> Non
     await room.speak(text.strip())
 
 
+@default_registry.handler("sound")
+async def sound_action(trigger: "Trigger", match: re.Match[str], room: Any) -> None:
+    """Play a sound effect on connected clients.
+
+    Broadcasts a 'sound' event to room clients, which play the sound
+    via browser Audio API.
+
+    Config options:
+        sound: Name of sound to play (default: "notification")
+               Available: success, error, notification, done
+
+    Example trigger configs:
+        # Play error sound on build failure
+        pattern: 'BUILD FAILED'
+        action: sound
+        sound: error
+
+        # Play success on test pass
+        pattern: 'All tests passed'
+        action: sound
+        sound: success
+    """
+    sound_name = trigger.config.get("sound", "notification")
+
+    await room.broadcast({
+        "type": "sound",
+        "sound": sound_name,
+    })
+
+
 @default_registry.handler("popup")
 async def popup_action(trigger: "Trigger", match: re.Match[str], room: Any) -> None:
     """Show popup modal in browser clients for AskUserQuestion prompts.

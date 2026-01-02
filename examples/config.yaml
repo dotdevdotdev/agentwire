@@ -72,3 +72,69 @@ uploads:
 
   # Auto-cleanup: delete files older than N days (0 = disabled)
   cleanup_days: 7
+
+# === Triggers ===
+# Pattern matching against tmux output with configurable actions
+triggers:
+  # --- Built-in Triggers ---
+  # These are defined in code but can be enabled/disabled here.
+  # You cannot remove them, only toggle them.
+
+  say_command:
+    enabled: true     # Matches `say "..."` commands for TTS playback
+
+  ask_question:
+    enabled: true     # Matches AskUserQuestion blocks for popup UI
+
+  # --- User-Defined Triggers ---
+  # Create your own triggers to react to output patterns.
+
+  # Example: Notify on build failures
+  build_failed:
+    pattern: 'npm ERR!|error:|BUILD FAILED|FAILED:'
+    mode: transient           # Match against stream chunks as they arrive
+    action: notify            # Send browser notification
+    title: "Build Failed"     # Notification title
+    sound: error              # Play error sound
+
+  # Example: TTS announcement when tests pass
+  # Named capture groups like (?P<count>...) become template variables
+  tests_passed:
+    pattern: 'All (?P<count>\d+) tests? passed'
+    mode: transient
+    action: tts               # Speak via TTS
+    template: "{count} tests passed!"
+
+  # Example: Popup when deployment completes
+  deploy_complete:
+    pattern: 'Deployed to (?P<url>https?://\S+)'
+    mode: transient
+    action: popup             # Show popup in room UI
+    title: "Deployment Complete"
+    template: "Live at {url}"
+
+  # Example: Track persistent prompts (visible on screen)
+  waiting_for_input:
+    pattern: 'Press Enter to continue|Waiting for input'
+    mode: persistent          # Match against accumulated buffer (last N lines)
+    action: notify
+    title: "Waiting"
+
+  # Example: Send keystrokes back to tmux
+  # auto_continue:
+  #   pattern: 'Continue\? \[y/N\]'
+  #   mode: transient
+  #   action: send_keys       # Send input to tmux session
+  #   keys: "y\n"             # What to send
+
+  # --- Trigger Modes ---
+  # transient:  Matches against each chunk as it streams through (one-time events)
+  # persistent: Matches against a rolling buffer of recent output (prompts that stay visible)
+
+  # --- Available Actions ---
+  # tts:        Speak text via TTS (use 'template' for message)
+  # notify:     Send browser notification (use 'title' and optionally 'template')
+  # popup:      Show popup in room UI (use 'title' and 'template')
+  # sound:      Play a sound file (use 'sound' for sound name)
+  # send_keys:  Send keystrokes to tmux session (use 'keys')
+  # broadcast:  Send custom WebSocket message (use 'event' and 'data')
