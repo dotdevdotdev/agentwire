@@ -178,8 +178,34 @@ def cleanup_fifo(session: str) -> None:
         logger.warning(f"Failed to cleanup pipe {pipe_path}: {e}")
 
 
+def _session_exists(session: str) -> bool:
+    """Check if a tmux session exists.
+
+    Args:
+        session: The tmux session name.
+
+    Returns:
+        True if session exists, False otherwise.
+    """
+    try:
+        result = subprocess.run(
+            ["tmux", "has-session", "-t", session],
+            capture_output=True,
+            text=True,
+        )
+        return result.returncode == 0
+    except FileNotFoundError:
+        logger.error("tmux not found")
+        return False
+    except Exception as e:
+        logger.error(f"Failed to check session existence: {e}")
+        return False
+
+
 def _start_pipe_pane(session: str, pipe_path: Path) -> bool:
     """Start tmux pipe-pane to stream output to FIFO.
+
+    Stops any existing pipe-pane on the session first to prevent duplicates.
 
     Args:
         session: The tmux session name.
@@ -189,6 +215,14 @@ def _start_pipe_pane(session: str, pipe_path: Path) -> bool:
         True if pipe-pane started successfully, False otherwise.
     """
     try:
+        # Stop any existing pipe-pane first to prevent duplicates
+        subprocess.run(
+            ["tmux", "pipe-pane", "-t", session],  # Empty command stops piping
+            capture_output=True,
+            text=True,
+        )
+
+        # Start new pipe-pane
         result = subprocess.run(
             ["tmux", "pipe-pane", "-t", session, f"cat >> {pipe_path}"],
             capture_output=True,
