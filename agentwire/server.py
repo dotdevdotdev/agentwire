@@ -369,6 +369,10 @@ class AgentWireServer:
                     room.last_output = output
                     await self._broadcast(room, {"type": "output", "data": output})
 
+                    # Notify clients that agent is actively working
+                    if old_output:  # Skip first poll
+                        await self._broadcast(room, {"type": "activity"})
+
                     # Detect say commands in NEW content only
                     # If output doesn't start with old_output (terminal scrolled),
                     # skip say detection to avoid re-playing old commands
