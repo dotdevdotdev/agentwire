@@ -165,14 +165,18 @@ uploads:
   cleanup_days: 7              # Auto-delete old uploads
 ```
 
-### Say Command Detection
+### Voice Commands (say/remote-say)
 
-The portal monitors terminal output for `say` and `remote-say` commands:
+Claude (or users) can trigger TTS by running actual shell commands:
 
 ```bash
-say "Hello world"           # Detected from output, triggers TTS
-remote-say "Task complete"  # Also posts to /api/say/{room}
+say "Hello world"           # Runs agentwire say → POSTs to /api/say/{room}
+remote-say "Task complete"  # Same, but determines room from machine config
 ```
+
+**How it works:** These are real executables (not pattern matching on terminal output). When Claude runs `say "message"`, it executes the `agentwire say` command which POSTs to the portal API, which broadcasts TTS audio to connected browser clients.
+
+This command-based approach is more reliable than parsing terminal output, which is noisy (typing echoes, ANSI codes, mixed input/output).
 
 TTS audio includes 300ms silence padding to prevent first-syllable cutoff.
 
@@ -268,6 +272,25 @@ Voices are stored in `~/.agentwire/voices/` and synced across portal config.
     Local tmux sessions            Remote via SSH
     (send-keys, capture-pane)      (session@machine)
 ```
+
+### Extending with New Capabilities
+
+The pattern for adding new agent-to-client communication:
+
+1. **Create a CLI command** (e.g., `agentwire notify "title" "body"`)
+2. **Command POSTs to API** (e.g., `/api/notify/{room}`)
+3. **Server broadcasts via WebSocket** to connected clients
+4. **Browser handles message type** and renders UI
+
+This command-based approach is more reliable than pattern-matching terminal output because:
+- Terminal output is noisy (typing echoes, ANSI codes, mixed I/O)
+- Commands are explicit and unambiguous
+- Works consistently across local and remote sessions
+
+**Current capabilities using this pattern:**
+- `say/remote-say` → TTS audio playback
+- `agentwire send` → Send prompts to sessions
+- Image uploads → `@/path` references in messages
 
 ---
 
