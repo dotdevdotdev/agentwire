@@ -6,7 +6,6 @@ Multi-room voice web interface for AI coding agents.
 
 import asyncio
 import base64
-import io
 import json
 import logging
 import re
@@ -15,10 +14,8 @@ import struct
 import tempfile
 import time
 import uuid
-import wave
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
 from aiohttp import web
 
@@ -559,57 +556,11 @@ class AgentWireServer:
             # Unlock will happen after TTS completes or on disconnect
             pass
 
-    # Patterns for say command detection
-    SAY_PATTERN = re.compile(r'(?:remote-)?say\s+(?:"([^"]+)"|\'([^\']+)\')', re.IGNORECASE)
-    ANSI_PATTERN = re.compile(r'\x1b\[[0-9;]*m|\x1b\].*?\x07')
-
-    # Pattern to detect AskUserQuestion UI blocks
-    # Format: ☐ Header\n\nQuestion?\n\n❯ 1. Label\n     Description\n  2. Label...
-    ASK_PATTERN = re.compile(
-        r'\s*☐\s+(.+?)\s*\n\s*\n'  # ☐ Header (capture whole line, allows spaces)
-        r'(.+?\?)\s*\n'            # Question text ending with ? (capture group 2)
-        r'\s*\n'                   # Blank line
-        r'((?:[❯\s]+\d+\.\s+.+\n(?:\s{3,}.+\n)?)+)',  # Options block (capture group 3)
-        re.MULTILINE
-    )
-
-    def _parse_ask_options(self, options_block: str) -> list[dict]:
-        """Parse numbered options from AskUserQuestion block.
-
-        Returns list of {number, label, description} dicts.
-        """
-        options = []
-        current_option = None
-
-        for line in options_block.split('\n'):
-            # Strip ANSI codes
-            line = self.ANSI_PATTERN.sub('', line)
-
-            # Match numbered option: "❯ 1. Label" or "  2. Label"
-            option_match = re.match(r'[❯\s]*(\d+)\.\s+(.+)', line)
-            if option_match:
-                if current_option:
-                    options.append(current_option)
-                current_option = {
-                    'number': int(option_match.group(1)),
-                    'label': option_match.group(2).strip(),
-                    'description': '',
-                }
-            elif current_option and line.strip():
-                # Description line (indented)
-                current_option['description'] = line.strip()
-
-        if current_option:
-            options.append(current_option)
-
-        return options
-
     async def _poll_output(self, room: Room):
         """Poll agent output and broadcast to room clients.
 
-        NOTE: This polling-based approach is kept for output display.
-        The watcher-based trigger system will eventually replace the
-        SAY_PATTERN and ASK_PATTERN detection here.
+        This handles output display updates. Trigger detection (say commands,
+        AskUserQuestion popups) is handled by the SessionWatcher via pipe-pane.
         """
         while room.clients:
             try:
@@ -625,79 +576,6 @@ class AgentWireServer:
                     # Notify clients that agent is actively working
                     if old_output:  # Skip first poll
                         await room.broadcast({"type": "activity"})
-
-                    # Detect say commands in NEW content only
-                    # If output doesn't start with old_output (terminal scrolled),
-                    # skip say detection to avoid re-playing old commands
-                    if old_output and output.startswith(old_output):
-                        new_content = output[len(old_output):]
-                    elif not old_output:
-                        # First poll - don't play historical say commands
-                        new_content = ""
-                    else:
-                        # Terminal scrolled/changed - skip to avoid duplicates
-                        new_content = ""
-
-                    for match in self.SAY_PATTERN.finditer(new_content):
-                        say_text = match.group(1) or match.group(2)
-                        if not say_text:
-                            continue
-                        # Strip ANSI codes
-                        say_text = self.ANSI_PATTERN.sub('', say_text).strip()
-
-                        # Skip if empty or already played
-                        if not say_text or say_text in room.played_says:
-                            continue
-
-                        room.played_says.add(say_text)
-
-                        # Keep played_says from growing indefinitely (as list for order)
-                        if len(room.played_says) > 100:
-                            # Convert to list, keep last 50, convert back
-                            room.played_says = set(list(room.played_says)[-50:])
-
-                        logger.info(f"[{room.name}] TTS: {say_text[:50]}...")
-
-                        # Generate and broadcast TTS
-                        await self._say_to_room(room.name, say_text)
-
-                # Detect AskUserQuestion blocks in full output (OUTSIDE the change check)
-                # Questions persist in terminal until answered, so check every poll
-                # Strip ANSI codes before matching
-                clean_output = self.ANSI_PATTERN.sub('', output)
-                ask_match = self.ASK_PATTERN.search(clean_output)
-                if ask_match:
-                    header = ask_match.group(1)
-                    question = ask_match.group(2).strip()
-                    options_block = ask_match.group(3)
-                    options = self._parse_ask_options(options_block)
-
-                    # Create unique key for this question
-                    question_key = f"{header}:{question}"
-
-                    if question_key != room.last_question and options:
-                        room.last_question = question_key
-                        logger.info(f"[{room.name}] Question detected: {question[:50]}...")
-
-                        # Broadcast question to room
-                        await room.broadcast({
-                            "type": "question",
-                            "header": header,
-                            "question": question,
-                            "options": options,
-                        })
-
-                        # Read question and options via TTS
-                        tts_text = question + ". "
-                        for opt in options:
-                            if opt['label'] != "Type something.":
-                                tts_text += f"{opt['number']}: {opt['label']}. "
-                        await self._say_to_room(room.name, tts_text)
-
-                elif room.last_question and not ask_match:
-                    # Question was answered (UI disappeared)
-                    room.last_question = None
-                    await room.broadcast({"type": "question_answered"})
 
             except Exception as e:
                 logger.debug(f"Output poll error for {room.name}: {e}")
@@ -1290,12 +1168,7 @@ projects:
                 return web.json_response({"error": "No text provided"}, status=400)
 
             # Ensure room exists (create with watcher if needed)
-            room = await self._get_or_create_room(name)
-
-            # Track this text to avoid duplicate TTS from output polling
-            room.played_says.add(text)
-            if len(room.played_says) > 50:
-                room.played_says = set(list(room.played_says)[-25:])
+            await self._get_or_create_room(name)
 
             logger.info(f"[{name}] API say: {text[:50]}...")
 
@@ -1332,10 +1205,9 @@ projects:
             if not success:
                 return web.json_response({"error": "Failed to send answer"}, status=500)
 
-            # Clear the question tracking
+            # Notify clients the question was answered
             if name in self.rooms:
                 room = self.rooms[name]
-                room.last_question = None
                 await room.broadcast({"type": "question_answered"})
 
             logger.info(f"[{name}] Answered: {answer}")
