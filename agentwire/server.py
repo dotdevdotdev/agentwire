@@ -875,10 +875,21 @@ projects:
             if image_field is None:
                 return web.json_response({"error": "No image data"})
 
-            # Check content type
-            content_type = image_field.headers.get("Content-Type", "")
+            # Check content type (try property, header, and filename extension)
+            content_type = getattr(image_field, 'content_type', None) or image_field.headers.get("Content-Type", "")
+            filename = image_field.filename or ""
+            logger.debug(f"Upload content_type: {content_type}, filename: {filename}")
+
+            # Fallback: detect from filename extension
+            if not content_type or not content_type.startswith("image/"):
+                ext = filename.lower().rsplit(".", 1)[-1] if "." in filename else ""
+                ext_to_mime = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "gif": "image/gif", "webp": "image/webp"}
+                if ext in ext_to_mime:
+                    content_type = ext_to_mime[ext]
+                    logger.debug(f"Detected content_type from extension: {content_type}")
+
             if not content_type.startswith("image/"):
-                return web.json_response({"error": "File must be an image"})
+                return web.json_response({"error": f"File must be an image (got {content_type or 'unknown'})"})
 
             # Read image data
             image_data = await image_field.read()
