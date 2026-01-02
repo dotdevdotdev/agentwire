@@ -22,7 +22,7 @@ from aiohttp import web
 
 from .config import Config, load_config
 from .templates import get_template
-from .worktree import get_project_type, get_session_path, parse_session_name
+from .worktree import ensure_worktree, get_project_type, get_session_path, parse_session_name
 
 __version__ = "0.1.0"
 
@@ -472,6 +472,17 @@ class AgentWireServer:
                     self.config.projects.dir,
                     self.config.projects.worktrees.suffix,
                 )
+                # Ensure worktree exists
+                project_path = self.config.projects.dir / project
+                if not ensure_worktree(
+                    project_path,
+                    branch,
+                    work_dir,
+                    self.config.projects.worktrees.auto_create_branch,
+                ):
+                    return web.json_response({
+                        "error": f"Failed to create worktree. Is '{project}' a git repo?"
+                    })
             else:
                 work_dir = self.config.projects.dir / project
 
