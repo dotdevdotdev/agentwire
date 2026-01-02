@@ -188,6 +188,9 @@ class TriggerConfig:
     body: str | None = None
     keys: str | None = None
     on: str = "appear"
+    sound: str | None = None  # For sound action
+    type: str | None = None   # For broadcast action (message type)
+    data: str | None = None   # For broadcast action (data payload)
 
 
 # Built-in trigger patterns
@@ -313,6 +316,12 @@ def _trigger_config_to_dict(cfg: TriggerConfig) -> dict[str, Any]:
         result["keys"] = cfg.keys
     if cfg.on != "appear":
         result["on"] = cfg.on
+    if cfg.sound is not None:
+        result["sound"] = cfg.sound
+    if cfg.type is not None:
+        result["type"] = cfg.type
+    if cfg.data is not None:
+        result["data"] = cfg.data
     return result
 
 
@@ -414,6 +423,9 @@ def _parse_trigger_config(data: dict) -> TriggerConfig:
         body=data.get("body"),
         keys=data.get("keys"),
         on=data.get("on", "appear"),
+        sound=data.get("sound"),
+        type=data.get("type"),
+        data=data.get("data"),
     )
 
 

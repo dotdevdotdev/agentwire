@@ -1455,8 +1455,57 @@
                     showQuestionModal(msg.header, msg.question, msg.options);
                 } else if (msg.type === 'question_answered') {
                     hideQuestionModal();
+                } else if (msg.type === 'notify') {
+                    // Browser notification
+                    if (Notification.permission === 'granted') {
+                        new Notification(msg.title || 'AgentWire', { body: msg.body || '' });
+                    } else if (Notification.permission !== 'denied') {
+                        Notification.requestPermission().then(perm => {
+                            if (perm === 'granted') {
+                                new Notification(msg.title || 'AgentWire', { body: msg.body || '' });
+                            }
+                        });
+                    }
+                    console.log('[notify]', msg.title, msg.body);
+                } else if (msg.type === 'sound') {
+                    // Play sound effect
+                    playSound(msg.sound || 'notification');
+                } else {
+                    // Custom broadcast event - log to console
+                    console.log('[broadcast]', msg.type, msg.data || msg);
                 }
             };
+        }
+
+        function playSound(soundName) {
+            // Simple sound effects using Web Audio API
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = ctx.createOscillator();
+            const gain = ctx.createGain();
+            oscillator.connect(gain);
+            gain.connect(ctx.destination);
+
+            const sounds = {
+                success: { freq: 880, duration: 0.15, type: 'sine', pattern: [1, 0.5, 1] },
+                error: { freq: 220, duration: 0.3, type: 'sawtooth', pattern: [1, 0, 1] },
+                notification: { freq: 660, duration: 0.1, type: 'sine', pattern: [1, 0.8] },
+                done: { freq: 440, duration: 0.2, type: 'triangle', pattern: [1, 1.5, 2] },
+            };
+
+            const sound = sounds[soundName] || sounds.notification;
+            gain.gain.value = 0.3;
+            oscillator.type = sound.type;
+
+            // Play pattern
+            let time = ctx.currentTime;
+            sound.pattern.forEach((mult, i) => {
+                oscillator.frequency.setValueAtTime(sound.freq * mult, time);
+                time += sound.duration;
+            });
+
+            oscillator.start();
+            oscillator.stop(time);
+            console.log('[sound]', soundName);
         }
 
         async function playAudio(base64Data) {
