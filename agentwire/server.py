@@ -42,6 +42,7 @@ class RoomConfig:
     cfg_weight: float = 0.5
     machine: str | None = None
     path: str | None = None
+    triggers: dict[str, dict] | None = None  # Per-room trigger overrides
 
 
 @dataclass
@@ -54,10 +55,8 @@ class Room:
         clients: Set of connected WebSocket clients.
         locked_by: Client ID holding the room lock (for push-to-talk).
         last_output: Last output snapshot for detecting changes.
-        output_task: Background task for output polling (legacy, replaced by watcher).
-        played_says: Set of already-played TTS texts to avoid duplicates.
-        last_question: Last AskUserQuestion key to avoid duplicate popups.
-        watcher: SessionWatcher for real-time output monitoring.
+        output_task: Background task for output display polling.
+        watcher: SessionWatcher for real-time trigger detection via pipe-pane.
         server: Reference to AgentWireServer for TTS/agent access.
     """
 
@@ -67,8 +66,6 @@ class Room:
     locked_by: str | None = None
     last_output: str = ""
     output_task: asyncio.Task | None = None
-    played_says: set = field(default_factory=set)
-    last_question: str | None = None
     watcher: SessionWatcher | None = None
     server: "AgentWireServer | None" = None
 
@@ -244,82 +241,61 @@ class AgentWireServer:
                 cfg_weight=cfg.get("cfg_weight", 0.5),
                 machine=cfg.get("machine"),
                 path=cfg.get("path"),
+                triggers=cfg.get("triggers"),
             )
         return RoomConfig(voice=self.config.tts.default_voice)
 
-    def _build_triggers(self, room_name: str) -> list[Trigger]:
+    def _build_triggers(self, room_name: str, room_config: RoomConfig) -> list[Trigger]:
         """Build trigger list for a room, merging global and per-room configs.
 
         Args:
             room_name: The room/session name.
+            room_config: The room's configuration (including trigger overrides).
 
         Returns:
             List of Trigger objects for this room.
         """
-        triggers: list[Trigger] = []
+        # Start with global triggers from config.yaml
+        triggers = self.config.triggers.to_triggers()
 
-        # Load global triggers from config (if config has triggers section)
-        global_triggers = getattr(self.config, 'triggers', None)
-        if global_triggers:
-            for name, trigger_cfg in global_triggers.items():
-                if not trigger_cfg.get('enabled', True):
-                    continue
-                pattern_str = trigger_cfg.get('pattern', '')
-                if not pattern_str:
-                    continue
-                try:
-                    pattern = re.compile(pattern_str, re.MULTILINE)
-                except re.error as e:
-                    logger.warning(f"Invalid trigger pattern '{name}': {e}")
-                    continue
-                triggers.append(Trigger(
-                    name=name,
-                    pattern=pattern,
-                    mode=trigger_cfg.get('mode', 'transient'),
-                    action=trigger_cfg.get('action', 'notify'),
-                    config={k: v for k, v in trigger_cfg.items()
-                            if k not in ('pattern', 'mode', 'action', 'enabled', 'builtin')},
-                    enabled=True,
-                    builtin=trigger_cfg.get('builtin', False),
-                ))
+        # Apply per-room overrides from rooms.json
+        if room_config.triggers:
+            for name, override in room_config.triggers.items():
+                # Find existing trigger by name
+                existing = next((t for t in triggers if t.name == name), None)
 
-        # Load per-room overrides from rooms.json
-        room_configs = self._load_room_configs()
-        room_cfg = room_configs.get(room_name, {})
-        room_triggers = room_cfg.get('triggers', {})
-
-        for name, trigger_cfg in room_triggers.items():
-            # Check if this overrides a global trigger
-            existing = next((t for t in triggers if t.name == name), None)
-
-            if existing:
-                # Override enabled state
-                if 'enabled' in trigger_cfg:
-                    existing.enabled = trigger_cfg['enabled']
-                # Override other config options
-                for key in ('template', 'title', 'body', 'keys', 'on'):
-                    if key in trigger_cfg:
-                        existing.config[key] = trigger_cfg[key]
-            else:
-                # New room-specific trigger
-                pattern_str = trigger_cfg.get('pattern', '')
-                if not pattern_str or not trigger_cfg.get('enabled', True):
-                    continue
-                try:
-                    pattern = re.compile(pattern_str, re.MULTILINE)
-                except re.error as e:
-                    logger.warning(f"Invalid trigger pattern '{name}' in room {room_name}: {e}")
-                    continue
-                triggers.append(Trigger(
-                    name=name,
-                    pattern=pattern,
-                    mode=trigger_cfg.get('mode', 'transient'),
-                    action=trigger_cfg.get('action', 'notify'),
-                    config={k: v for k, v in trigger_cfg.items()
-                            if k not in ('pattern', 'mode', 'action', 'enabled', 'builtin')},
-                    enabled=True,
-                    builtin=False,
-                ))
+                if existing:
+                    # Override enabled state (allows disabling global triggers)
+                    if 'enabled' in override and not override['enabled']:
+                        triggers.remove(existing)
+                        continue
+                    # Override other config options
+                    for key in ('template', 'title', 'body', 'keys', 'on'):
+                        if key in override:
+                            existing.config[key] = override[key]
+                    # Override action if specified
+                    if 'action' in override:
+                        existing.action = override['action']
+                else:
+                    # New room-specific trigger
+                    pattern_str = override.get('pattern', '')
+                    if not pattern_str or not override.get('enabled', True):
+                        continue
+                    try:
+                        pattern = re.compile(pattern_str, re.MULTILINE)
+                    except re.error as e:
+                        logger.warning(f"Invalid trigger pattern '{name}' in room {room_name}: {e}")
+                        continue
+                    triggers.append(Trigger(
+                        name=name,
+                        pattern=pattern,
+                        mode=override.get('mode', 'transient'),
+                        action=override.get('action', 'notify'),
+                        config={k: v for k, v in override.items()
+                                if k not in ('pattern', 'mode', 'action', 'enabled', 'builtin')},
+                        enabled=True,
+                        builtin=False,
+                    ))
 
         return triggers
 
@@ -341,15 +317,16 @@ class AgentWireServer:
             return self.rooms[name]
 
         # Create new room
+        room_config = self._get_room_config(name)
         room = Room(
             name=name,
-            config=self._get_room_config(name),
+            config=room_config,
             server=self,
         )
         self.rooms[name] = room
 
-        # Build triggers for this room
-        triggers = self._build_triggers(name)
+        # Build triggers for this room (merging global + room-specific)
+        triggers = self._build_triggers(name, room_config)
 
         # Create and start watcher
         watcher = SessionWatcher(
