@@ -41,7 +41,7 @@ tts = [
     "torch>=2.0.0",
     "torchaudio>=2.0.0",
     "faster-whisper>=1.0.0",
-    "chatterbox-tts",
+    "chatterbox-tts>=0.1.6",
 ]
 
 [project.scripts]
