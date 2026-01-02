@@ -1,11 +1,15 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <link rel="icon" type="image/jpeg" href="/static/favicon-green.jpeg">
     <title>AgentWire</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
+
         :root {
             /* Theme colors - Electric Green */
             --primary: #00DD00;
@@ -38,29 +42,32 @@
             color: var(--text-primary);
             min-height: 100vh;
         }
+        /* Single layout - stacked, works everywhere */
         .layout {
             display: flex;
+            flex-direction: column;
             min-height: 100vh;
+            max-width: 500px;
+            margin: 0 auto;
+            padding: 1.5rem;
         }
         .left-column {
             display: flex;
             flex-direction: column;
-            padding: 1.5rem;
-            width: 320px;
-            flex-shrink: 0;
+            width: 100%;
         }
         .brand {
             text-align: center;
             margin-bottom: 1rem;
         }
         .splash-logo {
-            max-width: 280px;
+            max-width: 250px;
             width: 100%;
             height: auto;
             border-radius: 12px;
         }
-        .tagline { color: var(--text-muted); margin-top: 0.75rem; font-size: 0.85rem; }
-        .version { font-size: 0.7rem; color: var(--text-muted); margin-top: 0.25rem; }
+        .tagline { color: var(--text-muted); margin-top: 0.75rem; font-size: 1rem; }
+        .version { font-size: 0.85rem; color: var(--text-muted); margin-top: 0.25rem; }
         .actions {
             margin-top: auto;
             display: flex;
@@ -85,7 +92,7 @@
             background: var(--bg-light);
         }
         .action-header h3 {
-            font-size: 0.9rem;
+            font-size: 1.1rem;
             font-weight: 500;
             color: var(--text-primary);
         }
@@ -329,18 +336,19 @@
         }
         .right-column {
             flex: 1;
-            padding: 1.5rem 2rem;
+            padding: 0;
+            padding-top: 1.5rem;
             overflow-y: auto;
         }
         .section-title {
-            font-size: 0.75rem;
+            font-size: 0.9rem;
             color: var(--text-muted);
             text-transform: uppercase;
             letter-spacing: 0.05em;
             margin-bottom: 1rem;
         }
         .sessions {
-            max-width: 700px;
+            width: 100%;
         }
         .session-card {
             display: flex;
@@ -355,31 +363,12 @@
             transition: background 0.2s;
         }
         .session-card:hover { background: var(--bg-light); }
-        .session-name { font-weight: 600; color: var(--text-primary); }
-        .session-meta { font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem; }
+        .session-name { font-weight: 600; color: var(--text-primary); font-size: 1.1rem; }
+        .session-meta { font-size: 0.9rem; color: var(--text-muted); margin-top: 0.25rem; }
         .session-voice { color: var(--primary); }
         .session-arrow { color: var(--text-muted); font-size: 1.2rem; }
         .no-sessions { color: var(--text-muted); padding: 1rem 0; }
 
-        /* Mobile: stack vertically */
-        @media (max-width: 768px) {
-            .layout {
-                flex-direction: column;
-            }
-            .left-column {
-                width: 100%;
-                padding: 1rem;
-            }
-            .splash-logo {
-                max-width: 200px;
-            }
-            .actions {
-                margin-top: 1.5rem;
-            }
-            .right-column {
-                padding: 1rem;
-            }
-        }
     </style>
 </head>
 <body>

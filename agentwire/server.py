@@ -258,7 +258,11 @@ class AgentWireServer:
             voices=voices,
             default_voice=self.config.tts.default_voice,
         )
-        return web.Response(text=html, content_type="text/html")
+        return web.Response(
+            text=html,
+            content_type="text/html",
+            headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+        )
 
     async def handle_room(self, request: web.Request) -> web.Response:
         """Serve a room page."""
@@ -273,7 +277,11 @@ class AgentWireServer:
             voices=voices,
             current_voice=room_config.voice,
         )
-        return web.Response(text=html, content_type="text/html")
+        return web.Response(
+            text=html,
+            content_type="text/html",
+            headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+        )
 
     async def handle_websocket(self, request: web.Request) -> web.WebSocketResponse:
         """Handle WebSocket connections for a room."""

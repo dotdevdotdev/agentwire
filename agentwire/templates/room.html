@@ -1,14 +1,18 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <link rel="icon" type="image/jpeg" href="/static/favicon-green.jpeg">
     <title>{{ room_name }} - AgentWire</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
+
         :root {
             /* Layout */
-            --header-height: 52px;
+            --header-height: 60px;
             --tts-height: 40px;
             --controls-height: 190px;
 
@@ -71,17 +75,17 @@
             align-items: center;
             flex-shrink: 0;
         }
-        .header h1 { font-size: 1.1rem; color: var(--text-secondary); }
+        .header h1 { font-size: 1.25rem; color: var(--text-secondary); }
         .header a { color: var(--text-muted); text-decoration: none; font-size: 0.9rem; }
-        .header-brand { color: var(--primary); font-weight: 600; font-size: 0.9rem; margin-right: 0.75rem; text-decoration: none; display: flex; align-items: center; gap: 0.4rem; }
-        .header-logo { width: 24px; height: 24px; border-radius: 4px; }
+        .header-brand { color: var(--primary); font-weight: 600; font-size: 1.1rem; margin-right: 0.75rem; text-decoration: none; display: flex; align-items: center; gap: 0.4rem; }
+        .header-logo { width: 32px; height: 32px; border-radius: 4px; }
         .header-left { display: flex; align-items: center; }
         .header-right { display: flex; align-items: center; gap: 0.75rem; }
         .settings-btn {
             background: none;
             border: none;
             color: var(--text-muted);
-            font-size: 1.2rem;
+            font-size: 1.8rem;
             cursor: pointer;
             padding: 0.25rem;
             line-height: 1;
@@ -109,18 +113,18 @@
             gap: 0.25rem;
         }
         .settings-group label {
-            font-size: 0.65rem;
+            font-size: 0.8rem;
             color: var(--text-muted);
             text-transform: uppercase;
             letter-spacing: 0.05em;
         }
         .settings-group select, .settings-group button {
-            padding: 0.4rem 0.5rem;
+            padding: 0.6rem 0.75rem;
             background: var(--bg-elevated);
             border: 1px solid var(--border);
             border-radius: 4px;
             color: var(--text-primary);
-            font-size: 0.8rem;
+            font-size: 1rem;
             cursor: pointer;
             width: 100%;
             text-align: left;
@@ -129,7 +133,7 @@
             border-color: var(--primary);
         }
         .header-right { position: relative; }
-        .status { font-size: 0.7rem; color: var(--text-muted); }
+        .status { font-size: 1rem; color: var(--text-muted); }
         .status.connected { color: var(--primary); }
         .tts-controls {
             display: none;
@@ -180,21 +184,27 @@
         .ambient.active { display: flex; }
         .output.hidden { display: none; }
 
-        /* AI Speech bubble - top */
+        /* AI Speech bubble - top (floating overlay) */
         .ai-bubble-container {
-            padding: 1rem;
-            padding-bottom: 0;
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            padding: 1.25rem;
+            z-index: 10;
+            pointer-events: none;
         }
         .ai-bubble {
+            pointer-events: auto;
             background: var(--bg-elevated);
             border: 1px solid var(--border);
             border-radius: 16px;
             border-top-left-radius: 4px;
-            padding: 0.875rem 1rem;
-            font-size: 1rem;
-            line-height: 1.4;
+            padding: 1rem 1.25rem;
+            font-size: 1.1rem;
+            line-height: 1.5;
             color: var(--text-primary);
-            max-width: 85%;
+            max-width: 92%;
             position: relative;
             opacity: 0;
             transform: translateY(-10px);
@@ -213,7 +223,7 @@
             position: absolute;
             top: -0.5rem;
             left: -0.5rem;
-            font-size: 0.9rem;
+            font-size: 1.3rem;
         }
 
         /* Orb area - center */
@@ -228,7 +238,7 @@
 
         /* State label */
         .state-label {
-            font-size: 1.5rem;
+            font-size: 2rem;
             font-weight: 300;
             letter-spacing: 0.2em;
             text-transform: uppercase;
@@ -243,8 +253,8 @@
         /* Orb container */
         .orb-container {
             position: relative;
-            width: min(40vw, 40vh, 220px);
-            height: min(40vw, 40vh, 220px);
+            width: 200px;
+            height: 200px;
         }
         .orb {
             position: absolute;
@@ -367,21 +377,29 @@
             50% { transform: scale(1.2); opacity: 0.9; }
         }
 
-        /* User bubble - bottom, above floating controls */
+        /* User bubble - bottom (floating overlay, above controls) */
         .user-bubble-container {
-            padding: 0 1rem;
-            padding-bottom: 100px; /* Space for floating controls */
+            position: absolute;
+            bottom: 140px; /* Above floating controls */
+            left: 0;
+            right: 0;
+            padding: 0 1.5rem;
+            z-index: 10;
+            pointer-events: none;
+            display: flex;
+            justify-content: flex-end;
         }
         .user-bubble {
+            pointer-events: auto;
             background: var(--primary-subtle);
             border: 1px solid rgba(0, 221, 0, 0.3);
             border-radius: 16px;
             border-bottom-right-radius: 4px;
-            padding: 0.75rem 1rem;
-            font-size: 0.95rem;
-            line-height: 1.3;
+            padding: 1rem 1.25rem;
+            font-size: 1.1rem;
+            line-height: 1.5;
             color: var(--text-primary);
-            max-width: 85%;
+            max-width: 92%;
             margin-left: auto;
             position: relative;
             opacity: 0;
@@ -401,15 +419,15 @@
             position: absolute;
             bottom: -0.5rem;
             right: -0.5rem;
-            font-size: 0.8rem;
+            font-size: 1.2rem;
         }
 
         /* Floating controls container */
         .floating-controls {
             position: absolute;
-            bottom: 1rem;
-            left: 1rem;
-            right: 1rem;
+            bottom: 2rem;
+            left: 1.5rem;
+            right: 1.5rem;
             display: flex;
             justify-content: space-between;
             align-items: flex-end;
@@ -427,13 +445,13 @@
             gap: 0.5rem;
         }
         .text-toggle-btn {
-            width: 56px;
-            height: 56px;
+            width: 60px;
+            height: 60px;
             border-radius: 50%;
             background: var(--bg-elevated);
             border: 2px solid var(--border);
             color: var(--text-secondary);
-            font-size: 1.4rem;
+            font-size: 1.75rem;
             cursor: pointer;
             transition: all 0.2s;
             display: flex;
@@ -469,12 +487,12 @@
         .text-input-expanded input {
             flex: 1;
             min-width: 0;
-            width: 180px;
+            width: 200px;
             padding: 0.5rem 0;
             background: transparent;
             border: none;
             color: var(--text-primary);
-            font-size: 0.95rem;
+            font-size: 1.25rem;
         }
         .text-input-expanded input:focus {
             outline: none;
@@ -483,13 +501,13 @@
             color: var(--text-muted);
         }
         .send-btn {
-            width: 40px;
-            height: 40px;
+            width: 52px;
+            height: 52px;
             border-radius: 50%;
             background: var(--primary);
             border: none;
             color: #000;
-            font-size: 1.1rem;
+            font-size: 1.5rem;
             cursor: pointer;
             transition: all 0.2s;
             display: flex;
@@ -509,8 +527,8 @@
 
         /* Mic button - right side */
         .mic-btn {
-            width: 72px;
-            height: 72px;
+            width: 80px;
+            height: 80px;
             border-radius: 50%;
             border: none;
             cursor: pointer;
@@ -519,7 +537,7 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 1.8rem;
+            font-size: 2rem;
         }
         .mic-btn.idle {
             background: linear-gradient(135deg, var(--primary), var(--primary-dark));
@@ -660,116 +678,6 @@
             cursor: not-allowed;
         }
 
-        /* Mobile styles - larger fonts and better spacing */
-        @media (max-width: 768px) {
-            :root {
-                --header-height: 60px;
-            }
-
-            .header h1 {
-                font-size: 1.5rem;
-            }
-
-            .header-brand {
-                font-size: 1.3rem;
-            }
-
-            .header-logo {
-                width: 32px;
-                height: 32px;
-            }
-
-            .state-label {
-                font-size: 2.5rem;
-            }
-
-            .orb-container {
-                width: min(60vw, 50vh, 300px);
-                height: min(60vw, 50vh, 300px);
-            }
-
-            .ai-bubble {
-                font-size: 1.4rem;
-                padding: 1.25rem 1.5rem;
-                max-width: 92%;
-                line-height: 1.5;
-            }
-
-            .ai-bubble::before {
-                font-size: 1.3rem;
-            }
-
-            .user-bubble {
-                font-size: 1.35rem;
-                padding: 1.25rem 1.5rem;
-                max-width: 92%;
-                line-height: 1.5;
-            }
-
-            .user-bubble::after {
-                font-size: 1.2rem;
-            }
-
-            .mic-btn {
-                width: 88px;
-                height: 88px;
-                font-size: 2.5rem;
-            }
-
-            .text-toggle-btn {
-                width: 72px;
-                height: 72px;
-                font-size: 2rem;
-            }
-
-            .text-input-expanded input {
-                font-size: 1.25rem;
-                width: 200px;
-            }
-
-            .send-btn {
-                width: 52px;
-                height: 52px;
-                font-size: 1.5rem;
-            }
-
-            .floating-controls {
-                bottom: 2rem;
-                left: 1.5rem;
-                right: 1.5rem;
-            }
-
-            .user-bubble-container {
-                padding-bottom: 140px;
-            }
-
-            .ai-bubble-container {
-                padding: 1.25rem;
-                padding-bottom: 0;
-            }
-
-            .status {
-                font-size: 1rem;
-            }
-
-            .settings-btn {
-                font-size: 1.8rem;
-            }
-
-            .settings-dropdown {
-                font-size: 1rem;
-            }
-
-            .settings-group label {
-                font-size: 0.8rem;
-            }
-
-            .settings-group select,
-            .settings-group button {
-                font-size: 1rem;
-                padding: 0.6rem 0.75rem;
-            }
-        }
 
         /* Start in ambient mode by default via CSS */
         .output.ambient-default { display: none; }
