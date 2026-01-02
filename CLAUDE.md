@@ -466,8 +466,12 @@ cat > ~/.agentwire/config.yaml << 'EOF'
 projects:
   dir: "~/projects"
 
+# Machine identity (must match id in portal's machines.json)
+# Used by remote-say to construct room name: session@machine
+machine:
+  id: "do-1"  # Change this to match your machine ID
+
 # Portal URL - localhost because portal tunnels here
-# (default is https://localhost:8765, so this line is optional)
 portal:
   url: "https://localhost:8765"
 
@@ -484,12 +488,19 @@ EOF
 
 **Install voice commands:**
 ```bash
-# remote-say - uses agentwire say which reads portal.url from config
+# remote-say - reads machine.id from config to construct room name
 # Install to /usr/local/bin so it's in PATH for all shells (including Claude Code)
 sudo tee /usr/local/bin/remote-say << 'EOF'
 #!/bin/bash
 TEXT="$1"
-ROOM=$(tmux display-message -p '#S' 2>/dev/null || echo "default")
+SESSION=$(tmux display-message -p '#S' 2>/dev/null || echo "default")
+# Get machine ID from config to construct room name: session@machine
+MACHINE=$(grep -A1 "^machine:" ~/.agentwire/config.yaml | grep "id:" | sed 's/.*id: *"\([^"]*\)".*/\1/')
+if [ -n "$MACHINE" ]; then
+    ROOM="${SESSION}@${MACHINE}"
+else
+    ROOM="$SESSION"
+fi
 [ -z "$TEXT" ] && echo "Usage: remote-say \"message\"" && exit 1
 exec /home/agentwire/.local/share/agentwire-venv/bin/agentwire say --room "$ROOM" "$TEXT"
 EOF
