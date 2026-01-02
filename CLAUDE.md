@@ -271,6 +271,203 @@ Voices are stored in `~/.agentwire/voices/` and synced across portal config.
 
 ---
 
+## Remote Machine Setup (Ubuntu/Linux)
+
+Step-by-step guide for adding a new remote machine to run Claude Code sessions.
+
+### Prerequisites
+
+- SSH access to the machine (initially as root)
+- Machine added to `~/.ssh/config` on your local machine
+- GitHub deploy keys for private repos
+
+### Step 1: Create Non-Root User
+
+Claude Code refuses to run as root. Create a dedicated user first:
+
+```bash
+# SSH in as root initially
+ssh root@<ip-address>
+
+# Create user with sudo access
+useradd -m -s /bin/bash agentwire
+echo "agentwire ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/agentwire
+
+# Copy SSH authorized_keys
+mkdir -p /home/agentwire/.ssh
+cp /root/.ssh/authorized_keys /home/agentwire/.ssh/
+chown -R agentwire:agentwire /home/agentwire/.ssh
+chmod 700 /home/agentwire/.ssh
+chmod 600 /home/agentwire/.ssh/authorized_keys
+```
+
+Update your local `~/.ssh/config` to use the new user:
+
+```
+Host do-1
+    HostName <ip-address>
+    User agentwire
+    IdentityFile ~/.ssh/<your-key>
+```
+
+### Step 2: Install Dependencies
+
+```bash
+ssh do-1  # Now connects as agentwire user
+
+# Install system packages (as agentwire with sudo)
+sudo apt-get update
+sudo apt-get install -y python3 python3-pip tmux git curl
+
+# Install Node.js 22.x
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo bash -
+sudo apt-get install -y nodejs
+
+# Install uv (Python package manager)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+echo 'source ~/.local/bin/env' >> ~/.bashrc
+source ~/.local/bin/env
+
+# Install Claude Code
+sudo npm install -g @anthropic-ai/claude-code
+```
+
+### Step 3: Setup GitHub SSH Keys
+
+Each private repo needs its own deploy key (GitHub limitation):
+
+```bash
+# Generate keys for each repo
+ssh-keygen -t ed25519 -f ~/.ssh/github-agentwire -N "" -C "machine-agentwire"
+ssh-keygen -t ed25519 -f ~/.ssh/github-claude -N "" -C "machine-claude"
+ssh-keygen -t ed25519 -f ~/.ssh/github-<project> -N "" -C "machine-<project>"
+
+# Add to SSH config
+cat >> ~/.ssh/config << 'EOF'
+Host github.com
+    HostName github.com
+    User git
+    IdentityFile ~/.ssh/github-agentwire
+
+Host github-claude
+    HostName github.com
+    User git
+    IdentityFile ~/.ssh/github-claude
+
+Host github-<project>
+    HostName github.com
+    User git
+    IdentityFile ~/.ssh/github-<project>
+EOF
+
+chmod 600 ~/.ssh/config
+ssh-keyscan github.com >> ~/.ssh/known_hosts
+```
+
+Add each public key as a deploy key on GitHub:
+```bash
+# From your LOCAL machine with gh CLI
+gh repo deploy-key add <(cat pubkey) --repo owner/repo --title "machine-name"
+```
+
+### Step 4: Clone Repos and Install
+
+```bash
+# Clone agentwire
+git clone git@github.com:user/agentwire.git
+cd agentwire && uv tool install -e . && cd ~
+
+# Clone .claude config (use host alias for different key)
+git clone git@github-claude:user/.claude.git ~/.claude
+
+# Create projects directory
+mkdir -p ~/projects
+
+# Clone project repos (use host alias if needed)
+git clone git@github-<project>:user/<project>.git ~/projects/<project>
+```
+
+### Step 5: Authenticate Claude Code
+
+**This must be done interactively before sessions will work:**
+
+```bash
+ssh do-1
+claude
+# Follow prompts to authenticate via browser or API key
+# Exit with Ctrl+C after authentication succeeds
+```
+
+### Step 6: Register Machine Locally
+
+Add to `~/.agentwire/machines.json` on your local machine:
+
+```json
+{
+  "machines": [
+    {
+      "id": "do-1",
+      "host": "do-1",
+      "projects_dir": "/home/agentwire/projects"
+    }
+  ]
+}
+```
+
+Restart the portal to pick up the new machine:
+```bash
+agentwire portal stop && agentwire portal start
+```
+
+### Step 7: Voice Commands (Optional)
+
+For `remote-say` to work, the remote machine needs to reach your portal. Options:
+
+1. **Reverse SSH tunnel** (simplest):
+   ```bash
+   # On remote machine, tunnel to portal
+   ssh -R 8765:localhost:8765 your-mac
+   ```
+
+2. **Public URL**: Set `server.public_url` in config.yaml and open firewall
+
+3. **Skip voice**: Sessions work without TTS - just no spoken responses
+
+Install remote-say script if using tunnels:
+```bash
+cat > ~/.local/bin/remote-say << 'EOF'
+#!/bin/bash
+TEXT="$1"
+ROOM=$(tmux display-message -p '#S' 2>/dev/null || echo "default")
+curl -sk -X POST "https://localhost:8765/api/say/$ROOM" \
+    -H "Content-Type: application/json" \
+    -d "{\"text\": $(echo "$TEXT" | jq -Rs .)}" >/dev/null 2>&1 &
+EOF
+chmod +x ~/.local/bin/remote-say
+```
+
+### Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| Claude won't run | Must authenticate first: `ssh machine && claude` |
+| Session not in portal | Restart portal after adding machine |
+| Deploy key "already in use" | Each repo needs a unique key |
+| Permission denied (SSH) | Check user in ~/.ssh/config matches |
+| `remote-say` fails | Need tunnel or public URL to portal |
+
+### Minimum Specs
+
+| Resource | Minimum | Recommended |
+|----------|---------|-------------|
+| RAM | 1GB | 2GB+ |
+| Storage | 10GB | 20GB+ |
+| CPU | 1 vCPU | 2+ vCPU |
+
+A 1GB droplet runs 1-2 Claude sessions comfortably. The LLM runs on Anthropic's servers - local machine just needs RAM for Node.js and file operations.
+
+---
+
 ## Development
 
 ```bash
