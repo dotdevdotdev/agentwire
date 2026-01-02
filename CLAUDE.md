@@ -158,6 +158,59 @@ TTS audio includes 300ms silence padding to prevent first-syllable cutoff.
 
 ---
 
+## TTS Server Setup (GPU Machine)
+
+The TTS server runs Chatterbox TurboTTS and requires a CUDA GPU. Install on a GPU machine:
+
+```bash
+# Clone and install
+cd ~/projects
+git clone git@github.com:dotdevdotdev/agentwire.git
+cd agentwire
+
+# Create venv and install with TTS extras
+uv venv
+uv pip install -e '.[tts]'
+
+# Start TTS server in tmux
+source .venv/bin/activate
+agentwire tts start     # Runs in tmux session 'agentwire-tts'
+```
+
+### TTS Commands
+
+| Command | Purpose |
+|---------|---------|
+| `agentwire tts start` | Start server in tmux (agentwire-tts) |
+| `agentwire tts serve` | Run in foreground (for debugging) |
+| `agentwire tts stop` | Stop the tmux session |
+| `agentwire tts status` | Check if running |
+
+### TTS API Endpoints
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/tts` | POST | Generate audio from text |
+| `/voices` | GET | List available voices |
+| `/voices/{name}` | POST | Upload voice clone (~10s WAV) |
+| `/voices/{name}` | DELETE | Delete voice clone |
+| `/transcribe` | POST | Transcribe audio (Whisper) |
+| `/health` | GET | Health check |
+
+### Voice Cloning
+
+Record a ~10 second WAV file and upload:
+
+```bash
+agentwire voiceclone start   # Start recording
+agentwire voiceclone stop myvoice  # Stop and upload
+agentwire voiceclone list    # List voices
+```
+
+Voices are stored in `~/.agentwire/voices/` and synced across portal config.
+
+---
+
 ## Architecture
 
 ```
