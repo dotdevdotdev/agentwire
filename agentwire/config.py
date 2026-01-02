@@ -4,13 +4,22 @@ AgentWire configuration management.
 Loads config from YAML file with sensible defaults and env var overrides.
 """
 
+from __future__ import annotations
+
+import logging
 import os
 import platform
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 import yaml
+
+if TYPE_CHECKING:
+    from agentwire.watcher import Trigger
+
+logger = logging.getLogger(__name__)
 
 
 def _expand_path(path: str | Path | None) -> Path | None:
@@ -152,6 +161,162 @@ class PortalConfig:
 
 
 @dataclass
+class TriggerConfig:
+    """Configuration for a single trigger.
+
+    Triggers watch tmux output and fire actions when patterns match.
+
+    Attributes:
+        pattern: Regex pattern string to match against output.
+        mode: "transient" matches each chunk as it arrives,
+              "persistent" matches against accumulated buffer.
+        action: Action to fire on match (tts, popup, notify, sound, send_keys, broadcast).
+        enabled: Whether this trigger is active.
+        template: Template string for action (e.g., TTS text with {group} substitutions).
+        title: Title for popup/notify actions.
+        body: Body text for popup/notify actions.
+        keys: Keys to send for send_keys action.
+        on: For persistent mode: "appear", "disappear", or "both".
+    """
+
+    pattern: str
+    mode: str = "transient"
+    action: str = "tts"
+    enabled: bool = True
+    template: str | None = None
+    title: str | None = None
+    body: str | None = None
+    keys: str | None = None
+    on: str = "appear"
+
+
+# Built-in trigger patterns
+_SAY_PATTERN = r'(?:remote-)?say\s+(?:"([^"]+)"|\'([^\']+)\')'
+_ASK_PATTERN = (
+    r'\s*☐\s+(?P<header>.+?)\s*\n\s*\n'
+    r'(?P<question>.+?\?)\s*\n\s*\n'
+    r'(?P<options_block>(?:[❯\s]+\d+\.\s+.+\n(?:\s{3,}.+\n)?)+)'
+)
+
+
+@dataclass
+class TriggersConfig:
+    """Triggers configuration section.
+
+    Contains built-in triggers (always present, can be disabled) and
+    user-defined custom triggers loaded from config.
+
+    Attributes:
+        say_command: Built-in trigger for `say "text"` commands.
+        ask_question: Built-in trigger for AskUserQuestion UI.
+        custom: User-defined triggers keyed by name.
+    """
+
+    say_command: TriggerConfig = field(
+        default_factory=lambda: TriggerConfig(
+            pattern=_SAY_PATTERN,
+            action="tts",
+        )
+    )
+    ask_question: TriggerConfig = field(
+        default_factory=lambda: TriggerConfig(
+            pattern=_ASK_PATTERN,
+            mode="persistent",
+            action="popup",
+        )
+    )
+    custom: dict[str, TriggerConfig] = field(default_factory=dict)
+
+    def to_triggers(self) -> list[Trigger]:
+        """Convert config to list of Trigger objects.
+
+        Returns:
+            List of Trigger objects for use with SessionWatcher.
+        """
+        from agentwire.watcher import Trigger
+
+        triggers: list[Trigger] = []
+
+        # Built-in: say_command
+        if self.say_command.enabled:
+            try:
+                triggers.append(
+                    Trigger(
+                        name="say_command",
+                        pattern=re.compile(self.say_command.pattern),
+                        mode="transient",
+                        action=self.say_command.action,
+                        config=_trigger_config_to_dict(self.say_command),
+                        enabled=True,
+                        builtin=True,
+                    )
+                )
+            except re.error as e:
+                logger.warning(f"Invalid pattern for say_command: {e}")
+
+        # Built-in: ask_question
+        if self.ask_question.enabled:
+            try:
+                triggers.append(
+                    Trigger(
+                        name="ask_question",
+                        pattern=re.compile(self.ask_question.pattern),
+                        mode="persistent",
+                        action=self.ask_question.action,
+                        config=_trigger_config_to_dict(self.ask_question),
+                        enabled=True,
+                        builtin=True,
+                    )
+                )
+            except re.error as e:
+                logger.warning(f"Invalid pattern for ask_question: {e}")
+
+        # Custom triggers
+        for name, cfg in self.custom.items():
+            if not cfg.enabled:
+                continue
+            try:
+                triggers.append(
+                    Trigger(
+                        name=name,
+                        pattern=re.compile(cfg.pattern),
+                        mode=cfg.mode if cfg.mode in ("transient", "persistent") else "transient",
+                        action=cfg.action,
+                        config=_trigger_config_to_dict(cfg),
+                        enabled=True,
+                        builtin=False,
+                    )
+                )
+            except re.error as e:
+                logger.warning(f"Invalid pattern for trigger '{name}': {e}")
+
+        return triggers
+
+
+def _trigger_config_to_dict(cfg: TriggerConfig) -> dict[str, Any]:
+    """Extract action-specific config from TriggerConfig.
+
+    Args:
+        cfg: The trigger configuration.
+
+    Returns:
+        Dict with non-None action-specific fields.
+    """
+    result: dict[str, Any] = {}
+    if cfg.template is not None:
+        result["template"] = cfg.template
+    if cfg.title is not None:
+        result["title"] = cfg.title
+    if cfg.body is not None:
+        result["body"] = cfg.body
+    if cfg.keys is not None:
+        result["keys"] = cfg.keys
+    if cfg.on != "appear":
+        result["on"] = cfg.on
+    return result
+
+
+@dataclass
 class Config:
     """Root configuration for AgentWire."""
 
@@ -164,6 +329,7 @@ class Config:
     rooms: RoomsConfig = field(default_factory=RoomsConfig)
     uploads: UploadsConfig = field(default_factory=UploadsConfig)
     portal: PortalConfig = field(default_factory=PortalConfig)
+    triggers: TriggersConfig = field(default_factory=TriggersConfig)
 
 
 def _merge_dict(base: dict, override: dict) -> dict:
@@ -227,6 +393,88 @@ def _parse_env_value(value: str) -> str | int | float | bool:
         pass
 
     return value
+
+
+def _parse_trigger_config(data: dict) -> TriggerConfig:
+    """Parse a single trigger config from dict.
+
+    Args:
+        data: Dict with trigger configuration.
+
+    Returns:
+        TriggerConfig instance.
+    """
+    return TriggerConfig(
+        pattern=data.get("pattern", ""),
+        mode=data.get("mode", "transient"),
+        action=data.get("action", "tts"),
+        enabled=data.get("enabled", True),
+        template=data.get("template"),
+        title=data.get("title"),
+        body=data.get("body"),
+        keys=data.get("keys"),
+        on=data.get("on", "appear"),
+    )
+
+
+def _parse_triggers_config(data: dict) -> TriggersConfig:
+    """Parse the triggers section from config dict.
+
+    Args:
+        data: Dict with triggers configuration.
+
+    Returns:
+        TriggersConfig instance with built-in and custom triggers.
+    """
+    # Parse built-in trigger overrides
+    say_command_data = data.get("say_command", {})
+    ask_question_data = data.get("ask_question", {})
+
+    # Create built-in configs, merging with defaults
+    say_command = TriggerConfig(
+        pattern=say_command_data.get("pattern", _SAY_PATTERN),
+        mode="transient",  # Always transient for say
+        action=say_command_data.get("action", "tts"),
+        enabled=say_command_data.get("enabled", True),
+        template=say_command_data.get("template"),
+        title=say_command_data.get("title"),
+        body=say_command_data.get("body"),
+        keys=say_command_data.get("keys"),
+        on="appear",
+    )
+
+    ask_question = TriggerConfig(
+        pattern=ask_question_data.get("pattern", _ASK_PATTERN),
+        mode="persistent",  # Always persistent for ask
+        action=ask_question_data.get("action", "popup"),
+        enabled=ask_question_data.get("enabled", True),
+        template=ask_question_data.get("template"),
+        title=ask_question_data.get("title"),
+        body=ask_question_data.get("body"),
+        keys=ask_question_data.get("keys"),
+        on=ask_question_data.get("on", "appear"),
+    )
+
+    # Parse custom triggers (everything except built-in names)
+    builtin_names = {"say_command", "ask_question"}
+    custom: dict[str, TriggerConfig] = {}
+
+    for name, trigger_data in data.items():
+        if name in builtin_names:
+            continue
+        if not isinstance(trigger_data, dict):
+            continue
+        if "pattern" not in trigger_data:
+            logger.warning(f"Skipping trigger '{name}': missing pattern")
+            continue
+
+        custom[name] = _parse_trigger_config(trigger_data)
+
+    return TriggersConfig(
+        say_command=say_command,
+        ask_question=ask_question,
+        custom=custom,
+    )
 
 
 def _dict_to_config(data: dict) -> Config:
@@ -305,6 +553,9 @@ def _dict_to_config(data: dict) -> Config:
         url=portal_data.get("url", "https://localhost:8765"),
     )
 
+    # Triggers
+    triggers = _parse_triggers_config(data.get("triggers", {}))
+
     return Config(
         server=server,
         projects=projects,
@@ -315,6 +566,7 @@ def _dict_to_config(data: dict) -> Config:
         rooms=rooms,
         uploads=uploads,
         portal=portal,
+        triggers=triggers,
     )
 
 

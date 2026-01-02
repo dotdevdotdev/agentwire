@@ -22,8 +22,10 @@ from typing import Any
 
 from aiohttp import web
 
+from .actions import default_registry
 from .config import Config, load_config
 from .templates import get_template
+from .watcher import SessionWatcher, Trigger
 from .worktree import ensure_worktree, get_project_type, get_session_path, parse_session_name
 
 __version__ = "0.1.0"
@@ -44,7 +46,20 @@ class RoomConfig:
 
 @dataclass
 class Room:
-    """Active room with connected clients."""
+    """Active room with connected clients.
+
+    Attributes:
+        name: Session name (e.g., "api", "api/feature", "api@remote").
+        config: Runtime configuration (voice, exaggeration, etc.).
+        clients: Set of connected WebSocket clients.
+        locked_by: Client ID holding the room lock (for push-to-talk).
+        last_output: Last output snapshot for detecting changes.
+        output_task: Background task for output polling (legacy, replaced by watcher).
+        played_says: Set of already-played TTS texts to avoid duplicates.
+        last_question: Last AskUserQuestion key to avoid duplicate popups.
+        watcher: SessionWatcher for real-time output monitoring.
+        server: Reference to AgentWireServer for TTS/agent access.
+    """
 
     name: str
     config: RoomConfig
@@ -53,7 +68,45 @@ class Room:
     last_output: str = ""
     output_task: asyncio.Task | None = None
     played_says: set = field(default_factory=set)
-    last_question: str | None = None  # Track last AskUserQuestion to avoid duplicates
+    last_question: str | None = None
+    watcher: SessionWatcher | None = None
+    server: "AgentWireServer | None" = None
+
+    async def speak(self, text: str) -> None:
+        """Generate TTS and broadcast audio to all clients.
+
+        Args:
+            text: Text to speak.
+        """
+        if not self.server:
+            logger.warning("Room.speak() called but no server reference")
+            return
+        await self.server.speak(self.name, text)
+
+    async def broadcast(self, message: dict) -> None:
+        """Broadcast message to all connected clients.
+
+        Args:
+            message: JSON-serializable message dict.
+        """
+        dead_clients = set()
+        for client in self.clients:
+            try:
+                await client.send_json(message)
+            except Exception:
+                dead_clients.add(client)
+        self.clients -= dead_clients
+
+    async def send_input(self, keys: str) -> None:
+        """Send keystrokes to the tmux session.
+
+        Args:
+            keys: Key sequence to send.
+        """
+        if not self.server or not self.server.agent:
+            logger.warning("Room.send_input() called but no server/agent reference")
+            return
+        self.server.agent.send_input(self.name, keys)
 
 
 class AgentWireServer:
@@ -194,6 +247,155 @@ class AgentWireServer:
             )
         return RoomConfig(voice=self.config.tts.default_voice)
 
+    def _build_triggers(self, room_name: str) -> list[Trigger]:
+        """Build trigger list for a room, merging global and per-room configs.
+
+        Args:
+            room_name: The room/session name.
+
+        Returns:
+            List of Trigger objects for this room.
+        """
+        triggers: list[Trigger] = []
+
+        # Load global triggers from config (if config has triggers section)
+        global_triggers = getattr(self.config, 'triggers', None)
+        if global_triggers:
+            for name, trigger_cfg in global_triggers.items():
+                if not trigger_cfg.get('enabled', True):
+                    continue
+                pattern_str = trigger_cfg.get('pattern', '')
+                if not pattern_str:
+                    continue
+                try:
+                    pattern = re.compile(pattern_str, re.MULTILINE)
+                except re.error as e:
+                    logger.warning(f"Invalid trigger pattern '{name}': {e}")
+                    continue
+                triggers.append(Trigger(
+                    name=name,
+                    pattern=pattern,
+                    mode=trigger_cfg.get('mode', 'transient'),
+                    action=trigger_cfg.get('action', 'notify'),
+                    config={k: v for k, v in trigger_cfg.items()
+                            if k not in ('pattern', 'mode', 'action', 'enabled', 'builtin')},
+                    enabled=True,
+                    builtin=trigger_cfg.get('builtin', False),
+                ))
+
+        # Load per-room overrides from rooms.json
+        room_configs = self._load_room_configs()
+        room_cfg = room_configs.get(room_name, {})
+        room_triggers = room_cfg.get('triggers', {})
+
+        for name, trigger_cfg in room_triggers.items():
+            # Check if this overrides a global trigger
+            existing = next((t for t in triggers if t.name == name), None)
+
+            if existing:
+                # Override enabled state
+                if 'enabled' in trigger_cfg:
+                    existing.enabled = trigger_cfg['enabled']
+                # Override other config options
+                for key in ('template', 'title', 'body', 'keys', 'on'):
+                    if key in trigger_cfg:
+                        existing.config[key] = trigger_cfg[key]
+            else:
+                # New room-specific trigger
+                pattern_str = trigger_cfg.get('pattern', '')
+                if not pattern_str or not trigger_cfg.get('enabled', True):
+                    continue
+                try:
+                    pattern = re.compile(pattern_str, re.MULTILINE)
+                except re.error as e:
+                    logger.warning(f"Invalid trigger pattern '{name}' in room {room_name}: {e}")
+                    continue
+                triggers.append(Trigger(
+                    name=name,
+                    pattern=pattern,
+                    mode=trigger_cfg.get('mode', 'transient'),
+                    action=trigger_cfg.get('action', 'notify'),
+                    config={k: v for k, v in trigger_cfg.items()
+                            if k not in ('pattern', 'mode', 'action', 'enabled', 'builtin')},
+                    enabled=True,
+                    builtin=False,
+                ))
+
+        return triggers
+
+    async def _get_or_create_room(self, name: str) -> Room:
+        """Get existing room or create new one with watcher.
+
+        Creates a Room with:
+        - Loaded config from rooms.json
+        - SessionWatcher initialized with triggers
+        - Server reference for TTS/agent access
+
+        Args:
+            name: The room/session name.
+
+        Returns:
+            The Room instance (existing or newly created).
+        """
+        if name in self.rooms:
+            return self.rooms[name]
+
+        # Create new room
+        room = Room(
+            name=name,
+            config=self._get_room_config(name),
+            server=self,
+        )
+        self.rooms[name] = room
+
+        # Build triggers for this room
+        triggers = self._build_triggers(name)
+
+        # Create and start watcher
+        watcher = SessionWatcher(
+            session=name,
+            triggers=triggers,
+            actions=default_registry,
+            room=room,
+        )
+        room.watcher = watcher
+
+        # Start watcher (non-blocking - it runs in background)
+        success = await watcher.start()
+        if not success:
+            logger.warning(f"Failed to start watcher for {name} - falling back to polling")
+            # Watcher failed (session doesn't exist, tmux error, etc.)
+            # Room still works, just without real-time triggers
+
+        logger.info(f"Created room: {name} (watcher: {'active' if success else 'inactive'})")
+        return room
+
+    async def _destroy_room(self, name: str) -> None:
+        """Destroy a room and clean up its watcher.
+
+        Called when the last client disconnects from a room.
+
+        Args:
+            name: The room/session name.
+        """
+        if name not in self.rooms:
+            return
+
+        room = self.rooms[name]
+
+        # Stop watcher
+        if room.watcher:
+            await room.watcher.stop()
+            room.watcher = None
+
+        # Cancel output polling task
+        if room.output_task:
+            room.output_task.cancel()
+            room.output_task = None
+
+        del self.rooms[name]
+        logger.info(f"Destroyed room: {name}")
+
     async def _get_voices(self) -> list[str]:
         """Get available TTS voices."""
         if self.tts:
@@ -316,11 +518,8 @@ class AgentWireServer:
         ws = web.WebSocketResponse()
         await ws.prepare(request)
 
-        # Get or create room
-        if name not in self.rooms:
-            self.rooms[name] = Room(name=name, config=self._get_room_config(name))
-
-        room = self.rooms[name]
+        # Get or create room (with watcher)
+        room = await self._get_or_create_room(name)
         client_id = str(id(ws))
         room.clients.add(ws)
 
@@ -335,7 +534,7 @@ class AgentWireServer:
         except Exception as e:
             logger.debug(f"Initial output fetch failed for {name}: {e}")
 
-        # Start output polling if not running
+        # Start output polling if not running (still needed for output display)
         if room.output_task is None or room.output_task.done():
             room.output_task = asyncio.create_task(self._poll_output(room))
 
@@ -353,7 +552,11 @@ class AgentWireServer:
             room.clients.discard(ws)
             if room.locked_by == client_id:
                 room.locked_by = None
-                await self._broadcast(room, {"type": "room_unlocked"})
+                await room.broadcast({"type": "room_unlocked"})
+
+            # Destroy room if no clients left
+            if not room.clients:
+                await self._destroy_room(name)
 
         return ws
 
@@ -1114,11 +1317,8 @@ projects:
             if not text:
                 return web.json_response({"error": "No text provided"}, status=400)
 
-            # Ensure room exists (create if not)
-            if name not in self.rooms:
-                self.rooms[name] = Room(name=name, config=self._get_room_config(name))
-
-            room = self.rooms[name]
+            # Ensure room exists (create with watcher if needed)
+            room = await self._get_or_create_room(name)
 
             # Track this text to avoid duplicate TTS from output polling
             room.played_says.add(text)
