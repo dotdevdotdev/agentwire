@@ -131,6 +131,20 @@ class RoomsConfig:
 
 
 @dataclass
+class UploadsConfig:
+    """Uploads directory for images shared across machines."""
+
+    dir: Path = field(
+        default_factory=lambda: Path.home() / ".agentwire" / "uploads"
+    )
+    max_size_mb: int = 10
+    cleanup_days: int = 7
+
+    def __post_init__(self):
+        self.dir = _expand_path(self.dir) or self.dir
+
+
+@dataclass
 class Config:
     """Root configuration for AgentWire."""
 
@@ -141,6 +155,7 @@ class Config:
     agent: AgentConfig = field(default_factory=AgentConfig)
     machines: MachinesConfig = field(default_factory=MachinesConfig)
     rooms: RoomsConfig = field(default_factory=RoomsConfig)
+    uploads: UploadsConfig = field(default_factory=UploadsConfig)
 
 
 def _merge_dict(base: dict, override: dict) -> dict:
@@ -268,6 +283,14 @@ def _dict_to_config(data: dict) -> Config:
         file=rooms_data.get("file", "~/.agentwire/rooms.json"),
     )
 
+    # Uploads
+    uploads_data = data.get("uploads", {})
+    uploads = UploadsConfig(
+        dir=uploads_data.get("dir", "~/.agentwire/uploads"),
+        max_size_mb=uploads_data.get("max_size_mb", 10),
+        cleanup_days=uploads_data.get("cleanup_days", 7),
+    )
+
     return Config(
         server=server,
         projects=projects,
@@ -276,6 +299,7 @@ def _dict_to_config(data: dict) -> Config:
         agent=agent,
         machines=machines,
         rooms=rooms,
+        uploads=uploads,
     )
 
 

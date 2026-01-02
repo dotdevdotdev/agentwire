@@ -13,6 +13,8 @@ import re
 import ssl
 import struct
 import tempfile
+import time
+import uuid
 import wave
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -74,6 +76,7 @@ class AgentWireServer:
         self.app.router.add_post("/api/create", self.api_create_session)
         self.app.router.add_post("/api/room/{name:.+}/config", self.api_room_config)
         self.app.router.add_post("/transcribe", self.handle_transcribe)
+        self.app.router.add_post("/upload", self.handle_upload)
         self.app.router.add_post("/send/{name:.+}", self.handle_send)
         self.app.router.add_post("/api/say/{name:.+}", self.api_say)
         self.app.router.add_get("/api/voices", self.api_voices)
@@ -134,6 +137,28 @@ class AgentWireServer:
         """Clean up backend resources."""
         if self.tts:
             await self.tts.close()
+
+    async def cleanup_old_uploads(self):
+        """Delete uploads older than cleanup_days."""
+        uploads_dir = self.config.uploads.dir
+        cleanup_days = self.config.uploads.cleanup_days
+
+        if cleanup_days <= 0 or not uploads_dir.exists():
+            return
+
+        cutoff = time.time() - (cleanup_days * 86400)
+        cleaned = 0
+
+        for f in uploads_dir.iterdir():
+            if f.is_file() and f.stat().st_mtime < cutoff:
+                try:
+                    f.unlink()
+                    cleaned += 1
+                except Exception as e:
+                    logger.warning(f"Failed to clean up {f}: {e}")
+
+        if cleaned > 0:
+            logger.info(f"Cleaned up {cleaned} old upload(s)")
 
     def _load_room_configs(self) -> dict[str, dict]:
         """Load room configurations from file."""
@@ -841,6 +866,57 @@ projects:
             logger.error(f"Transcription failed: {e}")
             return web.json_response({"error": str(e)})
 
+    async def handle_upload(self, request: web.Request) -> web.Response:
+        """Upload an image file for attachment to messages."""
+        try:
+            reader = await request.multipart()
+            image_field = await reader.next()
+
+            if image_field is None:
+                return web.json_response({"error": "No image data"})
+
+            # Check content type
+            content_type = image_field.headers.get("Content-Type", "")
+            if not content_type.startswith("image/"):
+                return web.json_response({"error": "File must be an image"})
+
+            # Read image data
+            image_data = await image_field.read()
+
+            if not image_data:
+                return web.json_response({"error": "Empty image data"})
+
+            # Check file size
+            max_bytes = self.config.uploads.max_size_mb * 1024 * 1024
+            if len(image_data) > max_bytes:
+                return web.json_response({
+                    "error": f"File too large (max {self.config.uploads.max_size_mb}MB)"
+                })
+
+            # Ensure uploads directory exists
+            uploads_dir = self.config.uploads.dir
+            uploads_dir.mkdir(parents=True, exist_ok=True)
+
+            # Generate unique filename
+            ext = content_type.split("/")[-1]
+            if ext == "jpeg":
+                ext = "jpg"
+            filename = f"{int(time.time())}-{uuid.uuid4().hex[:8]}.{ext}"
+            filepath = uploads_dir / filename
+
+            # Save file
+            filepath.write_bytes(image_data)
+            logger.info(f"Uploaded image: {filepath}")
+
+            return web.json_response({
+                "path": str(filepath),
+                "filename": filename
+            })
+
+        except Exception as e:
+            logger.error(f"Upload failed: {e}")
+            return web.json_response({"error": str(e)})
+
     async def handle_send(self, request: web.Request) -> web.Response:
         """Send text to an agent session."""
         name = request.match_info["name"]
@@ -1010,6 +1086,9 @@ async def run_server(config: Config):
     """Run the AgentWire server."""
     server = AgentWireServer(config)
     await server.init_backends()
+
+    # Cleanup old uploads on startup
+    await server.cleanup_old_uploads()
 
     # Setup SSL if configured
     ssl_context = None

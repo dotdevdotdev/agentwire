@@ -61,3 +61,14 @@ machines:
 # === Room Configurations ===
 rooms:
   file: "~/.agentwire/rooms.json"
+
+# === Image Uploads ===
+uploads:
+  # Directory for uploaded images (should be accessible from all machines)
+  dir: "~/.agentwire/uploads"
+
+  # Maximum file size in MB
+  max_size_mb: 10
+
+  # Auto-cleanup: delete files older than N days (0 = disabled)
+  cleanup_days: 7

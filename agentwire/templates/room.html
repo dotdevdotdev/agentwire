@@ -709,6 +709,81 @@
             cursor: not-allowed;
         }
 
+        /* Image attachment */
+        .controls .attach-btn {
+            padding: 0.75rem;
+            background: var(--bg-light);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-muted);
+            font-size: 1.1rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .controls .attach-btn:hover {
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+        .controls .attach-btn.has-image {
+            background: var(--primary-subtle);
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+        .image-preview {
+            display: none;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem;
+            background: var(--bg-light);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            margin-bottom: 0.5rem;
+        }
+        .image-preview.visible { display: flex; }
+        .image-preview img {
+            width: 48px;
+            height: 48px;
+            object-fit: cover;
+            border-radius: 4px;
+        }
+        .image-preview .filename {
+            flex: 1;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .image-preview .remove-btn {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-size: 1.1rem;
+            cursor: pointer;
+            padding: 0.25rem;
+        }
+        .image-preview .remove-btn:hover { color: var(--error); }
+
+        /* Ambient mode attach */
+        .text-input-expanded .attach-btn-ambient {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-size: 1rem;
+            cursor: pointer;
+            padding: 0 0.5rem;
+        }
+        .text-input-expanded .attach-btn-ambient:hover { color: var(--primary); }
+        .text-input-expanded .attach-btn-ambient.has-image { color: var(--primary); }
+        .ambient-image-preview {
+            display: none;
+            width: 32px;
+            height: 32px;
+            border-radius: 4px;
+            object-fit: cover;
+            margin-right: 0.5rem;
+        }
+        .ambient-image-preview.visible { display: block; }
 
         /* Start in ambient mode by default via CSS */
         .output.ambient-default { display: none; }
@@ -798,6 +873,8 @@
             <div class="text-input-wrapper">
                 <button class="text-toggle-btn" id="textToggleBtn" onclick="toggleTextInput()">⌨</button>
                 <div class="text-input-expanded" id="textInputExpanded">
+                    <button class="attach-btn-ambient" id="attachBtnAmbient" onclick="triggerFileInput()" title="Attach image">📎</button>
+                    <img class="ambient-image-preview" id="ambientImagePreview" src="" alt="">
                     <input type="text" id="textInputAmbient" placeholder="Type a message..." autocomplete="off">
                     <button class="send-btn" id="sendBtnAmbient" onclick="sendTextInputAmbient()">↑</button>
                 </div>
@@ -812,10 +889,17 @@
     <div class="controls ambient-default" id="terminalControls">
         <div class="transcript" id="transcript">Tap and hold to speak</div>
         <button class="mic-btn-terminal idle" id="micBtnTerminal">Hold to Talk</button>
+        <div class="image-preview" id="imagePreview">
+            <img id="imagePreviewImg" src="" alt="Preview">
+            <span class="filename" id="imageFilename"></span>
+            <button class="remove-btn" onclick="removeImage()">✕</button>
+        </div>
         <div class="text-input-row">
             <input type="text" class="text-input" id="textInput" placeholder="Type a message..." autocomplete="off">
+            <button class="attach-btn" id="attachBtn" onclick="triggerFileInput()" title="Attach image">📎</button>
             <button class="send-btn-terminal" id="sendBtn" onclick="sendTextInput()">↵</button>
         </div>
+        <input type="file" id="fileInput" accept="image/*" style="display:none" onchange="handleFileSelect(event)">
     </div>
 
     <script>
@@ -841,10 +925,18 @@
             userBubble: document.getElementById('userBubble'),
             textToggleBtn: document.getElementById('textToggleBtn'),
             textInputExpanded: document.getElementById('textInputExpanded'),
-            textInputAmbient: document.getElementById('textInputAmbient')
+            textInputAmbient: document.getElementById('textInputAmbient'),
+            imagePreview: document.getElementById('imagePreview'),
+            imagePreviewImg: document.getElementById('imagePreviewImg'),
+            imageFilename: document.getElementById('imageFilename'),
+            attachBtn: document.getElementById('attachBtn'),
+            attachBtnAmbient: document.getElementById('attachBtnAmbient'),
+            ambientImagePreview: document.getElementById('ambientImagePreview'),
+            fileInput: document.getElementById('fileInput')
         };
 
         let textInputOpen = false;
+        let pendingImage = null;  // { file: File, preview: dataURL, filename: string }
 
         function toggleTextInput() {
             textInputOpen = !textInputOpen;
@@ -858,6 +950,104 @@
         function toggleSettings() {
             elements.settingsDropdown.classList.toggle('open');
         }
+
+        // Image attachment functions
+        function triggerFileInput() {
+            elements.fileInput.click();
+        }
+
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (file) {
+                attachImage(file);
+            }
+            event.target.value = '';  // Reset so same file can be selected again
+        }
+
+        function attachImage(file) {
+            if (!file.type.startsWith('image/')) {
+                console.warn('Not an image file');
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                pendingImage = {
+                    file: file,
+                    preview: e.target.result,
+                    filename: file.name
+                };
+                showImagePreview();
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function showImagePreview() {
+            if (!pendingImage) return;
+
+            // Terminal mode preview
+            elements.imagePreviewImg.src = pendingImage.preview;
+            elements.imageFilename.textContent = pendingImage.filename;
+            elements.imagePreview.classList.add('visible');
+            elements.attachBtn.classList.add('has-image');
+
+            // Ambient mode preview
+            elements.ambientImagePreview.src = pendingImage.preview;
+            elements.ambientImagePreview.classList.add('visible');
+            elements.attachBtnAmbient.classList.add('has-image');
+        }
+
+        function removeImage() {
+            pendingImage = null;
+
+            // Terminal mode
+            elements.imagePreview.classList.remove('visible');
+            elements.attachBtn.classList.remove('has-image');
+
+            // Ambient mode
+            elements.ambientImagePreview.classList.remove('visible');
+            elements.attachBtnAmbient.classList.remove('has-image');
+        }
+
+        async function uploadImage() {
+            if (!pendingImage) return null;
+
+            const formData = new FormData();
+            formData.append('image', pendingImage.file);
+
+            try {
+                const resp = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await resp.json();
+                if (data.error) {
+                    console.error('Upload failed:', data.error);
+                    return null;
+                }
+                return data.path;
+            } catch (err) {
+                console.error('Upload error:', err);
+                return null;
+            }
+        }
+
+        // Paste handler for images
+        document.addEventListener('paste', async (e) => {
+            const items = e.clipboardData?.items;
+            if (!items) return;
+
+            for (const item of items) {
+                if (item.type.startsWith('image/')) {
+                    e.preventDefault();
+                    const file = item.getAsFile();
+                    if (file) {
+                        attachImage(file);
+                    }
+                    break;
+                }
+            }
+        });
 
         // Close dropdown when clicking outside
         document.addEventListener('click', (e) => {
@@ -1386,21 +1576,32 @@
         async function sendTextInput() {
             const input = document.getElementById('textInput');
             const text = input.value.trim();
-            if (!text) return;
+            if (!text && !pendingImage) return;
 
             const sendBtn = document.getElementById('sendBtn');
             sendBtn.disabled = true;
             input.disabled = true;
 
             try {
+                let finalText = text;
+
+                // Upload image if attached
+                if (pendingImage) {
+                    const imagePath = await uploadImage();
+                    if (imagePath) {
+                        finalText = `@${imagePath} ${text}`;
+                    }
+                    removeImage();
+                }
+
                 await fetch('/send/' + ROOM, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ text: '[Remote text - use remote-say] ' + text })
+                    body: JSON.stringify({ text: '[Remote text - use remote-say] ' + finalText })
                 });
                 input.value = '';
 
-                elements.transcript.textContent = text;
+                elements.transcript.textContent = text || '(image)';
                 setState(STATES.PROCESSING);
 
                 if (processingTimeout) clearTimeout(processingTimeout);
@@ -1424,19 +1625,30 @@
         async function sendTextInputAmbient() {
             const input = elements.textInputAmbient;
             const text = input.value.trim();
-            if (!text) return;
+            if (!text && !pendingImage) return;
 
             const sendBtn = document.getElementById('sendBtnAmbient');
             sendBtn.disabled = true;
             input.disabled = true;
 
-            showUserBubble(text);
+            showUserBubble(text || '📷');
 
             try {
+                let finalText = text;
+
+                // Upload image if attached
+                if (pendingImage) {
+                    const imagePath = await uploadImage();
+                    if (imagePath) {
+                        finalText = `@${imagePath} ${text}`;
+                    }
+                    removeImage();
+                }
+
                 await fetch('/send/' + ROOM, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ text: '[Remote text - use remote-say] ' + text })
+                    body: JSON.stringify({ text: '[Remote text - use remote-say] ' + finalText })
                 });
                 input.value = '';
 

@@ -148,6 +148,24 @@ The ambient mode orb shows the current interaction state:
 
 The Working state detects when the agent is actively producing output (e.g., during web research or code generation) but hasn't yet spoken. Users can interrupt during Working state.
 
+### Image Attachments
+
+Attach images to messages for debugging, sharing screenshots, or reference:
+
+| Method | Description |
+|--------|-------------|
+| Paste (Ctrl/Cmd+V) | Paste image from clipboard |
+| Attach button (📎) | Click to select image file |
+
+Images are uploaded to the configured `uploads.dir` and referenced in messages using Claude Code's `@/path/to/file` syntax. Configure in `config.yaml`:
+
+```yaml
+uploads:
+  dir: "~/.agentwire/uploads"  # Should be accessible from all machines
+  max_size_mb: 10
+  cleanup_days: 7              # Auto-delete old uploads
+```
+
 ### Say Command Detection
 
 The portal monitors terminal output for `say` and `remote-say` commands:
@@ -169,6 +187,7 @@ TTS audio includes 300ms silence padding to prevent first-syllable cutoff.
 | `/api/say/{name}` | POST | Generate TTS and broadcast to room |
 | `/api/voices` | GET | List available TTS voices |
 | `/transcribe` | POST | Transcribe audio (multipart form) |
+| `/upload` | POST | Upload image (multipart form) |
 | `/send/{name}` | POST | Send text to session |
 
 ---
