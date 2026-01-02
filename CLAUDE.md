@@ -41,6 +41,10 @@ agentwire tts status       # Check TTS status
 agentwire say "Hello"      # Speak text locally
 agentwire say --room api "Done"  # Send TTS to room
 
+# Session interaction
+agentwire send 'say "test"'          # Send command to agentwire session
+agentwire send -s myproj 'say "hi"'  # Send to specific session
+
 # Development
 agentwire dev              # Start orchestrator session (agentwire)
 agentwire generate-certs   # Generate SSL certificates
@@ -314,7 +318,8 @@ Room-level triggers merge with global triggers. Set `enabled: false` to disable.
 ### Matching Semantics
 
 - **All matching triggers fire** - a `say` inside AskUserQuestion triggers both
-- **Each stream appearance fires once** - no deduplication tracking needed
+- **Time-based deduplication** - same match text won't fire again within 2s (prevents echoes from typing + shell output)
+- **Per-session dedup** - history persists across client reconnects
 - **ANSI codes stripped** - patterns match clean text
 - **Broadcasts to all room clients** - everyone sees popups, hears TTS
 
