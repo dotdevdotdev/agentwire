@@ -314,6 +314,7 @@ class SessionWatcher:
         """Start watching the session.
 
         Creates the FIFO, starts pipe-pane, and begins the async read loop.
+        Fails gracefully if session doesn't exist.
 
         Returns:
             True if started successfully, False otherwise.
@@ -321,6 +322,11 @@ class SessionWatcher:
         if self._running:
             logger.warning(f"Watcher for {self.session} already running")
             return True
+
+        # Check if session exists before starting
+        if not _session_exists(self.session):
+            logger.warning(f"Session '{self.session}' not found - watcher not started")
+            return False
 
         # Create FIFO
         try:
@@ -375,23 +381,43 @@ class SessionWatcher:
         This loop opens the FIFO in read mode and iterates over incoming
         data. Each chunk is processed for triggers and added to the buffer.
 
-        The loop handles EOF gracefully (session ended) and continues
-        running until explicitly stopped.
+        The loop handles:
+        - EOF gracefully (session ended or pipe-pane stopped)
+        - FIFO removal (cleanup in progress)
+        - Pipe read errors (broken pipe, etc.)
+        - Session disappearing while watching
+
+        Continues running until explicitly stopped.
         """
         if not self._pipe_path:
             return
+
+        consecutive_errors = 0
+        max_consecutive_errors = 5
 
         while self._running:
             try:
                 # Open FIFO for reading (blocks until writer connects)
                 # Using 'r' mode - FIFO acts like a regular file with async reads
                 async with aiofiles.open(self._pipe_path, 'r') as f:
+                    consecutive_errors = 0  # Reset on successful open
+
                     async for chunk in f:
                         if not self._running:
                             break
 
                         if not chunk:
-                            # EOF - writer disconnected
+                            # EOF - writer disconnected (session ended or pipe-pane stopped)
+                            # Check if session still exists
+                            if not _session_exists(self.session):
+                                logger.info(
+                                    f"Session '{self.session}' ended - stopping watcher"
+                                )
+                                self._running = False
+                                break
+                            # Session exists but EOF - pipe-pane may have stopped
+                            # Brief pause before reopening FIFO
+                            await asyncio.sleep(0.1)
                             continue
 
                         # Process chunk (includes ANSI stripping, buffer append, triggers)
@@ -403,15 +429,47 @@ class SessionWatcher:
                 # FIFO was removed - watcher should stop
                 logger.warning(f"FIFO disappeared for {self.session}")
                 break
+            except BrokenPipeError:
+                # Pipe writer closed unexpectedly
+                if self._running:
+                    logger.debug(f"Broken pipe for {self.session} - will retry")
+                    await asyncio.sleep(0.1)
             except OSError as e:
                 if self._running:
-                    logger.error(f"FIFO read error for {self.session}: {e}")
+                    consecutive_errors += 1
+                    if consecutive_errors >= max_consecutive_errors:
+                        logger.error(
+                            f"Too many consecutive errors for {self.session}, "
+                            f"stopping watcher: {e}"
+                        )
+                        break
+                    logger.warning(f"FIFO read error for {self.session}: {e}")
                     # Brief delay before retrying
+                    await asyncio.sleep(0.1)
+            except IOError as e:
+                if self._running:
+                    consecutive_errors += 1
+                    if consecutive_errors >= max_consecutive_errors:
+                        logger.error(
+                            f"Too many consecutive I/O errors for {self.session}, "
+                            f"stopping watcher: {e}"
+                        )
+                        break
+                    logger.warning(f"I/O error reading FIFO for {self.session}: {e}")
                     await asyncio.sleep(0.1)
             except Exception as e:
                 if self._running:
-                    logger.error(f"Unexpected error in watcher loop for {self.session}: {e}")
+                    consecutive_errors += 1
+                    logger.error(
+                        f"Unexpected error in watcher loop for {self.session}: {e}"
+                    )
+                    if consecutive_errors >= max_consecutive_errors:
+                        logger.error(f"Too many errors, stopping watcher for {self.session}")
+                        break
                     await asyncio.sleep(0.1)
+
+        # Cleanup on exit
+        logger.debug(f"Watch loop ended for {self.session}")
 
     async def _process_chunk(self, chunk: str) -> None:
         """Process a chunk of output from the FIFO.
