@@ -109,38 +109,38 @@ Note: Silent deny chosen over custom message ("3" + text) to keep response fast 
 import re
 
 def _is_allowed_in_restricted_mode(tool_name: str, tool_input: dict) -> bool:
-    """Check if command is allowed in restricted mode (say/remote-say only)."""
+    """Check if command is allowed in restricted mode (say/remote-say only).
+
+    Only allows: say "message" or remote-say "message"
+    Rejects any shell operators, redirects, or multi-line commands.
+    """
     if tool_name != "Bash":
         return False
 
     command = tool_input.get("command", "").strip()
 
-    # Must start with say or remote-say
-    if not command.startswith(("say ", "say\t", "remote-say ", "remote-say\t")):
+    # Reject multi-line commands immediately
+    if '\n' in command:
         return False
 
-    # Guard against shell chaining: reject if command contains operators
-    # that could execute additional commands after say
-    dangerous_patterns = [
-        r'&&',      # AND operator
-        r'\|\|',    # OR operator
-        r';',       # command separator
-        r'\|',      # pipe
-        r'\$\(',    # command substitution
-        r'`',       # backtick substitution
-    ]
+    # Match: (say|remote-say) followed by quoted string and nothing else
+    # Allows: say "hello world"
+    #         say 'hello world'
+    #         remote-say "done"
+    # Rejects: say "hi" && rm -rf /
+    #          say "hi" > /tmp/log
+    #          say $(cat /etc/passwd)
+    pattern = r'^(say|remote-say)\s+(["\']).*\2\s*$'
 
-    for pattern in dangerous_patterns:
-        if re.search(pattern, command):
-            return False
-
-    return True
+    return bool(re.match(pattern, command))
 ```
+
+This approach is stricter: only allows `say "message"` or `say 'message'` with nothing after the closing quote. Any shell operators, redirects, or extra content will fail the regex match.
 
 **Design decisions:**
 - Uses "allow_always" (keystroke "2") for auto-approved commands
 - Silent deny for blocked commands (no TTS announcement)
-- Rejects shell chaining attempts (&&, ||, ;, |, $(), backticks)
+- Strict regex: only accepts `say "text"` or `say 'text'` with nothing after closing quote
 
 ### Badge Colors
 
