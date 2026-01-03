@@ -26,23 +26,23 @@ List all tmux sessions running on local machine and configured remote machines.
 ```
 Local sessions:
   agentwire (orchestrator): 1 window
-  assistant (chatbot): 1 window
-  api (worker): 2 windows
+  api (bypass): 2 windows
+  untrusted-lib (normal): 1 window
   random-session: 1 window
 
 devbox-1:
-  ml (worker): 3 windows
+  ml (bypass): 3 windows
 
 gpu-server: (offline)
 ```
 
-Sessions show name, role (if configured), and window count. Offline machines are indicated.
+Sessions show name, permission mode (if configured), and window count. Offline machines are indicated.
 
-Roles are determined from `~/.agentwire/rooms.json`:
+Permission modes are determined from `~/.agentwire/rooms.json`:
 - `agentwire` is always "orchestrator"
-- Sessions with `chatbot_mode: true` show as "chatbot"
-- Other configured sessions show as "worker"
-- Sessions not in config show without a role label
+- Sessions with `bypass_permissions: true` (or unset) show as "bypass"
+- Sessions with `bypass_permissions: false` show as "normal"
+- Sessions not in config show without a label
 
 ## Implementation
 
@@ -51,8 +51,8 @@ Roles are determined from `~/.agentwire/rooms.json`:
 
 rooms_file="$HOME/.agentwire/rooms.json"
 
-# Function to get role for a session name
-get_role() {
+# Function to get permission mode for a session name
+get_permission_mode() {
   local name="$1"
 
   # agentwire is always orchestrator
@@ -65,28 +65,29 @@ get_role() {
   if [ -f "$rooms_file" ]; then
     local config=$(jq -r --arg n "$name" '.[$n] // empty' "$rooms_file" 2>/dev/null)
     if [ -n "$config" ]; then
-      local is_chatbot=$(echo "$config" | jq -r '.chatbot_mode // false')
-      if [ "$is_chatbot" = "true" ]; then
-        echo "chatbot"
+      # bypass_permissions defaults to true if not set
+      local bypass=$(echo "$config" | jq -r '.bypass_permissions // true')
+      if [ "$bypass" = "true" ]; then
+        echo "bypass"
       else
-        echo "worker"
+        echo "normal"
       fi
       return
     fi
   fi
 
-  # Not in config - no role
+  # Not in config - no label
   echo ""
 }
 
-# Function to format session line with role
+# Function to format session line with permission mode
 format_session() {
   local name="$1"
   local windows="$2"
-  local role=$(get_role "$name")
+  local mode=$(get_permission_mode "$name")
 
-  if [ -n "$role" ]; then
-    echo "  $name ($role): $windows"
+  if [ -n "$mode" ]; then
+    echo "  $name ($mode): $windows"
   else
     echo "  $name: $windows"
   fi
@@ -140,4 +141,4 @@ fi
 - SSH uses BatchMode to avoid password prompts
 - 3-second timeout for unresponsive machines
 - Machines configured in `~/.agentwire/machines.json`
-- Room roles configured in `~/.agentwire/rooms.json`
+- Permission modes configured in `~/.agentwire/rooms.json`

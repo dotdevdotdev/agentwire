@@ -39,49 +39,22 @@ You: /kill nonexistent
 Claude: Session 'nonexistent' does not exist.
 ```
 
-## Implementation Notes
+## Implementation
 
-### Parsing Session Name
-
-```bash
-# Parse <name>@<machine> format
-if [[ "$session" == *"@"* ]]; then
-  name="${session%@*}"
-  machine="${session#*@}"
-else
-  name="$session"
-  machine=""
-fi
-```
-
-### Check If Session Exists
+Use the `agentwire kill` CLI command:
 
 ```bash
-# Local
-tmux has-session -t <session> 2>/dev/null && echo "exists"
+# Local session
+agentwire kill -s <session>
 
-# Remote
-ssh <host> "tmux has-session -t <session> 2>/dev/null" && echo "exists"
+# Remote session (via SSH)
+ssh <host> "agentwire kill -s <session>"
 ```
 
-### Clean Shutdown (Important!)
-
-**Always send `/exit` to Claude Code before killing tmux.** This ensures:
-- Session state is saved properly
-- No orphaned child processes
-- Clean conversation history
-
-```bash
-# Local - clean shutdown
-tmux send-keys -t <session> '/exit' Enter
-sleep 3  # Wait for Claude to close
-tmux kill-session -t <session> 2>/dev/null  # Kill if still exists
-
-# Remote - clean shutdown
-ssh <host> "tmux send-keys -t <session> '/exit' Enter"
-sleep 3
-ssh <host> "tmux kill-session -t <session> 2>/dev/null"
-```
+**The CLI automatically:**
+1. Sends `/exit` to Claude Code for clean shutdown
+2. Waits for Claude to close (~3 seconds)
+3. Kills the tmux session if still exists
 
 ### Machine Registry
 

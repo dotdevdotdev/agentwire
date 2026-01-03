@@ -49,36 +49,20 @@ Send a prompt to a running Claude session in tmux.
 
 ## Implementation
 
+Use the `agentwire send` CLI command:
+
 ```bash
-# Parse session argument
-SESSION="$1"
-shift
-PROMPT="$*"
+# Local session
+agentwire send -s <session> "<prompt>"
 
-if [[ "$SESSION" == *"@"* ]]; then
-  # Remote session: name@machine
-  SESSION_NAME="${SESSION%@*}"
-  MACHINE="${SESSION#*@}"
-
-  # Use base64 + paste buffer to avoid escaping/typing issues
-  PROMPT_B64=$(echo "$PROMPT" | base64)
-  ssh "$MACHINE" "echo '$PROMPT_B64' | base64 -d | tmux load-buffer -"
-  ssh "$MACHINE" "tmux paste-buffer -t '$SESSION_NAME'; sleep 0.1; tmux send-keys -t '$SESSION_NAME' Enter; sleep 0.1; tmux send-keys -t '$SESSION_NAME' Enter"
-else
-  # Local session: use paste buffer for reliable submission
-  echo "$PROMPT" | tmux load-buffer -
-  tmux paste-buffer -t "$SESSION"
-  sleep 0.1
-  tmux send-keys -t "$SESSION" Enter
-  sleep 0.1
-  tmux send-keys -t "$SESSION" Enter
-fi
+# Remote session (via SSH)
+ssh <machine> "agentwire send -s <session> '<prompt>'"
 ```
 
-**Why paste-buffer?**
-- `send-keys` types character-by-character, which can cause issues with long prompts
-- `paste-buffer` pastes the entire text as a block, more reliable for multi-line input
-- The separate `Enter` at the end submits the prompt
+**How it works:**
+- `agentwire send` uses tmux send-keys internally
+- Automatically adds Enter to submit the prompt
+- Handles long prompts and special characters properly
 
 ## Notes
 

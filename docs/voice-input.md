@@ -19,10 +19,10 @@ This guide explains how to set up voice input for AgentWire, allowing you to tal
 │  AgentWire Portal                                           │
 │  ├── Receives audio (webm/wav)                              │
 │  ├── Transcribes via STT backend                            │
-│  └── Sends text to target tmux session                      │
+│  └── Sends text to target session                           │
 └─────────────────────────────────────────────────────────────┘
                               │
-                        tmux send-keys
+                        agentwire send
                               │
 ┌─────────────────────────────────────────────────────────────┐
 │  Claude Code Session                                        │

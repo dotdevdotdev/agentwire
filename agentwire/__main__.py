@@ -389,8 +389,12 @@ def cmd_send(args) -> int:
     session = args.session
     prompt = " ".join(args.prompt) if args.prompt else ""
 
+    if not session:
+        print("Usage: agentwire send -s <session> <prompt>", file=sys.stderr)
+        return 1
+
     if not prompt:
-        print("Usage: agentwire send <session> <prompt>", file=sys.stderr)
+        print("Usage: agentwire send -s <session> <prompt>", file=sys.stderr)
         return 1
 
     # Check if session exists
@@ -424,19 +428,23 @@ def cmd_send(args) -> int:
 def cmd_send_keys(args) -> int:
     """Send raw keys to a tmux session (no automatic Enter).
 
+    Each argument is sent as a separate key group with a brief pause between.
     Useful for sending special keys like Enter, Escape, C-c, etc.
-    Each key argument is sent separately to tmux send-keys.
     """
     session = args.session
     keys = args.keys if args.keys else []
 
+    if not session:
+        print("Usage: agentwire send-keys -s <session> <keys>...", file=sys.stderr)
+        return 1
+
     if not keys:
-        print("Usage: agentwire send-keys <session> <keys>...", file=sys.stderr)
+        print("Usage: agentwire send-keys -s <session> <keys>...", file=sys.stderr)
         print("Examples:", file=sys.stderr)
-        print("  agentwire send-keys mysession Enter", file=sys.stderr)
-        print("  agentwire send-keys mysession C-c", file=sys.stderr)
-        print("  agentwire send-keys mysession Escape", file=sys.stderr)
-        print("  agentwire send-keys mysession 'hello world' Enter", file=sys.stderr)
+        print("  agentwire send-keys -s mysession Enter", file=sys.stderr)
+        print("  agentwire send-keys -s mysession C-c", file=sys.stderr)
+        print("  agentwire send-keys -s mysession Escape", file=sys.stderr)
+        print("  agentwire send-keys -s mysession 'hello world' Enter", file=sys.stderr)
         return 1
 
     # Check if session exists
@@ -448,11 +456,15 @@ def cmd_send_keys(args) -> int:
         print(f"Session '{session}' not found", file=sys.stderr)
         return 1
 
-    # Send keys via tmux send-keys (each argument becomes a separate key)
-    subprocess.run(
-        ["tmux", "send-keys", "-t", session] + keys,
-        check=True
-    )
+    # Send each key group with a pause between
+    for i, key in enumerate(keys):
+        subprocess.run(
+            ["tmux", "send-keys", "-t", session, key],
+            check=True
+        )
+        # Brief pause between key groups (not after last one)
+        if i < len(keys) - 1:
+            time.sleep(0.1)
 
     print(f"Sent keys to {session}")
     return 0
@@ -1040,6 +1052,7 @@ def cmd_uninstall(args) -> int:
 # === Skills Commands ===
 
 CLAUDE_SKILLS_DIR = Path.home() / ".claude" / "skills"
+CLAUDE_HOOKS_DIR = Path.home() / ".claude" / "hooks"
 
 
 def get_skills_source() -> Path:
@@ -1059,6 +1072,73 @@ def get_skills_source() -> Path:
         pass
 
     raise FileNotFoundError("Could not find skills directory in package")
+
+
+def get_hooks_source() -> Path:
+    """Get the path to the hooks directory in the installed package."""
+    # First try: hooks directory inside the agentwire package
+    package_dir = Path(__file__).parent
+    hooks_dir = package_dir / "hooks"
+    if hooks_dir.exists():
+        return hooks_dir
+
+    # Fallback: try importlib.resources (for installed packages)
+    try:
+        with importlib.resources.files("agentwire").joinpath("hooks") as p:
+            if p.exists():
+                return Path(p)
+    except (TypeError, FileNotFoundError):
+        pass
+
+    raise FileNotFoundError("Could not find hooks directory in package")
+
+
+def install_permission_hook(force: bool = False, copy: bool = False) -> bool:
+    """Install the permission hook for Claude Code integration.
+
+    Returns True if hook was installed/updated, False if skipped.
+    """
+    hook_name = "agentwire-permission.sh"
+
+    try:
+        hooks_source = get_hooks_source()
+    except FileNotFoundError:
+        print("  Warning: hooks directory not found, skipping hook installation")
+        return False
+
+    source_hook = hooks_source / hook_name
+    if not source_hook.exists():
+        print(f"  Warning: {hook_name} not found in package, skipping hook installation")
+        return False
+
+    # Create ~/.claude/hooks if it doesn't exist
+    CLAUDE_HOOKS_DIR.mkdir(parents=True, exist_ok=True)
+
+    target_hook = CLAUDE_HOOKS_DIR / hook_name
+
+    # Check if already installed
+    if target_hook.exists():
+        if target_hook.is_symlink():
+            current_target = target_hook.resolve()
+            if current_target == source_hook.resolve() and not force:
+                return False  # Already correctly installed
+        if not force:
+            print(f"  Hook already exists at {target_hook}")
+            return False
+
+        # Remove existing
+        target_hook.unlink()
+
+    # Create symlink (preferred) or copy
+    if copy:
+        shutil.copy2(source_hook, target_hook)
+    else:
+        target_hook.symlink_to(source_hook)
+
+    # Make executable
+    target_hook.chmod(0o755)
+
+    return True
 
 
 def cmd_skills_install(args) -> int:
@@ -1103,25 +1183,42 @@ def cmd_skills_install(args) -> int:
         target_dir.symlink_to(source_dir)
         print(f"Linked skills: {target_dir} -> {source_dir}")
 
+    # Install permission hook
+    hook_installed = install_permission_hook(force=args.force, copy=args.copy)
+    if hook_installed:
+        print(f"Installed permission hook to {CLAUDE_HOOKS_DIR / 'agentwire-permission.sh'}")
+
     print("\nClaude Code skills installed. Available commands:")
     print("  /sessions, /send, /output, /spawn, /new, /kill, /status, /jump")
+    if hook_installed:
+        print("\nPermission hook installed for normal session support.")
     return 0
 
 
 def cmd_skills_uninstall(args) -> int:
     """Uninstall Claude Code skills."""
     target_dir = CLAUDE_SKILLS_DIR / "agentwire"
+    hook_file = CLAUDE_HOOKS_DIR / "agentwire-permission.sh"
 
-    if not target_dir.exists():
-        print("Skills not installed")
-        return 0
+    skills_removed = False
+    hook_removed = False
 
-    if target_dir.is_symlink():
-        target_dir.unlink()
-        print(f"Removed symlink: {target_dir}")
-    else:
-        shutil.rmtree(target_dir)
-        print(f"Removed directory: {target_dir}")
+    if target_dir.exists():
+        if target_dir.is_symlink():
+            target_dir.unlink()
+            print(f"Removed symlink: {target_dir}")
+        else:
+            shutil.rmtree(target_dir)
+            print(f"Removed directory: {target_dir}")
+        skills_removed = True
+
+    if hook_file.exists():
+        hook_file.unlink()
+        print(f"Removed hook: {hook_file}")
+        hook_removed = True
+
+    if not skills_removed and not hook_removed:
+        print("Skills and hooks not installed")
 
     return 0
 
@@ -1129,27 +1226,43 @@ def cmd_skills_uninstall(args) -> int:
 def cmd_skills_status(args) -> int:
     """Check Claude Code skills installation status."""
     target_dir = CLAUDE_SKILLS_DIR / "agentwire"
+    hook_file = CLAUDE_HOOKS_DIR / "agentwire-permission.sh"
 
-    if not target_dir.exists():
+    skills_installed = target_dir.exists()
+    hook_installed = hook_file.exists()
+
+    if not skills_installed:
         print("Skills: not installed")
         print(f"  Run 'agentwire skills install' to set up Claude Code integration")
-        return 1
-
-    if target_dir.is_symlink():
-        source = target_dir.resolve()
-        print(f"Skills: installed (symlink)")
-        print(f"  Location: {target_dir} -> {source}")
     else:
-        print(f"Skills: installed (copy)")
-        print(f"  Location: {target_dir}")
+        if target_dir.is_symlink():
+            source = target_dir.resolve()
+            print(f"Skills: installed (symlink)")
+            print(f"  Location: {target_dir} -> {source}")
+        else:
+            print(f"Skills: installed (copy)")
+            print(f"  Location: {target_dir}")
 
-    # List available skills
-    skill_files = list(target_dir.glob("*.md"))
-    skill_files = [f for f in skill_files if f.name != "SKILL.md"]
-    if skill_files:
-        print(f"  Commands: {', '.join('/' + f.stem for f in sorted(skill_files))}")
+        # List available skills
+        skill_files = list(target_dir.glob("*.md"))
+        skill_files = [f for f in skill_files if f.name != "SKILL.md"]
+        if skill_files:
+            print(f"  Commands: {', '.join('/' + f.stem for f in sorted(skill_files))}")
 
-    return 0
+    print()
+    if hook_installed:
+        if hook_file.is_symlink():
+            source = hook_file.resolve()
+            print(f"Permission hook: installed (symlink)")
+            print(f"  Location: {hook_file} -> {source}")
+        else:
+            print(f"Permission hook: installed (copy)")
+            print(f"  Location: {hook_file}")
+    else:
+        print("Permission hook: not installed")
+        print("  (Required for normal session permission prompts)")
+
+    return 0 if skills_installed else 1
 
 
 def main() -> int:
@@ -1251,16 +1364,16 @@ def main() -> int:
 
     # === send command ===
     send_parser = subparsers.add_parser("send", help="Send prompt to a session (adds Enter)")
-    send_parser.add_argument("session", help="Target session name")
+    send_parser.add_argument("-s", "--session", required=True, help="Target session name")
     send_parser.add_argument("prompt", nargs="*", help="Prompt to send")
     send_parser.set_defaults(func=cmd_send)
 
     # === send-keys command ===
     send_keys_parser = subparsers.add_parser(
-        "send-keys", help="Send raw keys to a session (no auto-Enter)"
+        "send-keys", help="Send raw keys to a session (with pause between groups)"
     )
-    send_keys_parser.add_argument("session", help="Target session name")
-    send_keys_parser.add_argument("keys", nargs="*", help="Keys to send (e.g., Enter, C-c, Escape)")
+    send_keys_parser.add_argument("-s", "--session", required=True, help="Target session name")
+    send_keys_parser.add_argument("keys", nargs="*", help="Key groups to send (e.g., 'hello world' Enter)")
     send_keys_parser.set_defaults(func=cmd_send_keys)
 
     # === session command group ===
