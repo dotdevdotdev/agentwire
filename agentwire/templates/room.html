@@ -562,6 +562,81 @@
             cursor: not-allowed;
             opacity: 0.6;
         }
+
+        /* Mic area with actions */
+        .mic-area {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.75rem;
+            position: relative;
+        }
+        .actions-btn {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            border: 1px solid var(--border);
+            background: var(--bg-elevated);
+            color: var(--text-muted);
+            font-size: 1.2rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: none;  /* Hidden in ambient mode */
+        }
+        .terminal-mode .actions-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .actions-btn:hover {
+            background: var(--bg-light);
+            color: var(--text-primary);
+            border-color: var(--primary);
+        }
+        .actions-btn.active {
+            background: var(--primary);
+            color: #1a1a1a;
+            border-color: var(--primary);
+        }
+        .actions-menu {
+            position: absolute;
+            bottom: 130px;  /* Above both buttons */
+            right: 0;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 0.5rem;
+            display: none;
+            flex-direction: column;
+            gap: 0.25rem;
+            min-width: 160px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            z-index: 100;
+        }
+        .actions-menu.open {
+            display: flex;
+        }
+        .action-item {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.75rem 1rem;
+            background: none;
+            border: none;
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-size: 0.9rem;
+            cursor: pointer;
+            text-align: left;
+            transition: background 0.15s;
+        }
+        .action-item:hover {
+            background: var(--primary-subtle);
+        }
+        .action-icon {
+            font-size: 1.1rem;
+        }
+
         @keyframes mic-pulse {
             0%, 100% { transform: scale(1); }
             50% { transform: scale(1.08); }
@@ -827,8 +902,28 @@
             </div>
         </div>
 
-        <!-- Mic button on right -->
-        <button class="mic-btn idle" id="micBtn">🎤</button>
+        <!-- Mic area with actions menu -->
+        <div class="mic-area">
+            <!-- Actions menu (pops up above) -->
+            <div class="actions-menu" id="actionsMenu">
+                <button class="action-item" onclick="actionNewRoom()">
+                    <span class="action-icon">➕</span>
+                    <span class="action-label">New Room</span>
+                </button>
+                <button class="action-item" onclick="actionForkSession()">
+                    <span class="action-icon">🍴</span>
+                    <span class="action-label">Fork Session</span>
+                </button>
+                <button class="action-item" onclick="actionRecreateSession()">
+                    <span class="action-icon">🔄</span>
+                    <span class="action-label">Recreate Session</span>
+                </button>
+            </div>
+            <!-- Actions toggle button -->
+            <button class="actions-btn" id="actionsBtn" onclick="toggleActionsMenu()">⋯</button>
+            <!-- Mic button -->
+            <button class="mic-btn idle" id="micBtn">🎤</button>
+        </div>
     </div>
 
     <!-- Hidden file input -->
@@ -878,7 +973,9 @@
             textInputAmbient: document.getElementById('textInputAmbient'),
             attachBtnAmbient: document.getElementById('attachBtnAmbient'),
             ambientImagePreview: document.getElementById('ambientImagePreview'),
-            fileInput: document.getElementById('fileInput')
+            fileInput: document.getElementById('fileInput'),
+            actionsBtn: document.getElementById('actionsBtn'),
+            actionsMenu: document.getElementById('actionsMenu')
         };
 
         let textInputOpen = false;
@@ -896,6 +993,95 @@
         function toggleSettings() {
             elements.settingsDropdown.classList.toggle('open');
         }
+
+        // Actions menu
+        function toggleActionsMenu() {
+            const isOpen = elements.actionsMenu.classList.toggle('open');
+            elements.actionsBtn.classList.toggle('active', isOpen);
+        }
+
+        function closeActionsMenu() {
+            elements.actionsMenu.classList.remove('open');
+            elements.actionsBtn.classList.remove('active');
+        }
+
+        async function actionNewRoom() {
+            closeActionsMenu();
+
+            try {
+                const resp = await fetch(`/api/room/${ROOM}/spawn-sibling`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const data = await resp.json();
+                if (resp.ok && data.session) {
+                    // Open new room in new tab
+                    window.open(`/room/${data.session}`, '_blank');
+                } else {
+                    alert('Failed to create new room: ' + (data.error || 'Unknown error'));
+                }
+            } catch (e) {
+                console.error('Failed to create new room:', e);
+                alert('Failed to create new room');
+            }
+        }
+
+        async function actionForkSession() {
+            closeActionsMenu();
+
+            try {
+                const resp = await fetch(`/api/room/${ROOM}/fork`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const data = await resp.json();
+                if (resp.ok && data.session) {
+                    // Open forked room in new tab
+                    window.open(`/room/${data.session}`, '_blank');
+                } else {
+                    alert('Failed to fork session: ' + (data.error || 'Unknown error'));
+                }
+            } catch (e) {
+                console.error('Failed to fork session:', e);
+                alert('Failed to fork session');
+            }
+        }
+
+        async function actionRecreateSession() {
+            closeActionsMenu();
+
+            if (!confirm('Recreate this session?\n\nThis will:\n• Close Claude Code and destroy the tmux session\n• Remove the git worktree directory\n• Pull latest changes\n• Create a fresh worktree and session')) {
+                return;
+            }
+
+            try {
+                const resp = await fetch(`/api/room/${ROOM}/recreate`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const data = await resp.json();
+                if (resp.ok) {
+                    // Redirect to new session (may have different name)
+                    if (data.session && data.session !== ROOM) {
+                        window.location.href = `/room/${data.session}`;
+                    } else {
+                        window.location.reload();
+                    }
+                } else {
+                    alert('Failed to recreate session: ' + (data.error || 'Unknown error'));
+                }
+            } catch (e) {
+                console.error('Failed to recreate session:', e);
+                alert('Failed to recreate session');
+            }
+        }
+
+        // Close actions menu when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!elements.actionsBtn.contains(e.target) && !elements.actionsMenu.contains(e.target)) {
+                closeActionsMenu();
+            }
+        });
 
         // Image attachment functions
         function triggerFileInput() {

@@ -123,18 +123,34 @@ class TmuxAgent(AgentBackend):
         Args:
             name: Session name
             path: Working directory
-            options: Additional options
+            options: Additional options including:
+                - model: Model to use
+                - session_id: Claude Code session UUID
+                - fork_from: Session ID to fork from (uses --resume --fork-session)
 
         Returns:
             Formatted command string
         """
         options = options or {}
         model = options.get("model", self.default_model)
+        session_id = options.get("session_id")
+        fork_from = options.get("fork_from")
 
         cmd = self.agent_command
         cmd = cmd.replace("{name}", name)
         cmd = cmd.replace("{path}", str(path))
         cmd = cmd.replace("{model}", model)
+
+        # Add session ID if provided (for new sessions)
+        if session_id and not fork_from:
+            cmd = f"{cmd} --session-id {session_id}"
+
+        # Fork from existing session
+        if fork_from:
+            cmd = f"{cmd} --resume {fork_from} --fork-session"
+            # Also set the new session ID if provided
+            if session_id:
+                cmd = f"{cmd} --session-id {session_id}"
 
         return cmd
 

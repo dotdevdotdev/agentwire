@@ -223,6 +223,18 @@ This command-based approach is more reliable than parsing terminal output, which
 
 TTS audio includes 300ms silence padding to prevent first-syllable cutoff.
 
+### Actions Menu (Terminal Mode)
+
+In terminal mode, a ⋯ button appears above the mic button, revealing session actions:
+
+| Action | Description |
+|--------|-------------|
+| New Room | Creates a sibling session in a new worktree, opens in new tab (parallel work) |
+| Fork Session | Forks the Claude Code conversation context into a new session (preserves history) |
+| Recreate Session | Destroys current session/worktree, pulls latest, creates fresh worktree and Claude Code session |
+
+**Fork Session** uses Claude Code's `--resume <id> --fork-session` to create a new session that inherits the conversation context. Useful when you want to try different approaches without losing the current session's progress.
+
 ### Portal API
 
 | Endpoint | Method | Purpose |
@@ -230,6 +242,9 @@ TTS audio includes 300ms silence padding to prevent first-syllable cutoff.
 | `/api/sessions` | GET | List all tmux sessions |
 | `/api/create` | POST | Create new session |
 | `/api/room/{name}/config` | POST | Update room config (voice, etc.) |
+| `/api/room/{name}/recreate` | POST | Destroy and recreate session with fresh worktree |
+| `/api/room/{name}/spawn-sibling` | POST | Create parallel session in new worktree |
+| `/api/room/{name}/fork` | POST | Fork Claude Code session (preserves conversation context) |
 | `/api/say/{name}` | POST | Generate TTS and broadcast to room |
 | `/api/voices` | GET | List available TTS voices |
 | `/transcribe` | POST | Transcribe audio (multipart form) |

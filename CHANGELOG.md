@@ -17,6 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Image attachments via paste or file picker
   - AskUserQuestion popup modal with clickable options
   - "Type something" option with text input and Send button
+  - Actions menu with session management:
+    - "New Room" - spawn parallel session in new worktree (opens in new tab)
+    - "Fork Session" - fork Claude Code conversation context into new session
+    - "Recreate Session" - destroys worktree, pulls latest, fresh start
+  - Claude Code session ID tracking for fork support
 
 - **CLI Commands**
   - `agentwire init` - Interactive setup wizard
