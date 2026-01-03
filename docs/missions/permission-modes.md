@@ -96,7 +96,7 @@ response=$(curl -s -X POST "https://localhost:8765/api/permission/${room}" \
 echo "$response"
 ```
 
-### Hook Configuration (`.claude/settings.json`)
+### Hook Configuration (`~/.claude/settings.json` - user-level)
 
 ```json
 {
@@ -115,6 +115,8 @@ echo "$response"
   }
 }
 ```
+
+**Note:** User-level config means one-time install works for all projects.
 
 ### Hook Input (from Claude Code)
 
@@ -151,6 +153,19 @@ Or to deny:
 }
 ```
 
+## Design Decisions
+
+| Decision | Choice | Rationale |
+|----------|--------|-----------|
+| Default for new sessions | Bypass (pre-selected) | Matches current behavior, speed-first |
+| Diff preview in modal | Yes, v1 | Essential for informed decisions |
+| TTS announcement | Tool + file details | "Claude wants to edit login.ts" |
+| AWAITING PERMISSION orb | Orange/Amber | Warning color, attention needed |
+| Hook configuration | User-level (~/.claude) | One-time install, all projects |
+| Remote session support | Yes, v1 | Uses existing tunnel to localhost:8765 |
+| Change mode after creation | No (locked) | Recreate session to change mode |
+| Timeout behavior | Never timeout | Wait indefinitely for user response |
+
 ## UX Flow
 
 ### Creating a Session
@@ -163,10 +178,10 @@ Or to deny:
 │  Name:    [feature-auth____]             │
 │                                          │
 │  Session Type:                           │
-│    ○ Bypass Permissions                  │
+│    ● Bypass Permissions (Recommended)    │
 │      Fast, no prompts, full trust        │
 │                                          │
-│    ● Normal Session                      │
+│    ○ Normal Session                      │
 │      Permission prompts in portal        │
 │                                          │
 │              [Create Session]            │
@@ -245,9 +260,11 @@ Default: `bypass_permissions: true` (current behavior, no breaking change)
 | Task | Description | Files |
 |------|-------------|-------|
 | 3.1 | WebSocket message type for permission requests | `server.py` |
-| 3.2 | Permission modal component (tool name, file path, diff preview) | `templates/room.html` |
-| 3.3 | Allow/Deny buttons that POST to respond endpoint | `templates/room.html` |
-| 3.4 | "AWAITING PERMISSION" orb state (new color) | `templates/room.html` |
+| 3.2 | Permission modal component (tool name, file path) | `templates/room.html` |
+| 3.3 | Diff preview for Edit tool (old/new text display) | `templates/room.html` |
+| 3.4 | Allow/Deny buttons that POST to respond endpoint | `templates/room.html` |
+| 3.5 | "AWAITING PERMISSION" orb state (orange/amber) | `templates/room.html` |
+| 3.6 | TTS announcement: "Claude wants to [action] [target]" | `server.py` |
 
 ## Wave 4: Session Creation UI
 
@@ -270,10 +287,9 @@ Default: `bypass_permissions: true` (current behavior, no breaking change)
 
 | Task | Description | Files |
 |------|-------------|-------|
-| 6.1 | Timeout handling (auto-deny after 5 min?) | `server.py` |
-| 6.2 | TTS announcement for permission prompts | `server.py` |
-| 6.3 | Update CLAUDE.md documentation | `CLAUDE.md` |
-| 6.4 | Migration: treat missing bypass_permissions as true | `server.py` |
+| 6.1 | Update CLAUDE.md documentation | `CLAUDE.md` |
+| 6.2 | Migration: treat missing bypass_permissions as true | `server.py` |
+| 6.3 | Test remote session permission flow via tunnel | Manual testing |
 
 ## Completion Criteria
 
@@ -290,16 +306,17 @@ Default: `bypass_permissions: true` (current behavior, no breaking change)
 
 ## Edge Cases
 
-1. **Hook timeout**: If user doesn't respond in 5 min, auto-deny and notify
+1. **No timeout**: Requests wait indefinitely for user response (Claude Code handles gracefully)
 2. **Multiple permission requests**: Queue them, show one at a time
 3. **Session disconnect**: Cancel pending permission requests
-4. **Remote sessions**: Hook needs to POST back to portal machine (via tunnel)
+4. **Remote sessions**: Hook POSTs to localhost:8765 which tunnels back to portal
 5. **Hook not installed**: Normal sessions fail gracefully with helpful error
+6. **Browser not open**: Requests queue until user opens room page
 
 ## Future Enhancements (Not in v1)
 
 - "Allow Always" option (remembers for session)
 - Permission history/audit log
-- Diff preview for file edits
 - Per-room permission presets
 - Bulk approve/deny
+- Configurable timeout (currently waits forever)
