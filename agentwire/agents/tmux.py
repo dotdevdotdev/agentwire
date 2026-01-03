@@ -10,7 +10,8 @@ from .base import AgentBackend
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_AGENT_COMMAND = "claude --dangerously-skip-permissions"
+# Base command without permission flags - flags added based on bypass_permissions option
+DEFAULT_AGENT_COMMAND = "claude"
 
 
 class TmuxAgent(AgentBackend):
@@ -127,6 +128,7 @@ class TmuxAgent(AgentBackend):
                 - model: Model to use
                 - session_id: Claude Code session UUID
                 - fork_from: Session ID to fork from (uses --resume --fork-session)
+                - bypass_permissions: If True, add --dangerously-skip-permissions flag
 
         Returns:
             Formatted command string
@@ -135,11 +137,16 @@ class TmuxAgent(AgentBackend):
         model = options.get("model", self.default_model)
         session_id = options.get("session_id")
         fork_from = options.get("fork_from")
+        bypass_permissions = options.get("bypass_permissions", True)  # Default True for backwards compat
 
         cmd = self.agent_command
         cmd = cmd.replace("{name}", name)
         cmd = cmd.replace("{path}", str(path))
         cmd = cmd.replace("{model}", model)
+
+        # Add permission bypass flag if requested (default True for backwards compat)
+        if bypass_permissions:
+            cmd = f"{cmd} --dangerously-skip-permissions"
 
         # Add session ID if provided (for new sessions)
         if session_id and not fork_from:
@@ -156,15 +163,22 @@ class TmuxAgent(AgentBackend):
 
     def create_session(self, name: str, path: Path, options: dict | None = None) -> bool:
         """Create a new tmux session and start the agent."""
+        options = options or {}
         session_name, machine = self._parse_session_name(name)
         agent_cmd = self._format_agent_command(session_name, path, options)
+
+        # Get room name for AGENTWIRE_ROOM env var (defaults to full session name)
+        room_name = options.get("room_name", name)
 
         if machine:
             projects_dir = machine.get("projects_dir", "/home/dotdev/projects")
             remote_path = f"{projects_dir}/{path.name}" if not str(path).startswith("/") else str(path)
 
+            # Export AGENTWIRE_ROOM env var before running agent command
+            env_export = f"export AGENTWIRE_ROOM={shlex.quote(room_name)}"
             cmd = (
                 f"tmux new-session -d -s {shlex.quote(session_name)} -c {shlex.quote(remote_path)} && "
+                f"tmux send-keys -t {shlex.quote(session_name)} {shlex.quote(env_export)} Enter && "
                 f"tmux send-keys -t {shlex.quote(session_name)} {shlex.quote(agent_cmd)} Enter"
             )
             result = self._run_remote(machine, cmd)
@@ -179,6 +193,17 @@ class TmuxAgent(AgentBackend):
             if result.returncode != 0:
                 logger.error(f"Failed to create session: {result.stderr}")
                 return False
+
+            # Set AGENTWIRE_ROOM environment variable
+            result = self._run_local([
+                "tmux", "send-keys",
+                "-t", session_name,
+                f"export AGENTWIRE_ROOM={shlex.quote(room_name)}", "Enter",
+            ])
+
+            if result.returncode != 0:
+                logger.warning(f"Failed to set AGENTWIRE_ROOM: {result.stderr}")
+                # Continue anyway - not critical
 
             # Start agent
             result = self._run_local([

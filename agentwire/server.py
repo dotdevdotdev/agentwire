@@ -42,6 +42,16 @@ class RoomConfig:
     machine: str | None = None
     path: str | None = None
     claude_session_id: str | None = None  # Claude Code session UUID for forking
+    bypass_permissions: bool = True  # Default True for backwards compat with existing sessions
+
+
+@dataclass
+class PendingPermission:
+    """A permission request waiting for user decision."""
+
+    request: dict  # The permission request from Claude Code
+    event: asyncio.Event = field(default_factory=asyncio.Event)  # Signals when user responds
+    decision: dict | None = None  # The user's decision
 
 
 @dataclass
@@ -56,6 +66,7 @@ class Room:
     output_task: asyncio.Task | None = None
     played_says: set = field(default_factory=set)
     last_question: str | None = None  # Track AskUserQuestion to avoid duplicates
+    pending_permission: PendingPermission | None = None  # Active permission request
 
 
 class AgentWireServer:
@@ -96,6 +107,10 @@ class AgentWireServer:
         self.app.router.add_get("/api/config", self.api_get_config)
         self.app.router.add_post("/api/config", self.api_save_config)
         self.app.router.add_post("/api/config/reload", self.api_reload_config)
+        # Permission request handling (from Claude Code hook)
+        # Note: respond route must come first as aiohttp matches in order
+        self.app.router.add_post("/api/permission/{name:.+}/respond", self.api_permission_respond)
+        self.app.router.add_post("/api/permission/{name:.+}", self.api_permission_request)
         self.app.router.add_static("/static", Path(__file__).parent / "static")
 
     async def init_backends(self):
@@ -199,6 +214,7 @@ class AgentWireServer:
                 machine=cfg.get("machine"),
                 path=cfg.get("path"),
                 claude_session_id=cfg.get("claude_session_id"),
+                bypass_permissions=cfg.get("bypass_permissions", True),  # Default True
             )
         return RoomConfig(voice=self.config.tts.default_voice)
 
@@ -579,6 +595,7 @@ class AgentWireServer:
             name = data.get("name", "").strip()
             custom_path = data.get("path")
             voice = data.get("voice", self.config.tts.default_voice)
+            bypass_permissions = data.get("bypass_permissions", True)  # Default True
 
             if not name:
                 return web.json_response({"error": "Session name is required"})
@@ -612,19 +629,24 @@ class AgentWireServer:
             # Generate Claude session ID for tracking/forking
             claude_session_id = str(uuid.uuid4())
 
-            # Create session with session ID
+            # Create session with session ID and bypass_permissions
             success = self.agent.create_session(
                 name, str(work_dir),
-                options={"session_id": claude_session_id}
+                options={
+                    "session_id": claude_session_id,
+                    "bypass_permissions": bypass_permissions,
+                    "room_name": name,  # Pass room name for AGENTWIRE_ROOM env var
+                }
             )
             if not success:
                 return web.json_response({"error": "Failed to create session"})
 
-            # Save room config with Claude session ID
+            # Save room config with Claude session ID and bypass_permissions
             configs = self._load_room_configs()
             configs[name] = {
                 "voice": voice,
                 "claude_session_id": claude_session_id,
+                "bypass_permissions": bypass_permissions,
             }
             if custom_path:
                 configs[name]["path"] = custom_path
@@ -1266,6 +1288,121 @@ projects:
             logger.error(f"Answer API failed: {e}")
             return web.json_response({"error": str(e)}, status=500)
 
+    async def api_permission_request(self, request: web.Request) -> web.Response:
+        """POST /api/permission/{room} - Handle permission request from Claude Code hook.
+
+        This endpoint is called by the permission hook script when Claude Code
+        needs permission for an action. It broadcasts the request to connected
+        clients and waits for a response.
+        """
+        name = request.match_info["name"]
+        try:
+            data = await request.json()
+            tool_name = data.get("tool_name", "unknown")
+            tool_input = data.get("tool_input", {})
+            message = data.get("message", "")
+
+            logger.info(f"[{name}] Permission request: {tool_name}")
+
+            # Ensure room exists
+            if name not in self.rooms:
+                self.rooms[name] = Room(name=name, config=self._get_room_config(name))
+
+            room = self.rooms[name]
+
+            # Create pending permission request
+            room.pending_permission = PendingPermission(request=data)
+
+            # Broadcast permission request to all clients (Task 3.1)
+            await self._broadcast(room, {
+                "type": "permission_request",
+                "tool_name": tool_name,
+                "tool_input": tool_input,
+                "message": message,
+            })
+
+            # Generate TTS announcement (Task 3.6)
+            await self._announce_permission_request(name, tool_name, tool_input)
+
+            # Wait for user decision (blocks until respond endpoint is called)
+            # No timeout - wait indefinitely per design decision
+            await room.pending_permission.event.wait()
+
+            # Return the decision to the hook script
+            decision = room.pending_permission.decision
+            room.pending_permission = None
+
+            logger.info(f"[{name}] Permission decision: {decision}")
+            return web.json_response(decision)
+
+        except Exception as e:
+            logger.error(f"Permission request failed: {e}")
+            return web.json_response(
+                {"decision": "deny", "message": str(e)},
+                status=500
+            )
+
+    async def api_permission_respond(self, request: web.Request) -> web.Response:
+        """POST /api/permission/{room}/respond - User responds to permission request.
+
+        Called by the portal UI when user clicks Allow or Deny.
+        """
+        name = request.match_info["name"]
+        try:
+            data = await request.json()
+            decision = data.get("decision", "deny")
+
+            logger.info(f"[{name}] Permission response: {decision}")
+
+            if name not in self.rooms:
+                return web.json_response({"error": "Room not found"}, status=404)
+
+            room = self.rooms[name]
+
+            if not room.pending_permission:
+                return web.json_response({"error": "No pending permission request"}, status=400)
+
+            # Store decision and signal the waiting request
+            room.pending_permission.decision = {"decision": decision}
+            if decision == "deny":
+                room.pending_permission.decision["message"] = data.get("message", "User denied permission")
+            room.pending_permission.event.set()
+
+            # Broadcast permission_resolved to all clients (Task 3.7)
+            await self._broadcast(room, {
+                "type": "permission_resolved",
+                "decision": decision,
+            })
+
+            return web.json_response({"success": True})
+
+        except Exception as e:
+            logger.error(f"Permission respond failed: {e}")
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def _announce_permission_request(self, room_name: str, tool_name: str, tool_input: dict):
+        """Generate TTS announcement for permission request (Task 3.6)."""
+        # Build a natural announcement message
+        if tool_name == "Edit":
+            file_path = tool_input.get("file_path", "a file")
+            # Extract just the filename for brevity
+            filename = Path(file_path).name if file_path else "a file"
+            text = f"Claude wants to edit {filename}"
+        elif tool_name == "Write":
+            file_path = tool_input.get("file_path", "a file")
+            filename = Path(file_path).name if file_path else "a file"
+            text = f"Claude wants to write to {filename}"
+        elif tool_name == "Bash":
+            command = tool_input.get("command", "")
+            # Truncate long commands
+            if len(command) > 50:
+                command = command[:47] + "..."
+            text = f"Claude wants to run a command: {command}"
+        else:
+            text = f"Claude wants to use {tool_name}"
+
+        await self._say_to_room(room_name, text)
+
     async def api_recreate_session(self, request: web.Request) -> web.Response:
         """POST /api/room/{name}/recreate - Destroy session/worktree and create fresh one.
 
@@ -1371,12 +1508,21 @@ projects:
                 work_dir = str(project_path)
 
             # Step 5: Create new tmux session with new Claude session ID
+            # Get old config for inheriting settings
+            configs = self._load_room_configs()
+            old_config = configs.get(name, {})
+            bypass_permissions = old_config.get("bypass_permissions", True)
+
             claude_session_id = str(uuid.uuid4())
             logger.info(f"[{name}] Creating new session '{new_session_name}'...")
             success = await asyncio.get_event_loop().run_in_executor(
                 None, lambda: self.agent.create_session(
                     new_session_name, work_dir,
-                    options={"session_id": claude_session_id}
+                    options={
+                        "session_id": claude_session_id,
+                        "bypass_permissions": bypass_permissions,
+                        "room_name": new_session_name,
+                    }
                 )
             )
 
@@ -1393,12 +1539,11 @@ projects:
                     room.output_task.cancel()
                 del self.rooms[name]
 
-            # Save new room config with session ID
-            configs = self._load_room_configs()
-            old_config = configs.get(name, {})
+            # Save new room config with session ID and inherited settings
             configs[new_session_name] = {
                 "voice": old_config.get("voice", self.config.tts.default_voice),
                 "claude_session_id": claude_session_id,
+                "bypass_permissions": bypass_permissions,
             }
             self._save_room_configs(configs)
 
@@ -1460,12 +1605,21 @@ projects:
                 )
 
             # Create new tmux session with session ID
+            # Get old config for inheriting settings
+            configs = self._load_room_configs()
+            old_config = configs.get(name, {})
+            bypass_permissions = old_config.get("bypass_permissions", True)
+
             claude_session_id = str(uuid.uuid4())
             logger.info(f"[{name}] Creating sibling session '{new_session_name}'...")
             success = await asyncio.get_event_loop().run_in_executor(
                 None, lambda: self.agent.create_session(
                     new_session_name, str(new_worktree_path),
-                    options={"session_id": claude_session_id}
+                    options={
+                        "session_id": claude_session_id,
+                        "bypass_permissions": bypass_permissions,
+                        "room_name": new_session_name,
+                    }
                 )
             )
 
@@ -1475,12 +1629,11 @@ projects:
                     status=500
                 )
 
-            # Save room config with session ID
-            configs = self._load_room_configs()
-            old_config = configs.get(name, {})
+            # Save room config with session ID and inherited settings
             configs[new_session_name] = {
                 "voice": old_config.get("voice", self.config.tts.default_voice),
                 "claude_session_id": claude_session_id,
+                "bypass_permissions": bypass_permissions,
             }
             self._save_room_configs(configs)
 
@@ -1585,6 +1738,7 @@ projects:
             await asyncio.get_event_loop().run_in_executor(None, copy_session_file)
 
             # Create new session with fork - new session ID but forking from original
+            # Inherit bypass_permissions from parent room
             new_claude_session_id = str(uuid.uuid4())
             logger.info(f"[{name}] Creating forked session '{new_session_name}'...")
             success = await asyncio.get_event_loop().run_in_executor(
@@ -1593,6 +1747,8 @@ projects:
                     options={
                         "session_id": new_claude_session_id,
                         "fork_from": room_config.claude_session_id,
+                        "bypass_permissions": room_config.bypass_permissions,
+                        "room_name": new_session_name,
                     }
                 )
             )
@@ -1603,11 +1759,12 @@ projects:
                     status=500
                 )
 
-            # Save room config with new session ID
+            # Save room config with new session ID and inherited settings
             configs = self._load_room_configs()
             configs[new_session_name] = {
                 "voice": room_config.voice,
                 "claude_session_id": new_claude_session_id,
+                "bypass_permissions": room_config.bypass_permissions,
             }
             self._save_room_configs(configs)
 
