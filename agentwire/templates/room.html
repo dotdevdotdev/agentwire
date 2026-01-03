@@ -93,6 +93,10 @@
                 <button class="permission-btn allow-always" onclick="respondToPermission('allow_always')">Allow Always</button>
                 <button class="permission-btn allow" onclick="respondToPermission('allow')">Allow</button>
             </div>
+            <div class="permission-custom">
+                <input type="text" id="permissionCustomInput" placeholder="Tell Claude what to do differently..." onkeydown="if(event.key==='Enter')respondToPermission('custom', this.value)">
+                <button class="permission-btn custom" onclick="respondToPermission('custom', document.getElementById('permissionCustomInput').value)">Send</button>
+            </div>
         </div>
     </div>
 {% endblock %}
