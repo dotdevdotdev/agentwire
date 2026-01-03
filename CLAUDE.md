@@ -222,25 +222,34 @@ This command-based approach is more reliable than parsing terminal output, which
 
 TTS audio includes 300ms silence padding to prevent first-syllable cutoff.
 
+### AskUserQuestion Popup
+
+When Claude Code uses the AskUserQuestion tool, the portal displays a modal with clickable options:
+
+- Question text is spoken aloud via TTS when the popup appears
+- Click any option to submit the answer
+- "Type something" options show a text input with Send button
+- Supports multi-line questions
+
 ### Actions Menu (Terminal Mode)
 
-In terminal mode, a ⋯ button appears above the mic button, revealing session actions:
+In terminal mode, a ⋯ button appears above the mic button. Hover over action buttons to see labels.
 
 **For regular project sessions:**
 
-| Action | Description |
-|--------|-------------|
-| New Room | Creates a sibling session in a new worktree, opens in new tab (parallel work) |
-| Fork Session | Forks the Claude Code conversation context into a new session (preserves history) |
-| Recreate Session | Destroys current session/worktree, pulls latest, creates fresh worktree and Claude Code session |
+| Action | Icon | Description |
+|--------|------|-------------|
+| New Room | ➕ | Creates a sibling session in a new worktree, opens in new tab (parallel work) |
+| Fork Session | 🍴 | Forks the Claude Code conversation context into a new session (preserves history) |
+| Recreate Session | 🔄 | Destroys current session/worktree, pulls latest, creates fresh worktree and Claude Code session |
 
-**Fork Session** uses Claude Code's `--resume <id> --fork-session` to create a new session that inherits the conversation context. Useful when you want to try different approaches without losing the current session's progress.
+**Fork Session** uses Claude Code's `--resume <id> --fork-session` to create a new session that inherits the conversation context. Creates sessions named `project-fork-1`, `project-fork-2`, etc. Useful when you want to try different approaches without losing the current session's progress.
 
 **For system sessions** (`agentwire`, `agentwire-portal`, `agentwire-tts`):
 
-| Action | Description |
-|--------|-------------|
-| Restart Service | Properly restarts the service (portal schedules delayed restart, TTS stops/starts, orchestrator restarts Claude) |
+| Action | Icon | Description |
+|--------|------|-------------|
+| Restart Service | 🔄 | Properly restarts the service (portal schedules delayed restart, TTS stops/starts, orchestrator restarts Claude) |
 
 ### Portal API
 
@@ -479,5 +488,6 @@ python -c "from agentwire import __version__; print(__version__)"
 |--------|---------|-------------|
 | `name` | `api` | Local session → ~/projects/api |
 | `name/branch` | `api/feature` | Worktree session |
+| `name-fork-N` | `api-fork-1` | Forked session (preserves conversation context) |
 | `name@machine` | `ml@gpu-server` | Remote session |
 | `name/branch@machine` | `ml/train@gpu-server` | Remote worktree |

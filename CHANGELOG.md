@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] - 2025-01-03
+
+### Added
+
+- **Actions Menu Improvements**
+  - Hover popovers showing action names on icon buttons
+  - 60x60 circular icon buttons stacked above toggle
+  - Smooth fade/slide animations on hover
+
+- **AskUserQuestion TTS**
+  - Speaks the question aloud when popup appears
+  - Multi-line question support (questions spanning multiple lines)
+
+- **Development Commands**
+  - `agentwire rebuild` - Clear uv cache and reinstall from source
+  - `agentwire uninstall` - Clean uninstall with cache clearing
+
+### Fixed
+
+- **Fork Session** - Now correctly copies Claude session file to worktree's project directory
+  (Claude stores sessions per-project path)
+- **Fork Naming** - Changed from `project/fork-timestamp` to `project-fork-N` format
+- **AskUserQuestion Parsing** - Fixed regex to match multi-line questions
+- **Type Option Detection** - No longer matches "Other players..." as a type-something option
+- **Audio Race Condition** - Fixed state reset when new audio interrupts playing audio
+- **Terminal Mode Toggle** - Actions button now visible in terminal mode
+- **Portal Restart** - Uses tmux directly to avoid attach crash
+
 ## [0.1.0] - 2025-01-02
 
 ### Added
@@ -37,6 +65,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `agentwire skills install/uninstall/status` - Claude Code integration
   - `agentwire voiceclone start/stop/list` - Voice cloning
   - `agentwire generate-certs` - SSL certificate generation
+  - `agentwire rebuild` - Clear uv cache and reinstall from source
+  - `agentwire uninstall` - Clean uninstall with cache clearing
 
 - **Claude Code Skills** - Session orchestration from within Claude Code
   - `/sessions` - List all tmux sessions
