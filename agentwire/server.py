@@ -10,6 +10,7 @@ import io
 import json
 import logging
 import re
+import shutil
 import ssl
 import struct
 import tempfile
@@ -1519,9 +1520,19 @@ projects:
                     status=400
                 )
 
-            # Create new worktree with timestamp-based branch
-            new_branch = f"fork-{int(time.time())}"
-            new_session_name = f"{project}/{new_branch}"
+            # Find next available fork number
+            configs = self._load_room_configs()
+            fork_num = 1
+            while True:
+                candidate = f"{project}-fork-{fork_num}"
+                if machine:
+                    candidate = f"{candidate}@{machine}"
+                if candidate not in configs and not self.agent.session_exists(candidate):
+                    break
+                fork_num += 1
+
+            new_branch = f"fork-{fork_num}"
+            new_session_name = f"{project}-fork-{fork_num}"
             if machine:
                 new_session_name = f"{new_session_name}@{machine}"
 
@@ -1547,6 +1558,31 @@ projects:
                     {"error": f"Failed to create worktree for '{new_branch}'"},
                     status=500
                 )
+
+            # Copy Claude session file to worktree's project directory
+            # Claude stores sessions per-project path, so we need to copy the source session
+            def copy_session_file():
+                claude_dir = Path.home() / ".claude" / "projects"
+                # Encode paths like Claude does: /foo/bar -> -foo-bar
+                orig_encoded = str(project_path).replace("/", "-")
+                if orig_encoded.startswith("-"):
+                    orig_encoded = orig_encoded  # Keep leading dash
+                new_encoded = str(new_worktree_path).replace("/", "-")
+
+                orig_session_file = claude_dir / orig_encoded / f"{room_config.claude_session_id}.jsonl"
+                new_project_dir = claude_dir / new_encoded
+
+                if orig_session_file.exists():
+                    new_project_dir.mkdir(parents=True, exist_ok=True)
+                    new_session_file = new_project_dir / f"{room_config.claude_session_id}.jsonl"
+                    shutil.copy2(orig_session_file, new_session_file)
+                    logger.info(f"[{name}] Copied session file to {new_session_file}")
+                    return True
+                else:
+                    logger.warning(f"[{name}] Original session file not found: {orig_session_file}")
+                    return False
+
+            await asyncio.get_event_loop().run_in_executor(None, copy_session_file)
 
             # Create new session with fork - new session ID but forking from original
             new_claude_session_id = str(uuid.uuid4())
