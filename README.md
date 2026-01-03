@@ -1,6 +1,20 @@
-# AgentWire
+<p align="center">
+  <img src="docs/logo.png" alt="AgentWire" width="400">
+</p>
 
-Multi-room voice web interface for AI coding agents. Push-to-talk voice input from any device to tmux sessions running Claude Code or any AI coding assistant.
+<p align="center">
+  <strong>Multi-room voice web interface for AI coding agents</strong>
+</p>
+
+<p align="center">
+  <a href="https://pypi.org/project/agentwire-dev/"><img src="https://img.shields.io/pypi/v/agentwire-dev?color=green" alt="PyPI"></a>
+  <a href="https://pypi.org/project/agentwire-dev/"><img src="https://img.shields.io/pypi/pyversions/agentwire-dev" alt="Python"></a>
+  <a href="https://github.com/dotdevdotdev/agentwire/blob/main/LICENSE"><img src="https://img.shields.io/github/license/dotdevdotdev/agentwire" alt="License"></a>
+</p>
+
+---
+
+Push-to-talk voice input from any device to tmux sessions running Claude Code or any AI coding assistant.
 
 ## Features
 
