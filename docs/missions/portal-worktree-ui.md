@@ -268,6 +268,7 @@ document.getElementById('sessionMachine').addEventListener('change', onPathChang
 | 6.2 | When machine changes, update path placeholder to machine's projects_dir | 3.3 |
 | 6.3 | Auto-suggest unique branch name (`mon-day-year--N`) checking for conflicts | 5.4 |
 | 6.4 | When worktree unchecked, hide branch input entirely | 5.4 |
+| 6.5 | Remember last selected machine in localStorage, restore on page load | 3.3 |
 
 **6.1 Path Auto-fill:**
 ```javascript
@@ -332,6 +333,30 @@ async function suggestBranchName(projectPath, machine) {
 
 **Note:** Requires new `/api/check-branches` endpoint (add to Wave 2).
 
+**6.5 Remember Machine Selection:**
+```javascript
+// On machine change, save to localStorage
+document.getElementById('sessionMachine').addEventListener('change', (e) => {
+    localStorage.setItem('agentwire-last-machine', e.target.value);
+    updateMachineSuffix();
+    updatePathPlaceholder();
+    onPathChange();
+});
+
+// On page load, restore last machine
+function restoreLastMachine() {
+    const last = localStorage.getItem('agentwire-last-machine');
+    if (last) {
+        const select = document.getElementById('sessionMachine');
+        if ([...select.options].some(o => o.value === last)) {
+            select.value = last;
+            updateMachineSuffix();
+            updatePathPlaceholder();
+        }
+    }
+}
+```
+
 ---
 
 ## Wave 7: Testing & Polish
@@ -364,6 +389,8 @@ async function suggestBranchName(projectPath, machine) {
 - [ ] Worktree options hidden for non-git paths
 - [ ] Session created with worktree when checkbox enabled
 - [ ] Remote worktree sessions work correctly
+- [ ] Non-existent paths allowed (creates dir), but no git options shown
+- [ ] Last selected machine remembered in localStorage
 - [ ] CLAUDE.md documents new form options
 
 ---
@@ -384,10 +411,9 @@ async function suggestBranchName(projectPath, machine) {
 | Path State | Machine | Git Options | Branch Input |
 |------------|---------|-------------|--------------|
 | Empty | Any | Hidden | Hidden |
-| Non-git | Local | Hidden | Hidden |
-| Non-git | Remote | Hidden | Hidden |
-| Git repo | Local | Shown (checked) | Shown with default |
-| Git repo | Remote | Shown (checked) | Shown with default |
+| Path doesn't exist | Any | Hidden (allow create) | Hidden |
+| Exists, non-git | Any | Hidden | Hidden |
+| Git repo | Any | Shown (checked) | Shown with default |
 | Git + unchecked | Any | Shown (unchecked) | Hidden |
 
 ### Auto-fill Behavior
