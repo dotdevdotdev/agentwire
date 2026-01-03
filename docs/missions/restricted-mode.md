@@ -43,8 +43,10 @@ All tasks start immediately (no dependencies):
 **3.1 Logic:**
 - If room is restricted:
   - If `_is_allowed_in_restricted_mode()` returns True → send keystroke "2" (allow_always), return immediately
-  - Else → send keystroke "3" + "Restricted mode: only voice commands allowed" + Enter, return deny
+  - Else → send keystroke "Escape" (deny silently), return deny response
 - If not restricted: existing flow (show popup, wait for user)
+
+Note: Silent deny chosen over custom message ("3" + text) to keep response fast and avoid TTS chatter.
 
 ---
 
@@ -104,18 +106,46 @@ All tasks start immediately (no dependencies):
 ### Allowed Commands in Restricted Mode
 
 ```python
+import re
+
 def _is_allowed_in_restricted_mode(tool_name: str, tool_input: dict) -> bool:
+    """Check if command is allowed in restricted mode (say/remote-say only)."""
     if tool_name != "Bash":
         return False
-    command = tool_input.get("command", "")
-    # Check if command starts with say or remote-say
-    return command.strip().startswith(("say ", "say\t", "remote-say ", "remote-say\t"))
+
+    command = tool_input.get("command", "").strip()
+
+    # Must start with say or remote-say
+    if not command.startswith(("say ", "say\t", "remote-say ", "remote-say\t")):
+        return False
+
+    # Guard against shell chaining: reject if command contains operators
+    # that could execute additional commands after say
+    dangerous_patterns = [
+        r'&&',      # AND operator
+        r'\|\|',    # OR operator
+        r';',       # command separator
+        r'\|',      # pipe
+        r'\$\(',    # command substitution
+        r'`',       # backtick substitution
+    ]
+
+    for pattern in dangerous_patterns:
+        if re.search(pattern, command):
+            return False
+
+    return True
 ```
+
+**Design decisions:**
+- Uses "allow_always" (keystroke "2") for auto-approved commands
+- Silent deny for blocked commands (no TTS announcement)
+- Rejects shell chaining attempts (&&, ||, ;, |, $(), backticks)
 
 ### Badge Colors
 
 | Mode | Badge | Color |
 |------|-------|-------|
-| Bypass | `Bypass` | Default/gray |
-| Prompted | `Prompted` | Green |
+| Bypass | `Bypass` | Green (primary) |
+| Prompted | `Prompted` | Red (error) |
 | Restricted | `Restricted` | Orange |
