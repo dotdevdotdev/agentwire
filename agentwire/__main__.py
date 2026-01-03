@@ -385,7 +385,7 @@ def _remote_say(text: str, room: str, portal_url: str) -> int:
 # === Session Commands ===
 
 def cmd_send(args) -> int:
-    """Send a prompt to a tmux session."""
+    """Send a prompt to a tmux session (adds Enter automatically)."""
     session = args.session
     prompt = " ".join(args.prompt) if args.prompt else ""
 
@@ -418,6 +418,43 @@ def cmd_send(args) -> int:
         )
 
     print(f"Sent to {session}")
+    return 0
+
+
+def cmd_send_keys(args) -> int:
+    """Send raw keys to a tmux session (no automatic Enter).
+
+    Useful for sending special keys like Enter, Escape, C-c, etc.
+    Each key argument is sent separately to tmux send-keys.
+    """
+    session = args.session
+    keys = args.keys if args.keys else []
+
+    if not keys:
+        print("Usage: agentwire send-keys <session> <keys>...", file=sys.stderr)
+        print("Examples:", file=sys.stderr)
+        print("  agentwire send-keys mysession Enter", file=sys.stderr)
+        print("  agentwire send-keys mysession C-c", file=sys.stderr)
+        print("  agentwire send-keys mysession Escape", file=sys.stderr)
+        print("  agentwire send-keys mysession 'hello world' Enter", file=sys.stderr)
+        return 1
+
+    # Check if session exists
+    result = subprocess.run(
+        ["tmux", "has-session", "-t", session],
+        capture_output=True
+    )
+    if result.returncode != 0:
+        print(f"Session '{session}' not found", file=sys.stderr)
+        return 1
+
+    # Send keys via tmux send-keys (each argument becomes a separate key)
+    subprocess.run(
+        ["tmux", "send-keys", "-t", session] + keys,
+        check=True
+    )
+
+    print(f"Sent keys to {session}")
     return 0
 
 
@@ -1213,10 +1250,18 @@ def main() -> int:
     say_parser.set_defaults(func=cmd_say)
 
     # === send command ===
-    send_parser = subparsers.add_parser("send", help="Send prompt to a session")
+    send_parser = subparsers.add_parser("send", help="Send prompt to a session (adds Enter)")
     send_parser.add_argument("session", help="Target session name")
     send_parser.add_argument("prompt", nargs="*", help="Prompt to send")
     send_parser.set_defaults(func=cmd_send)
+
+    # === send-keys command ===
+    send_keys_parser = subparsers.add_parser(
+        "send-keys", help="Send raw keys to a session (no auto-Enter)"
+    )
+    send_keys_parser.add_argument("session", help="Target session name")
+    send_keys_parser.add_argument("keys", nargs="*", help="Keys to send (e.g., Enter, C-c, Escape)")
+    send_keys_parser.set_defaults(func=cmd_send_keys)
 
     # === session command group ===
     session_parser = subparsers.add_parser("session", help="Manage tmux sessions")
