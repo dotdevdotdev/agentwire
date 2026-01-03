@@ -6,7 +6,7 @@ readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
 authors = [
-    { name = "dotdev" }
+    { name = "dotdev", email = "dev@dotdev.dev" }
 ]
 keywords = ["ai", "voice", "agent", "claude", "tmux", "tts", "stt"]
 classifiers = [
