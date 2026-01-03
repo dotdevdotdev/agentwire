@@ -1,6 +1,6 @@
 # Mission: Permission Modes
 
-> Per-session permission control with portal-based permission prompts.
+> Per-session permission control with portal-based permission prompts via Claude Code hooks.
 
 **Branch:** `mission/permission-modes`
 
@@ -11,47 +11,187 @@ Currently all sessions run with `--dangerously-skip-permissions` (global config)
 This mission:
 1. Replaces `chatbot_mode` with functional `bypass_permissions` flag
 2. Per-session choice: bypass (fast) vs normal (prompted)
-3. Surfaces Claude's permission prompts in portal UI
+3. Uses Claude Code's `PermissionRequest` hook to surface prompts in portal
 4. Groups sessions by permission mode in `/status`
+
+## Research Findings
+
+**Key Discovery:** Claude Code doesn't show permission prompts in terminal output. Instead, it uses a **hook system**:
+
+- `PermissionRequest` hook intercepts permission checks before Claude acts
+- Hook receives JSON with tool name, parameters, context
+- Hook returns `{decision: "allow"}` or `{decision: "deny"}`
+- This is the proper integration point (not terminal parsing)
+
+**Permission Types:**
+| Tool Type | Needs Permission |
+|-----------|------------------|
+| Read-only (File reads, LS, Grep) | No |
+| Bash commands | Yes - remembered permanently per project |
+| File modification (Edit/Write) | Yes - remembered until session end |
 
 ## Session Types
 
 | Type | Flag | Agent Command | Behavior |
 |------|------|---------------|----------|
 | **Bypass Session** | `bypass_permissions: true` | `claude --dangerously-skip-permissions` | No prompts, full trust |
-| **Normal Session** | `bypass_permissions: false` | `claude` | Permission prompts in portal |
+| **Normal Session** | `bypass_permissions: false` | `claude` | Permission prompts via hook → portal |
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  Normal Session (bypass_permissions: false)                      │
+│                                                                  │
+│  Claude Code (no --dangerously-skip-permissions)                │
+│       │                                                          │
+│       ▼                                                          │
+│  PermissionRequest Hook fires                                    │
+│       │                                                          │
+│       ▼                                                          │
+│  permission-hook.sh                                              │
+│       │ POST /api/permission/{room}                              │
+│       ▼                                                          │
+│  AgentWire Server                                                │
+│       │ WebSocket: {type: "permission_request", ...}             │
+│       ▼                                                          │
+│  Portal UI shows modal                                           │
+│       │                                                          │
+│       ▼                                                          │
+│  User clicks [Allow] / [Deny]                                    │
+│       │                                                          │
+│       ▼                                                          │
+│  API returns decision to waiting hook                            │
+│       │                                                          │
+│       ▼                                                          │
+│  Hook returns JSON to Claude Code                                │
+│       │                                                          │
+│       ▼                                                          │
+│  Claude proceeds or aborts                                       │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+## Hook Implementation
+
+### Hook Script (`~/.claude/hooks/agentwire-permission.sh`)
+
+```bash
+#!/bin/bash
+# Reads permission request from stdin, POSTs to AgentWire, returns decision
+
+input=$(cat)
+session_id=$(echo "$input" | jq -r '.session_id')
+tool_name=$(echo "$input" | jq -r '.tool_name // "unknown"')
+
+# Determine room from session or environment
+room="${AGENTWIRE_ROOM:-default}"
+
+# POST to AgentWire and wait for decision
+response=$(curl -s -X POST "https://localhost:8765/api/permission/${room}" \
+  -H "Content-Type: application/json" \
+  -d "$input" \
+  --max-time 300)  # 5 min timeout for user decision
+
+# Return decision to Claude Code
+echo "$response"
+```
+
+### Hook Configuration (`.claude/settings.json`)
+
+```json
+{
+  "hooks": {
+    "PermissionRequest": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/agentwire-permission.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+### Hook Input (from Claude Code)
+
+```json
+{
+  "session_id": "abc123",
+  "cwd": "/Users/dotdev/projects/anna",
+  "tool_name": "Edit",
+  "tool_input": {
+    "file_path": "/src/auth/login.ts",
+    "old_string": "...",
+    "new_string": "..."
+  },
+  "permission_mode": "default",
+  "hook_event_name": "PermissionRequest",
+  "message": "Claude needs your permission to edit /src/auth/login.ts"
+}
+```
+
+### Hook Output (decision)
+
+```json
+{
+  "decision": "allow"
+}
+```
+
+Or to deny:
+
+```json
+{
+  "decision": "deny",
+  "message": "User denied permission"
+}
+```
 
 ## UX Flow
 
 ### Creating a Session
 
 ```
-Project: anna
-Name: feature-auth
-
-Session Type:
-  ○ Bypass Permissions (fast, no prompts)
-  ● Normal Session (permission prompts in portal)
-
-[Create]
-```
-
-### Permission Prompt (Normal Sessions)
-
-When Claude needs permission, it shows a prompt in terminal. We detect this and show modal:
-
-```
 ┌─────────────────────────────────────────┐
-│  Permission Request                      │
+│  New Session                             │
 │                                          │
-│  Claude wants to:                        │
-│  Edit file: /src/auth/login.ts           │
+│  Project: [anna____________]             │
+│  Name:    [feature-auth____]             │
 │                                          │
-│  [Allow Once]  [Allow Always]  [Deny]    │
+│  Session Type:                           │
+│    ○ Bypass Permissions                  │
+│      Fast, no prompts, full trust        │
+│                                          │
+│    ● Normal Session                      │
+│      Permission prompts in portal        │
+│                                          │
+│              [Create Session]            │
 └─────────────────────────────────────────┘
 ```
 
-User response is sent back to session, building up `.claude/settings.json` permissions organically.
+### Permission Prompt Modal
+
+```
+┌─────────────────────────────────────────┐
+│  🔐 Permission Request                   │
+│                                          │
+│  Claude wants to:                        │
+│                                          │
+│  Edit file                               │
+│  /src/auth/login.ts                      │
+│                                          │
+│  ┌─────────────────────────────────────┐ │
+│  │ - const token = getToken()         │ │
+│  │ + const token = await getToken()   │ │
+│  └─────────────────────────────────────┘ │
+│                                          │
+│      [Allow]              [Deny]         │
+└─────────────────────────────────────────┘
+```
 
 ### Status Grouping
 
@@ -87,65 +227,79 @@ Default: `bypass_permissions: true` (current behavior, no breaking change)
 | Task | Description | Files |
 |------|-------------|-------|
 | 1.1 | Add `bypass_permissions` to RoomConfig dataclass | `server.py` |
-| 1.2 | Update agent command formatting to use room setting | `agents/tmux.py` |
-| 1.3 | Add bypass toggle to session creation API | `server.py` |
-| 1.4 | Update room creation UI with session type choice | `templates/room.html` or dashboard |
+| 1.2 | Update agent command formatting based on room setting | `agents/tmux.py` |
+| 1.3 | Pass room name as env var to session (`AGENTWIRE_ROOM`) | `agents/tmux.py` |
+| 1.4 | Add bypass toggle to session creation API | `server.py` |
 
-## Wave 2: Permission Prompt Detection
+## Wave 2: Hook Infrastructure
 
 | Task | Description | Files |
 |------|-------------|-------|
-| 2.1 | Research Claude Code permission prompt format | - |
-| 2.2 | Create PERMISSION_PATTERN regex for detection | `server.py` |
-| 2.3 | Parse permission details (action, path, etc.) | `server.py` |
-| 2.4 | Add permission prompt to output polling | `server.py` |
+| 2.1 | Create permission hook script | `hooks/agentwire-permission.sh` |
+| 2.2 | Add `/api/permission/{room}` endpoint (blocking, waits for decision) | `server.py` |
+| 2.3 | Store pending permission requests per room | `server.py` |
+| 2.4 | Add `/api/permission/{room}/respond` endpoint for UI decisions | `server.py` |
 
 ## Wave 3: Portal UI
 
 | Task | Description | Files |
 |------|-------------|-------|
-| 3.1 | Create permission modal component (like AskUserQuestion) | `templates/room.html` |
-| 3.2 | WebSocket message for permission prompts | `server.py`, `templates/room.html` |
-| 3.3 | Send permission response back to session | `server.py` |
-| 3.4 | Handle Allow Once vs Allow Always vs Deny | `server.py` |
+| 3.1 | WebSocket message type for permission requests | `server.py` |
+| 3.2 | Permission modal component (tool name, file path, diff preview) | `templates/room.html` |
+| 3.3 | Allow/Deny buttons that POST to respond endpoint | `templates/room.html` |
+| 3.4 | "AWAITING PERMISSION" orb state (new color) | `templates/room.html` |
 
-## Wave 4: Skills & Cleanup
-
-| Task | Description | Files |
-|------|-------------|-------|
-| 4.1 | Update `/status` skill to group by permission mode | `skills/status.md` |
-| 4.2 | Update `/sessions` skill output | `skills/sessions.md` |
-| 4.3 | Remove `chatbot_mode` references | Multiple files |
-| 4.4 | Update documentation | `CLAUDE.md`, `docs/` |
-
-## Wave 5: Polish
+## Wave 4: Session Creation UI
 
 | Task | Description | Files |
 |------|-------------|-------|
-| 5.1 | Add "AWAITING PERMISSION" state to orb | `templates/room.html` |
-| 5.2 | TTS for permission prompts (optional) | `server.py` |
-| 5.3 | Default bypass_permissions in config.yaml | `config.py` |
-| 5.4 | Migration: treat missing bypass_permissions as true | `server.py` |
+| 4.1 | Add session type toggle to dashboard create form | `templates/dashboard.html` |
+| 4.2 | Pass bypass_permissions to create API | `templates/dashboard.html` |
+| 4.3 | Show session type badge on dashboard | `templates/dashboard.html` |
+
+## Wave 5: Skills & Cleanup
+
+| Task | Description | Files |
+|------|-------------|-------|
+| 5.1 | Update `/status` skill to group by permission mode | `skills/status.md` |
+| 5.2 | Update `/sessions` skill output | `skills/sessions.md` |
+| 5.3 | Remove `chatbot_mode` references | Multiple files |
+| 5.4 | Hook installation via `agentwire skills install` | `__main__.py` |
+
+## Wave 6: Polish & Docs
+
+| Task | Description | Files |
+|------|-------------|-------|
+| 6.1 | Timeout handling (auto-deny after 5 min?) | `server.py` |
+| 6.2 | TTS announcement for permission prompts | `server.py` |
+| 6.3 | Update CLAUDE.md documentation | `CLAUDE.md` |
+| 6.4 | Migration: treat missing bypass_permissions as true | `server.py` |
 
 ## Completion Criteria
 
 - [ ] Can create bypass vs normal sessions from portal
-- [ ] Normal sessions show permission prompts in portal
-- [ ] Can approve/deny permissions from portal
-- [ ] Permissions persist in Claude's `.claude/settings.json`
+- [ ] Normal sessions trigger PermissionRequest hook
+- [ ] Hook POSTs to AgentWire API
+- [ ] Permission modal appears in portal
+- [ ] Allow/Deny sends decision back to hook
+- [ ] Claude proceeds or aborts based on decision
 - [ ] `/status` groups sessions by permission mode
 - [ ] `chatbot_mode` removed from codebase
 - [ ] Existing sessions default to bypass (no breaking change)
+- [ ] Hook installed via `agentwire skills install`
 
-## Research Needed
+## Edge Cases
 
-- [ ] Exact format of Claude Code permission prompts
-- [ ] What keys to send for Allow/Allow Always/Deny
-- [ ] Does Claude show different prompts for different permission types?
+1. **Hook timeout**: If user doesn't respond in 5 min, auto-deny and notify
+2. **Multiple permission requests**: Queue them, show one at a time
+3. **Session disconnect**: Cancel pending permission requests
+4. **Remote sessions**: Hook needs to POST back to portal machine (via tunnel)
+5. **Hook not installed**: Normal sessions fail gracefully with helpful error
 
 ## Future Enhancements (Not in v1)
 
-- Permission presets (e.g., "read-only", "no network", "no shell")
-- Per-room MCP server configs
-- Permission audit log
-- Bulk permission management
+- "Allow Always" option (remembers for session)
+- Permission history/audit log
+- Diff preview for file edits
+- Per-room permission presets
+- Bulk approve/deny
