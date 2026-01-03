@@ -127,7 +127,7 @@ These tasks can run in parallel.
 
 These tasks can run in parallel.
 
-- [ ] **4.1 Extract orb component**
+- [x] **4.1 Extract orb component**
   - Create `components/orb.html` with orb markup (ring, orb, state label)
   - Create `static/css/orb.css` with all orb animations and state colors
   - Create `static/js/orb.js` as ES module:
@@ -135,7 +135,7 @@ These tasks can run in parallel.
     - `export function init(orbElement, ringElement, labelElement)`
   - Files: `templates/components/orb.html`, `static/css/orb.css`, `static/js/orb.js`
 
-- [ ] **4.2 Extract device selectors**
+- [x] **4.2 Extract device selectors**
   - Create `components/device_selector.html` as Jinja2 macro:
     ```jinja2
     {% macro device_selector(id, label, icon) %}
@@ -145,14 +145,14 @@ These tasks can run in parallel.
   - Reusable for mic, speaker, voice selectors
   - Files: `templates/components/device_selector.html`
 
-- [ ] **4.3 Extract actions menu**
+- [x] **4.3 Extract actions menu**
   - Create `components/actions_menu.html`
   - Accept `is_system_session` variable for conditional buttons
   - New Room, Fork Session, Recreate Session (or Restart Service for system)
   - Hover popovers for button labels
   - Files: `templates/components/actions_menu.html`
 
-- [ ] **4.4 Extract ask modal**
+- [x] **4.4 Extract ask modal**
   - Create `components/ask_modal.html`
   - Hidden by default, shown via JS
   - Question display, dynamic option buttons, text input for "Other"
@@ -161,7 +161,7 @@ These tasks can run in parallel.
     - `export function hide()`
   - Files: `templates/components/ask_modal.html`, `static/js/ask-modal.js`
 
-- [ ] **4.5 Extract output view**
+- [x] **4.5 Extract output view**
   - Create `components/output_view.html` for text output display
   - Create `static/js/output.js` as ES module:
     - `export function append(text)`
