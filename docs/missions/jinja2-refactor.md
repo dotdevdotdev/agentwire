@@ -16,30 +16,40 @@ Transform 3000+ lines of monolithic HTML/CSS/JS into a clean, maintainable templ
 ## Target State
 
 ```
-templates/
-├── base.html                 # Common structure, head, scripts
-├── dashboard.html            # {% extends 'base.html' %}
-├── room.html                 # {% extends 'base.html' %}
-├── components/
-│   ├── orb.html              # Animated orb with state classes
-│   ├── device_selector.html  # Mic/speaker dropdown macro
-│   ├── voice_selector.html   # TTS voice picker
-│   ├── actions_menu.html     # Session action buttons
-│   ├── terminal.html         # Terminal mode view
-│   └── ask_modal.html        # AskUserQuestion popup
+agentwire/
+├── templates/
+│   ├── base.html                 # Common structure, head, scripts
+│   ├── dashboard.html            # {% extends 'base.html' %}
+│   ├── room.html                 # {% extends 'base.html' %}
+│   └── components/
+│       ├── orb.html              # Animated orb with state classes
+│       ├── device_selector.html  # Mic/speaker dropdown macro
+│       ├── voice_selector.html   # TTS voice picker
+│       ├── actions_menu.html     # Session action buttons
+│       ├── output_view.html      # Text output view (terminal mode)
+│       └── ask_modal.html        # AskUserQuestion popup
 └── static/
     ├── css/
-    │   ├── base.css          # Reset, variables, common
-    │   ├── orb.css           # Orb animations
-    │   ├── room.css          # Room layout
-    │   └── dashboard.css     # Dashboard grid
+    │   ├── base.css              # Reset, variables, common
+    │   ├── orb.css               # Orb animations
+    │   ├── room.css              # Room layout
+    │   └── dashboard.css         # Dashboard grid
     └── js/
-        ├── websocket.js      # WS connection, reconnect
-        ├── audio.js          # Recording, TTS playback
-        ├── orb.js            # Orb state management
-        ├── terminal.js       # Terminal mode (xterm.js)
-        └── room.js           # Room page orchestration
+        ├── websocket.js          # WS connection, reconnect
+        ├── audio.js              # Recording, TTS playback
+        ├── orb.js                # Orb state management
+        ├── output.js             # Text output view handling
+        └── room.js               # Room page orchestration (imports others)
 ```
+
+## Technical Decisions
+
+| Decision | Choice | Rationale |
+|----------|--------|-----------|
+| Static files location | `agentwire/static/` | Separate from templates, clean Python package pattern |
+| JS module system | ES Modules | Modern import/export, better organization |
+| Terminal mode | Text output view | No xterm.js, just styled text display |
+| Testing | Manual | Checklist-based verification |
 
 ---
 
@@ -52,156 +62,218 @@ templates/
 
 ## Wave 2: Core Infrastructure
 
-- [ ] **2.1 Initialize Jinja2 in server.py**
+These tasks have dependencies - run sequentially or coordinate carefully.
+
+- [ ] **2.1 Initialize Jinja2 in server.py** (do first)
   - Import aiohttp_jinja2 and jinja2
   - Setup jinja2 environment with templates directory
-  - Configure auto-escaping, static file handling
-  - Replace `_render_template()` with `aiohttp_jinja2.render_template()`
+  - Configure auto-escaping
+  - Keep `_render_template()` temporarily for compatibility
   - Files: `server.py`
 
-- [ ] **2.2 Create base.html template**
+- [ ] **2.2 Setup static file serving** (needs 2.1)
+  - Create `agentwire/static/` directory structure
+  - Add static file route to aiohttp app (`/static/` → `agentwire/static/`)
+  - Ensure CSS/JS files are served with correct MIME types
+  - Files: `server.py`, `agentwire/static/`
+
+- [ ] **2.3 Create base.html template** (needs 2.1)
   - DOCTYPE, html, head with meta tags
-  - CSS block for page-specific styles
-  - Common CSS variables (colors, spacing)
-  - Body structure with content block
-  - Scripts block at end
+  - `{% block title %}` for page titles
+  - `{% block styles %}` for page-specific CSS links
+  - Common CSS variables in base.css link
+  - Body structure with `{% block content %}`
+  - `{% block scripts %}` at end for page-specific JS
   - Files: `templates/base.html`
 
-- [ ] **2.3 Setup static file serving**
-  - Create `templates/static/` directory structure
-  - Add static file route to aiohttp app
-  - Ensure CSS/JS files are served with correct MIME types
-  - Files: `server.py`, `templates/static/`
+- [ ] **2.4 Create base.css**
+  - CSS reset (* { box-sizing, margin, padding })
+  - CSS custom properties (colors, spacing, typography)
+  - Common body styles
+  - Files: `static/css/base.css`
 
 ---
 
 ## Wave 3: Extract Dashboard
 
+These tasks can run in parallel.
+
 - [ ] **3.1 Extract dashboard CSS**
   - Pull all `<style>` content from dashboard.html
   - Create `static/css/dashboard.css`
-  - Organize into logical sections (grid, cards, buttons)
-  - Files: `templates/static/css/dashboard.css`
+  - Organize into logical sections (layout, cards, buttons, forms)
+  - Files: `static/css/dashboard.css`
 
 - [ ] **3.2 Extract dashboard JS**
   - Pull all `<script>` content from dashboard.html
-  - Create `static/js/dashboard.js`
-  - Convert inline handlers to addEventListener
-  - Files: `templates/static/js/dashboard.js`
+  - Create `static/js/dashboard.js` as ES module
+  - Convert inline onclick handlers to addEventListener
+  - Export init function, call on DOMContentLoaded
+  - Files: `static/js/dashboard.js`
 
 - [ ] **3.3 Refactor dashboard.html**
-  - Extend base.html
-  - Replace inline styles/scripts with static file links
-  - Use Jinja2 for loops and conditionals (already compatible syntax)
-  - Clean up to ~100-150 lines
+  - `{% extends 'base.html' %}`
+  - `{% block title %}AgentWire{% endblock %}`
+  - `{% block styles %}<link rel="stylesheet" href="/static/css/dashboard.css">{% endblock %}`
+  - `{% block content %}` with page HTML
+  - `{% block scripts %}<script type="module" src="/static/js/dashboard.js">{% endblock %}`
+  - Use Jinja2 for loops: `{% for session in sessions %}`
+  - Target: ~100-150 lines
   - Files: `templates/dashboard.html`
 
 ---
 
 ## Wave 4: Extract Room Components
 
+These tasks can run in parallel.
+
 - [ ] **4.1 Extract orb component**
-  - Create `components/orb.html` with orb markup
-  - Create `static/css/orb.css` with animations
-  - Create `static/js/orb.js` with state management
-  - Orb states: ready, listening, processing, generating, speaking
+  - Create `components/orb.html` with orb markup (ring, orb, state label)
+  - Create `static/css/orb.css` with all orb animations and state colors
+  - Create `static/js/orb.js` as ES module:
+    - `export function setOrbState(state)` - ready, listening, processing, generating, speaking
+    - `export function init(orbElement, ringElement, labelElement)`
   - Files: `templates/components/orb.html`, `static/css/orb.css`, `static/js/orb.js`
 
 - [ ] **4.2 Extract device selectors**
-  - Create Jinja2 macro for dropdown selectors
-  - Reusable for mic, speaker, voice
-  - Create `components/device_selector.html`
+  - Create `components/device_selector.html` as Jinja2 macro:
+    ```jinja2
+    {% macro device_selector(id, label, icon) %}
+    <div class="device-selector">...</div>
+    {% endmacro %}
+    ```
+  - Reusable for mic, speaker, voice selectors
   - Files: `templates/components/device_selector.html`
 
 - [ ] **4.3 Extract actions menu**
   - Create `components/actions_menu.html`
-  - New Room, Fork Session, Recreate Session buttons
+  - Accept `is_system_session` variable for conditional buttons
+  - New Room, Fork Session, Recreate Session (or Restart Service for system)
   - Hover popovers for button labels
   - Files: `templates/components/actions_menu.html`
 
 - [ ] **4.4 Extract ask modal**
   - Create `components/ask_modal.html`
-  - Question display, option buttons, text input
-  - Modal show/hide logic
-  - Files: `templates/components/ask_modal.html`
+  - Hidden by default, shown via JS
+  - Question display, dynamic option buttons, text input for "Other"
+  - Create `static/js/ask-modal.js` as ES module:
+    - `export function show(question, options, callback)`
+    - `export function hide()`
+  - Files: `templates/components/ask_modal.html`, `static/js/ask-modal.js`
+
+- [ ] **4.5 Extract output view**
+  - Create `components/output_view.html` for text output display
+  - Create `static/js/output.js` as ES module:
+    - `export function append(text)`
+    - `export function clear()`
+    - `export function scrollToBottom()`
+  - Mode toggle between ambient/output view
+  - Files: `templates/components/output_view.html`, `static/js/output.js`
 
 ---
 
 ## Wave 5: Extract Room Core
 
+These tasks can run in parallel.
+
 - [ ] **5.1 Extract room CSS**
   - Pull remaining styles from room.html
   - Create `static/css/room.css`
-  - Create `static/css/base.css` for shared variables
-  - Files: `templates/static/css/base.css`, `templates/static/css/room.css`
+  - Organize: layout, header, controls, floating-controls, bubbles
+  - Files: `static/css/room.css`
 
 - [ ] **5.2 Extract WebSocket handling**
-  - Create `static/js/websocket.js`
-  - Connection, reconnection logic
-  - Message routing (output, tts, ask, state)
-  - Files: `templates/static/js/websocket.js`
+  - Create `static/js/websocket.js` as ES module:
+    - `export function connect(roomName, handlers)`
+    - `export function send(type, data)`
+    - `export function disconnect()`
+  - Handlers object: `{ onOutput, onTts, onAsk, onState, onConnect, onDisconnect }`
+  - Auto-reconnect with exponential backoff
+  - Files: `static/js/websocket.js`
 
 - [ ] **5.3 Extract audio handling**
-  - Create `static/js/audio.js`
+  - Create `static/js/audio.js` as ES module:
+    - `export function initRecorder(onRecordingComplete)`
+    - `export function startRecording()`
+    - `export function stopRecording()`
+    - `export function playTts(audioData)`
+    - `export function setInputDevice(deviceId)`
+    - `export function setOutputDevice(deviceId)`
   - MediaRecorder for push-to-talk
   - AudioContext for TTS playback
-  - Device selection persistence
-  - Files: `templates/static/js/audio.js`
-
-- [ ] **5.4 Extract terminal handling**
-  - Create `static/js/terminal.js`
-  - Create `components/terminal.html`
-  - xterm.js initialization, fit addon
-  - Mode toggle between ambient/terminal
-  - Files: `templates/static/js/terminal.js`, `templates/components/terminal.html`
+  - Device selection with localStorage persistence
+  - Files: `static/js/audio.js`
 
 ---
 
 ## Wave 6: Finalize Room
 
-- [ ] **6.1 Create room.js orchestrator**
-  - Import/coordinate all room modules
-  - Initialize on DOMContentLoaded
-  - State management across components
-  - Files: `templates/static/js/room.js`
+These tasks are sequential.
 
-- [ ] **6.2 Refactor room.html**
-  - Extend base.html
-  - Include all components
-  - Link all static CSS/JS
+- [ ] **6.1 Create room.js orchestrator** (do first)
+  - ES module that imports all room modules:
+    ```js
+    import * as ws from './websocket.js';
+    import * as audio from './audio.js';
+    import * as orb from './orb.js';
+    import * as askModal from './ask-modal.js';
+    import * as output from './output.js';
+    ```
+  - Initialize on DOMContentLoaded
+  - Wire up event handlers between modules
+  - State management across components
+  - Files: `static/js/room.js`
+
+- [ ] **6.2 Refactor room.html** (needs 6.1)
+  - `{% extends 'base.html' %}`
+  - `{% from 'components/device_selector.html' import device_selector %}`
+  - `{% include 'components/orb.html' %}`
+  - `{% include 'components/actions_menu.html' %}`
+  - `{% include 'components/ask_modal.html' %}`
+  - `{% include 'components/output_view.html' %}`
+  - Link all static CSS/JS with `type="module"`
   - Target: ~150-200 lines of clean template
   - Files: `templates/room.html`
 
-- [ ] **6.3 Remove old template engine**
+- [ ] **6.3 Remove old template engine** (do last)
   - Delete `_render_template()` method from server.py
-  - Update all template render calls
-  - Clean up unused imports
+  - Replace all `self._render_template()` calls with `aiohttp_jinja2.render_template()`
+  - Clean up unused regex imports
   - Files: `server.py`
 
 ---
 
 ## Wave 7: Testing & Polish
 
+Manual testing checklist.
+
 - [ ] **7.1 Test dashboard functionality**
-  - Session list loads
-  - Create session works
-  - System sessions detected
-  - All links work
+  - [ ] Dashboard loads without errors
+  - [ ] Session list displays correctly
+  - [ ] Create new session works
+  - [ ] System sessions show correct actions
+  - [ ] All room links work
 
 - [ ] **7.2 Test room functionality**
-  - WebSocket connects
-  - Push-to-talk records and transcribes
-  - TTS audio plays
-  - Orb states animate correctly
-  - Device selectors persist
-  - Actions menu works
-  - AskUserQuestion modal works
-  - Terminal mode works
+  - [ ] Room page loads without errors
+  - [ ] WebSocket connects (check console)
+  - [ ] Push-to-talk records audio
+  - [ ] Transcription appears in session
+  - [ ] TTS audio plays back
+  - [ ] Orb states animate correctly
+  - [ ] Device selectors persist across refresh
+  - [ ] Voice selector works
+  - [ ] Actions menu opens/closes
+  - [ ] AskUserQuestion modal works
+  - [ ] Output view mode toggle works
+  - [ ] Text input sends messages
 
 - [ ] **7.3 Browser compatibility**
-  - Test Chrome, Firefox, Safari
-  - Test mobile (iOS Safari, Chrome Android)
-  - Fix any issues
+  - [ ] Chrome desktop
+  - [ ] Firefox desktop
+  - [ ] Safari desktop
+  - [ ] Chrome Android
+  - [ ] iOS Safari
 
 ---
 
@@ -210,8 +282,8 @@ templates/
 - [ ] All templates use Jinja2 (no custom regex engine)
 - [ ] `room.html` under 200 lines
 - [ ] `dashboard.html` under 150 lines
-- [ ] All CSS in static files
-- [ ] All JS in static files (modular)
+- [ ] All CSS in `agentwire/static/css/`
+- [ ] All JS in `agentwire/static/js/` as ES modules
 - [ ] Components are reusable via includes/macros
 - [ ] Portal fully functional (no regressions)
 - [ ] Code is clean and readable for open source
@@ -222,6 +294,7 @@ templates/
 
 - Keep the same visual design - this is a refactor, not a redesign
 - Jinja2 syntax is already compatible with our current `{{ var }}` and `{% for %}` patterns
-- **Use vanilla JS** - no Alpine/HTMX for now, keeps it accessible to all devs
-- Static files should be served with cache headers for production
-- JS modules should use clear function names and comments for readability
+- **Use vanilla JS with ES modules** - modern, clean, no build step
+- Static files served from `agentwire/static/` at `/static/` URL path
+- JS modules use `type="module"` script tags
+- Manual testing is sufficient for this refactor
