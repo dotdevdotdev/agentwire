@@ -555,6 +555,7 @@ body {
     align-items: center;
     gap: 0.5rem;
     flex: 1;
+    min-width: 0;
     margin-right: 1rem;
 }
 
@@ -593,6 +594,7 @@ body {
     border-radius: 28px;
     padding: 0.25rem 0.5rem 0.25rem 1rem;
     flex: 0;
+    min-width: 0;
     overflow: hidden;
     opacity: 0;
     transition: all 0.3s ease;
@@ -600,6 +602,7 @@ body {
 
 .text-input-expanded.open {
     flex: 1;
+    min-width: 0;
     opacity: 1;
 }
 
