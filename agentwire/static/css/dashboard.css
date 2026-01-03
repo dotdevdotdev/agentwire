@@ -8,21 +8,20 @@
     display: flex;
     flex-direction: column;
     min-height: 100vh;
-    max-width: 500px;
+    max-width: 600px;
     margin: 0 auto;
-    padding: var(--space-lg);
+    padding: var(--space-sm) var(--space-md);
 }
 
-.left-column {
+.header-row {
     display: flex;
-    flex-direction: column;
-    width: 100%;
+    align-items: flex-start;
+    gap: var(--space-md);
 }
 
-.right-column {
+.sessions-section {
     flex: 1;
-    padding: 0;
-    padding-top: var(--space-lg);
+    padding-top: var(--space-md);
     overflow-y: auto;
 }
 
@@ -31,27 +30,13 @@
    ============================================================================= */
 
 .brand {
-    text-align: center;
-    margin-bottom: var(--space-md);
+    flex-shrink: 0;
 }
 
 .splash-logo {
-    max-width: 250px;
-    width: 100%;
+    width: 180px;
     height: auto;
-    border-radius: var(--radius-lg);
-}
-
-.tagline {
-    color: var(--text-muted);
-    margin-top: 0.75rem;
-    font-size: 1rem;
-}
-
-.version {
-    font-size: 0.85rem;
-    color: var(--text-muted);
-    margin-top: var(--space-xs);
+    border-radius: var(--radius-md);
 }
 
 /* =============================================================================
@@ -59,10 +44,11 @@
    ============================================================================= */
 
 .actions {
-    margin-top: auto;
+    flex: 1;
+    margin-top: 16px;
     display: flex;
     flex-direction: column;
-    gap: var(--space-sm);
+    gap: var(--space-xs);
 }
 
 .action-group {
@@ -75,7 +61,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0.75rem var(--space-md);
+    padding: 0.5rem var(--space-sm);
     cursor: pointer;
     user-select: none;
     transition: background 0.2s;
@@ -86,7 +72,7 @@
 }
 
 .action-header h3 {
-    font-size: 1.1rem;
+    font-size: 0.95rem;
     font-weight: 500;
     color: var(--text-primary);
 }

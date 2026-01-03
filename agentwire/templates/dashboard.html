@@ -8,11 +8,9 @@
 
 {% block content %}
 <div class="layout">
-    <div class="left-column">
+    <div class="header-row">
         <div class="brand">
             <img src="/static/agentwire-logo-splash-green-dark.png" alt="AgentWire" class="splash-logo">
-            <p class="tagline">Voice Agent Interface</p>
-            <div class="version">v{{ version }}</div>
         </div>
 
         <div class="actions">
@@ -145,7 +143,7 @@
         </div>
     </div>
 
-    <div class="right-column">
+    <div class="sessions-section">
         <div class="section-title">Active Sessions</div>
         <div class="sessions" id="sessions">
             <div class="no-sessions">Loading sessions...</div>

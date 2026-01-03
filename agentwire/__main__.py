@@ -512,6 +512,26 @@ def cmd_new(args) -> int:
         check=True
     )
 
+    # Save room config with bypass_permissions flag
+    rooms_file = Path.home() / ".agentwire" / "rooms.json"
+    rooms_file.parent.mkdir(parents=True, exist_ok=True)
+
+    configs = {}
+    if rooms_file.exists():
+        try:
+            with open(rooms_file) as f:
+                configs = json.load(f)
+        except Exception:
+            pass
+
+    bypass_permissions = not getattr(args, 'no_bypass', False)
+    configs[session_name] = {
+        "bypass_permissions": bypass_permissions,
+    }
+
+    with open(rooms_file, "w") as f:
+        json.dump(configs, f, indent=2)
+
     print(f"Created session '{session_name}' in {session_path}")
     print(f"Attach with: tmux attach -t {session_name}")
     return 0
