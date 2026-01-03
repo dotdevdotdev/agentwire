@@ -132,6 +132,83 @@ projects:
 
 ---
 
+## Permission Modes
+
+Sessions run in one of two permission modes:
+
+| Mode | Setting | Claude Command | Behavior |
+|------|---------|----------------|----------|
+| **Bypass** | `bypass_permissions: true` | `claude --dangerously-skip-permissions` | No prompts, full trust, fast |
+| **Normal** | `bypass_permissions: false` | `claude` | Permission prompts via portal |
+
+**Default:** Bypass mode (existing behavior, recommended for trusted projects)
+
+### How It Works
+
+**Bypass sessions** skip all permission checks - Claude acts immediately without asking.
+
+**Normal sessions** use Claude Code's hook system:
+1. Claude triggers a permission-requiring action (edit file, run command)
+2. `PermissionRequest` hook fires, calling AgentWire's hook script
+3. Hook POSTs to `/api/permission/{room}` and blocks waiting for response
+4. Portal shows permission modal with action details and diff preview
+5. User clicks Allow or Deny
+6. Decision returns to hook, Claude proceeds or aborts
+
+### Permission Modal
+
+When a normal session requires permission, the portal shows:
+- Tool name and target (e.g., "Edit /src/auth/login.ts")
+- Diff preview for file edits
+- Allow/Deny buttons
+- TTS announcement: "Claude wants to edit login.ts"
+
+The orb state changes to orange/amber (AWAITING PERMISSION).
+
+### Hook System
+
+Normal sessions require the AgentWire permission hook:
+
+**Hook script:** `~/.claude/hooks/agentwire-permission.sh`
+**Installed via:** `agentwire skills install`
+
+The hook:
+- Reads permission request JSON from stdin
+- POSTs to `https://localhost:8765/api/permission/{room}`
+- Waits indefinitely for user decision
+- Returns `{decision: "allow"}` or `{decision: "deny"}` to Claude
+
+### Room Configuration
+
+Set per-session in `~/.agentwire/rooms.json`:
+
+```json
+{
+  "my-project": {
+    "voice": "bashbunni",
+    "bypass_permissions": true
+  },
+  "untrusted-lib": {
+    "voice": "bashbunni",
+    "bypass_permissions": false
+  }
+}
+```
+
+**Migration:** Sessions without `bypass_permissions` default to `true` (bypass).
+
+### When to Use Each Mode
+
+| Use Case | Recommended Mode |
+|----------|------------------|
+| Trusted projects you own | Bypass |
+| Rapid development, exploration | Bypass |
+| Reviewing unfamiliar code | Normal |
+| Running untrusted prompts | Normal |
+| Learning/educational use | Normal |
+
+---
+
 ## Skills (Session Orchestration)
 
 Skills in `skills/` provide Claude Code integration:

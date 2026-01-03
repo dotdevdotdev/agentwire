@@ -195,7 +195,7 @@ docker:
   "assistant": {
     "role": "chatbot",
     "voice": "tiny-tina",
-    "chatbot_mode": true,
+    "bypass_permissions": true,
     "model": "opus"
   }
 }

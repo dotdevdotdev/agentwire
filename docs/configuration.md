@@ -115,11 +115,11 @@ Room-specific settings are stored in `~/.agentwire/rooms.json`:
   "myapp": {
     "voice": "alloy",
     "model": "sonnet",
-    "chatbot_mode": false
+    "bypass_permissions": true
   },
-  "assistant": {
+  "untrusted-lib": {
     "voice": "nova",
-    "chatbot_mode": true
+    "bypass_permissions": false
   }
 }
 ```
@@ -127,7 +127,7 @@ Room-specific settings are stored in `~/.agentwire/rooms.json`:
 Room config options:
 - `voice` - TTS voice for this room
 - `model` - AI model (passed to agent command as {model})
-- `chatbot_mode` - If true, optimizes for fast conversational responses
+- `bypass_permissions` - If true (default), skips permission prompts; if false, shows prompts in portal
 - `machine` - Remote machine ID for this room
 - `path` - Custom project path
 

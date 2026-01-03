@@ -19,7 +19,7 @@
   "assistant": {
     "role": "chatbot",
     "voice": "tiny-tina",
-    "chatbot_mode": true,
+    "bypass_permissions": true,
     "model": "opus",
     "exaggeration": 0.7,
     "cfg_weight": 0.5

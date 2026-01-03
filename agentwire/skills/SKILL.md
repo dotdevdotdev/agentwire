@@ -71,7 +71,7 @@ All config lives in `~/.agentwire/`:
   "assistant": {
     "role": "chatbot",
     "voice": "default",
-    "chatbot_mode": true
+    "bypass_permissions": true
   }
 }
 ```
