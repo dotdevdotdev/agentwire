@@ -194,15 +194,15 @@ async def run_agentwire_cmd(self, args: list[str]) -> tuple[bool, dict]:
 
 ## Completion Criteria
 
-- [ ] `agentwire list` shows sessions from local + all registered machines
-- [ ] `agentwire send/output/kill -s session@machine` work remotely
-- [ ] `agentwire new -s project/branch` creates local worktree
-- [ ] `agentwire new -s project/branch@machine` creates remote worktree
-- [ ] `agentwire recreate -s <name>` works locally and remotely
-- [ ] `agentwire fork -s <source> -t <target>` works locally and remotely
-- [ ] All commands support `--json` for machine-readable output
-- [ ] Portal uses CLI subprocess for all session operations
-- [ ] CLAUDE.md documents all commands with remote examples
+- [x] `agentwire list` shows sessions from local + all registered machines
+- [x] `agentwire send/output/kill -s session@machine` work remotely
+- [x] `agentwire new -s project/branch` creates local worktree
+- [x] `agentwire new -s project/branch@machine` creates remote worktree
+- [x] `agentwire recreate -s <name>` works locally and remotely
+- [x] `agentwire fork -s <source> -t <target>` works locally and remotely
+- [x] All commands support `--json` for machine-readable output
+- [x] Portal uses CLI subprocess for all session operations
+- [x] CLAUDE.md documents all commands with remote examples
 
 ---
 
