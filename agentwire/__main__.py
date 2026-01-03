@@ -425,6 +425,131 @@ def cmd_send(args) -> int:
     return 0
 
 
+def cmd_list(args) -> int:
+    """List all tmux sessions."""
+    result = subprocess.run(
+        ["tmux", "list-sessions", "-F", "#{session_name}: #{session_windows} windows (#{session_path})"],
+        capture_output=True,
+        text=True
+    )
+    if result.returncode != 0:
+        print("No sessions running")
+        return 0
+
+    print(result.stdout.strip())
+    return 0
+
+
+def cmd_new(args) -> int:
+    """Create a new Claude Code session in tmux."""
+    name = args.session
+    path = args.path
+
+    if not name:
+        print("Usage: agentwire new -s <name> [-p path] [-f]", file=sys.stderr)
+        return 1
+
+    # Convert dots to underscores for tmux session name
+    session_name = name.replace(".", "_")
+
+    # Resolve path
+    if path:
+        session_path = Path(path).expanduser().resolve()
+    else:
+        # Default to ~/projects/<name> (using original name with dots)
+        config = load_config()
+        projects_dir = Path(config.get("projects", {}).get("dir", "~/projects")).expanduser()
+        session_path = projects_dir / name
+
+    if not session_path.exists():
+        print(f"Path does not exist: {session_path}", file=sys.stderr)
+        return 1
+
+    # Check if session already exists
+    result = subprocess.run(
+        ["tmux", "has-session", "-t", session_name],
+        capture_output=True
+    )
+    if result.returncode == 0:
+        if args.force:
+            # Kill existing session
+            subprocess.run(["tmux", "send-keys", "-t", session_name, "/exit", "Enter"])
+            time.sleep(2)
+            subprocess.run(["tmux", "kill-session", "-t", session_name], capture_output=True)
+        else:
+            print(f"Session '{session_name}' already exists. Use -f to replace.", file=sys.stderr)
+            return 1
+
+    # Create new tmux session
+    subprocess.run(
+        ["tmux", "new-session", "-d", "-s", session_name, "-c", str(session_path)],
+        check=True
+    )
+
+    # Start Claude with skip-permissions flag
+    subprocess.run(
+        ["tmux", "send-keys", "-t", session_name, "claude --dangerously-skip-permissions", "Enter"],
+        check=True
+    )
+
+    print(f"Created session '{session_name}' in {session_path}")
+    print(f"Attach with: tmux attach -t {session_name}")
+    return 0
+
+
+def cmd_output(args) -> int:
+    """Read output from a tmux session."""
+    session = args.session
+    lines = args.lines or 50
+
+    if not session:
+        print("Usage: agentwire output -s <session> [-n lines]", file=sys.stderr)
+        return 1
+
+    result = subprocess.run(
+        ["tmux", "has-session", "-t", session],
+        capture_output=True
+    )
+    if result.returncode != 0:
+        print(f"Session '{session}' not found", file=sys.stderr)
+        return 1
+
+    result = subprocess.run(
+        ["tmux", "capture-pane", "-t", session, "-p", "-S", f"-{lines}"],
+        capture_output=True,
+        text=True
+    )
+    print(result.stdout)
+    return 0
+
+
+def cmd_kill(args) -> int:
+    """Kill a tmux session (with clean Claude exit)."""
+    session = args.session
+
+    if not session:
+        print("Usage: agentwire kill -s <session>", file=sys.stderr)
+        return 1
+
+    result = subprocess.run(
+        ["tmux", "has-session", "-t", session],
+        capture_output=True
+    )
+    if result.returncode != 0:
+        print(f"Session '{session}' not found", file=sys.stderr)
+        return 1
+
+    # Send /exit to Claude first for clean shutdown
+    subprocess.run(["tmux", "send-keys", "-t", session, "/exit", "Enter"])
+    print(f"Sent /exit to {session}, waiting 3s...")
+    time.sleep(3)
+
+    # Kill the session
+    subprocess.run(["tmux", "kill-session", "-t", session])
+    print(f"Killed session '{session}'")
+    return 0
+
+
 def cmd_send_keys(args) -> int:
     """Send raw keys to a tmux session (no automatic Enter).
 
@@ -1376,7 +1501,29 @@ def main() -> int:
     send_keys_parser.add_argument("keys", nargs="*", help="Key groups to send (e.g., 'hello world' Enter)")
     send_keys_parser.set_defaults(func=cmd_send_keys)
 
-    # === session command group ===
+    # === list command (top-level) ===
+    list_parser = subparsers.add_parser("list", help="List all tmux sessions")
+    list_parser.set_defaults(func=cmd_list)
+
+    # === new command (top-level) ===
+    new_parser = subparsers.add_parser("new", help="Create new Claude Code session")
+    new_parser.add_argument("-s", "--session", required=True, help="Session name (dots become underscores)")
+    new_parser.add_argument("-p", "--path", help="Working directory (default: ~/projects/<name>)")
+    new_parser.add_argument("-f", "--force", action="store_true", help="Replace existing session")
+    new_parser.set_defaults(func=cmd_new)
+
+    # === output command (top-level) ===
+    output_parser = subparsers.add_parser("output", help="Read session output")
+    output_parser.add_argument("-s", "--session", required=True, help="Session name")
+    output_parser.add_argument("-n", "--lines", type=int, default=50, help="Lines to show (default: 50)")
+    output_parser.set_defaults(func=cmd_output)
+
+    # === kill command (top-level) ===
+    kill_parser = subparsers.add_parser("kill", help="Kill a session (clean shutdown)")
+    kill_parser.add_argument("-s", "--session", required=True, help="Session name")
+    kill_parser.set_defaults(func=cmd_kill)
+
+    # === session command group (legacy, kept for backwards compat) ===
     session_parser = subparsers.add_parser("session", help="Manage tmux sessions")
     session_subparsers = session_parser.add_subparsers(dest="session_command")
 
