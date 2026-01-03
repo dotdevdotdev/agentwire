@@ -34,8 +34,9 @@ All tasks start immediately (no dependencies):
 | Task | Description | Files |
 |------|-------------|-------|
 | 2.1 | Add `GET /api/check-path` endpoint - returns `{exists, is_git, current_branch}` | `server.py` |
-| 2.2 | Update `POST /api/create` to accept `machine`, `worktree`, `branch` parameters | `server.py` |
-| 2.3 | Update `api_create_session` to build proper CLI args for machine and worktree | `server.py` |
+| 2.2 | Add `GET /api/check-branches` endpoint - returns `{existing: [branch names matching prefix]}` | `server.py` |
+| 2.3 | Update `POST /api/create` to accept `machine`, `worktree`, `branch` parameters | `server.py` |
+| 2.4 | Update `api_create_session` to build proper CLI args for machine and worktree | `server.py` |
 
 **2.1 Check Path Endpoint:**
 ```python
@@ -76,7 +77,33 @@ async def api_check_path(self, request: web.Request) -> web.Response:
     })
 ```
 
-**2.3 Create Session Logic:**
+**2.2 Check Branches Endpoint:**
+```python
+async def api_check_branches(self, request: web.Request) -> web.Response:
+    """Get existing branch names matching a prefix."""
+    path = request.query.get("path", "")
+    machine = request.query.get("machine", "local")
+    prefix = request.query.get("prefix", "")
+
+    if machine != "local":
+        cmd = f"cd {shlex.quote(path)} && git branch --list '{prefix}*' --format='%(refname:short)'"
+        result = _run_remote(machine, cmd)
+        branches = result.stdout.strip().split('\n') if result.returncode == 0 else []
+    else:
+        expanded = Path(path).expanduser().resolve()
+        result = subprocess.run(
+            ["git", "branch", "--list", f"{prefix}*", "--format=%(refname:short)"],
+            cwd=expanded, capture_output=True, text=True
+        )
+        branches = result.stdout.strip().split('\n') if result.returncode == 0 else []
+
+    # Filter out empty strings
+    branches = [b for b in branches if b]
+
+    return web.json_response({"existing": branches})
+```
+
+**2.4 Create Session Logic:**
 ```python
 # Build session name for CLI
 if machine and machine != "local":
@@ -233,34 +260,77 @@ document.getElementById('sessionMachine').addEventListener('change', onPathChang
 
 ---
 
-## Wave 6: Smart Defaults
+## Wave 6: Smart Defaults & Auto-fill
 
 | Task | Description | Needs Output From |
 |------|-------------|-------------------|
-| 6.1 | Auto-suggest timestamp-based branch name (e.g., `jan-3-work`) | 5.4 |
-| 6.2 | When worktree unchecked, hide branch input | 5.4 |
-| 6.3 | Update default projects path when machine changes (use machine's projects_dir) | 3.3 |
+| 6.1 | Auto-fill project path as user types session name (`~/projects/{name}`) | 3.3 |
+| 6.2 | When machine changes, update path placeholder to machine's projects_dir | 3.3 |
+| 6.3 | Auto-suggest unique branch name (`mon-day-year--N`) checking for conflicts | 5.4 |
+| 6.4 | When worktree unchecked, hide branch input entirely | 5.4 |
 
-**6.1 Timestamp Branch Suggestion:**
+**6.1 Path Auto-fill:**
 ```javascript
-function suggestBranchName() {
-    const now = new Date();
-    const month = now.toLocaleString('en', { month: 'short' }).toLowerCase();
-    const day = now.getDate();
-    return `${month}-${day}-work`;  // e.g., "jan-3-work"
+function onSessionNameChange() {
+    const name = document.getElementById('sessionName').value.trim();
+    const pathInput = document.getElementById('projectPath');
+    const machine = document.getElementById('sessionMachine').value;
+
+    if (name && !pathInput.dataset.userEdited) {
+        const projectsDir = machine === 'local'
+            ? '~/projects'
+            : getMachineProjectsDir(machine);
+        pathInput.value = `${projectsDir}/${name}`;
+        onPathChange();  // Trigger git detection
+    }
 }
 
-// Pre-fill when git options shown
-function showGitOptions(currentBranch) {
-    document.getElementById('gitOptions').style.display = 'block';
-    document.querySelector('.git-branch').textContent = currentBranch || 'unknown';
+// Mark as user-edited if they manually change it
+document.getElementById('projectPath').addEventListener('input', (e) => {
+    e.target.dataset.userEdited = 'true';
+});
+```
 
-    const branchInput = document.getElementById('branchName');
-    if (!branchInput.value) {
-        branchInput.value = suggestBranchName();
+**6.2 Machine-specific Path Placeholder:**
+```javascript
+function updatePathPlaceholder() {
+    const machine = document.getElementById('sessionMachine').value;
+    const pathInput = document.getElementById('projectPath');
+
+    if (machine === 'local') {
+        pathInput.placeholder = '~/projects/name';
+    } else {
+        const projectsDir = getMachineProjectsDir(machine);
+        pathInput.placeholder = `${projectsDir}/name`;
     }
 }
 ```
+
+**6.3 Unique Branch Name with Increment:**
+```javascript
+async function suggestBranchName(projectPath, machine) {
+    const now = new Date();
+    const month = now.toLocaleString('en', { month: 'short' }).toLowerCase();
+    const day = now.getDate();
+    const year = now.getFullYear();
+    const base = `${month}-${day}-${year}`;
+
+    // Check existing branches to find next available increment
+    const params = new URLSearchParams({ path: projectPath, machine, prefix: base });
+    const res = await fetch(`/api/check-branches?${params}`);
+    const data = await res.json();
+
+    // data.existing = ["jan-3-2025--1", "jan-3-2025--2"] or []
+    let increment = 1;
+    while (data.existing.includes(`${base}--${increment}`)) {
+        increment++;
+    }
+
+    return `${base}--${increment}`;  // e.g., "jan-3-2025--1"
+}
+```
+
+**Note:** Requires new `/api/check-branches` endpoint (add to Wave 2).
 
 ---
 
@@ -285,9 +355,13 @@ function showGitOptions(currentBranch) {
 - [ ] Session name blocks `@`, `/`, `\`, spaces, and other problem characters
 - [ ] Validation error shown inline, Create button disabled
 - [ ] `/api/check-path` works for local and remote paths
+- [ ] `/api/check-branches` returns existing branches matching prefix
+- [ ] Path auto-fills from session name (`~/projects/{name}` or remote equivalent)
+- [ ] Path placeholder updates when machine changes
 - [ ] Git repos show worktree checkbox (default checked) and branch input
-- [ ] Branch input pre-filled with timestamp suggestion (e.g., `jan-3-work`)
-- [ ] Worktree checkbox hidden for non-git paths
+- [ ] Branch auto-fills with unique timestamp (`jan-3-2025--1`, `jan-3-2025--2`, etc.)
+- [ ] Unchecking worktree hides branch input entirely
+- [ ] Worktree options hidden for non-git paths
 - [ ] Session created with worktree when checkbox enabled
 - [ ] Remote worktree sessions work correctly
 - [ ] CLAUDE.md documents new form options
@@ -312,9 +386,19 @@ function showGitOptions(currentBranch) {
 | Empty | Any | Hidden | Hidden |
 | Non-git | Local | Hidden | Hidden |
 | Non-git | Remote | Hidden | Hidden |
-| Git repo | Local | Shown (checked) | Shown |
-| Git repo | Remote | Shown (checked) | Shown |
-| Git + unchecked | Any | Shown | Hidden |
+| Git repo | Local | Shown (checked) | Shown with default |
+| Git repo | Remote | Shown (checked) | Shown with default |
+| Git + unchecked | Any | Shown (unchecked) | Hidden |
+
+### Auto-fill Behavior
+
+| User Action | Result |
+|-------------|--------|
+| Type session name "myapp" | Path auto-fills to `~/projects/myapp` |
+| Select remote machine | Path placeholder updates to machine's projects_dir |
+| Type session name on remote | Path auto-fills to `{projects_dir}/myapp` |
+| Manually edit path | Auto-fill disabled for path (user-edited flag) |
+| Git detected on path | Branch auto-fills to `jan-3-2025--1` (unique) |
 
 ### Validation Rules
 
