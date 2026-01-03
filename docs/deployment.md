@@ -182,21 +182,20 @@ docker:
 ```json
 {
   "api": {
-    "role": "worker",
     "voice": "default",
-    "path": "~/projects/api"
+    "path": "~/projects/api",
+    "bypass_permissions": true
   },
   "ml": {
-    "role": "worker",
     "voice": "default",
     "machine": "gpu-server",
-    "path": "/home/developer/projects/ml"
+    "path": "/home/developer/projects/ml",
+    "bypass_permissions": true
   },
-  "assistant": {
-    "role": "chatbot",
+  "untrusted-lib": {
     "voice": "tiny-tina",
-    "bypass_permissions": true,
-    "model": "opus"
+    "model": "opus",
+    "bypass_permissions": false
   }
 }
 ```

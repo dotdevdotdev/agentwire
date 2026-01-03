@@ -65,13 +65,12 @@ All config lives in `~/.agentwire/`:
 ```json
 {
   "api": {
-    "role": "worker",
-    "voice": "default"
-  },
-  "assistant": {
-    "role": "chatbot",
     "voice": "default",
     "bypass_permissions": true
+  },
+  "untrusted-lib": {
+    "voice": "default",
+    "bypass_permissions": false
   }
 }
 ```
@@ -155,7 +154,7 @@ remote-say "Task completed on remote machine"
 
 1. User holds push-to-talk on web UI or via hotkey
 2. Audio recorded and sent to `/transcribe`
-3. Transcription sent to target session via `tmux send-keys`
+3. Transcription sent to target session via `agentwire send`
 4. Claude processes and responds
 5. `say "..."` commands detected and streamed as TTS audio
 

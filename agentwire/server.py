@@ -1324,9 +1324,17 @@ projects:
             # Generate TTS announcement (Task 3.6)
             await self._announce_permission_request(name, tool_name, tool_input)
 
-            # Wait for user decision (blocks until respond endpoint is called)
-            # No timeout - wait indefinitely per design decision
-            await room.pending_permission.event.wait()
+            # Wait for user decision with 5 minute timeout
+            try:
+                await asyncio.wait_for(room.pending_permission.event.wait(), timeout=300)
+            except asyncio.TimeoutError:
+                logger.warning(f"[{name}] Permission request timed out")
+                room.pending_permission = None
+                await self._broadcast(room, {"type": "permission_timeout"})
+                return web.json_response({
+                    "decision": "deny",
+                    "message": "Permission request timed out (5 minutes)"
+                })
 
             # Return the decision to the hook script
             decision = room.pending_permission.decision

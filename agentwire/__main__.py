@@ -1040,6 +1040,7 @@ def cmd_uninstall(args) -> int:
 # === Skills Commands ===
 
 CLAUDE_SKILLS_DIR = Path.home() / ".claude" / "skills"
+CLAUDE_HOOKS_DIR = Path.home() / ".claude" / "hooks"
 
 
 def get_skills_source() -> Path:
@@ -1059,6 +1060,73 @@ def get_skills_source() -> Path:
         pass
 
     raise FileNotFoundError("Could not find skills directory in package")
+
+
+def get_hooks_source() -> Path:
+    """Get the path to the hooks directory in the installed package."""
+    # First try: hooks directory inside the agentwire package
+    package_dir = Path(__file__).parent
+    hooks_dir = package_dir / "hooks"
+    if hooks_dir.exists():
+        return hooks_dir
+
+    # Fallback: try importlib.resources (for installed packages)
+    try:
+        with importlib.resources.files("agentwire").joinpath("hooks") as p:
+            if p.exists():
+                return Path(p)
+    except (TypeError, FileNotFoundError):
+        pass
+
+    raise FileNotFoundError("Could not find hooks directory in package")
+
+
+def install_permission_hook(force: bool = False, copy: bool = False) -> bool:
+    """Install the permission hook for Claude Code integration.
+
+    Returns True if hook was installed/updated, False if skipped.
+    """
+    hook_name = "agentwire-permission.sh"
+
+    try:
+        hooks_source = get_hooks_source()
+    except FileNotFoundError:
+        print("  Warning: hooks directory not found, skipping hook installation")
+        return False
+
+    source_hook = hooks_source / hook_name
+    if not source_hook.exists():
+        print(f"  Warning: {hook_name} not found in package, skipping hook installation")
+        return False
+
+    # Create ~/.claude/hooks if it doesn't exist
+    CLAUDE_HOOKS_DIR.mkdir(parents=True, exist_ok=True)
+
+    target_hook = CLAUDE_HOOKS_DIR / hook_name
+
+    # Check if already installed
+    if target_hook.exists():
+        if target_hook.is_symlink():
+            current_target = target_hook.resolve()
+            if current_target == source_hook.resolve() and not force:
+                return False  # Already correctly installed
+        if not force:
+            print(f"  Hook already exists at {target_hook}")
+            return False
+
+        # Remove existing
+        target_hook.unlink()
+
+    # Create symlink (preferred) or copy
+    if copy:
+        shutil.copy2(source_hook, target_hook)
+    else:
+        target_hook.symlink_to(source_hook)
+
+    # Make executable
+    target_hook.chmod(0o755)
+
+    return True
 
 
 def cmd_skills_install(args) -> int:

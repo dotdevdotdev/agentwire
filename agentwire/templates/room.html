@@ -55,6 +55,8 @@
             --orb-generating-dark: #1D4ED8;
             --orb-speaking: #4ADE80;
             --orb-speaking-dark: #22C55E;
+            --orb-awaiting: #FBBF24;
+            --orb-awaiting-dark: #D97706;
         }
         body {
             font-family: -apple-system, system-ui, sans-serif;
@@ -312,6 +314,26 @@
             border-color: rgba(92, 107, 122, 0.3);
         }
         .state-label.locked { color: var(--text-secondary); }
+        /* Awaiting permission state - orange/amber */
+        .orb.awaiting_permission {
+            background: radial-gradient(circle at 30% 30%, var(--orb-awaiting), var(--orb-awaiting-dark));
+            animation: awaiting-pulse 1.5s ease-in-out infinite;
+            box-shadow: 0 0 80px rgba(251, 191, 36, 0.5);
+        }
+        .orb-ring.awaiting_permission {
+            animation: ring-awaiting 1.5s ease-in-out infinite;
+            border-color: rgba(251, 191, 36, 0.5);
+            border-width: 3px;
+        }
+        .state-label.awaiting_permission { color: var(--orb-awaiting); }
+        @keyframes awaiting-pulse {
+            0%, 100% { transform: scale(1); opacity: 0.9; }
+            50% { transform: scale(1.05); opacity: 1; }
+        }
+        @keyframes ring-awaiting {
+            0%, 100% { transform: scale(1); opacity: 0.5; }
+            50% { transform: scale(1.1); opacity: 0.8; }
+        }
 
         @keyframes breathe {
             0%, 100% { transform: scale(1); opacity: 0.8; }
@@ -561,6 +583,12 @@
             color: var(--text-muted);
             cursor: not-allowed;
             opacity: 0.6;
+        }
+        .mic-btn.awaiting_permission {
+            background: linear-gradient(135deg, var(--orb-awaiting), var(--orb-awaiting-dark));
+            color: #000;
+            animation: mic-pulse 1.5s ease-in-out infinite;
+            box-shadow: 0 4px 30px rgba(251, 191, 36, 0.5);
         }
 
         /* Mic area with actions */
@@ -837,6 +865,119 @@
         }
         .type-submit:hover {
             opacity: 0.9;
+        }
+
+        /* Permission modal */
+        .permission-modal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.85);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            padding: 1.5rem;
+        }
+        .permission-modal.visible { display: flex; }
+        .permission-card {
+            background: var(--bg-elevated);
+            border: 2px solid var(--orb-awaiting);
+            border-radius: 16px;
+            padding: 1.5rem;
+            max-width: 500px;
+            width: 100%;
+            box-shadow: 0 0 40px rgba(251, 191, 36, 0.4);
+        }
+        .permission-header {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 1rem;
+        }
+        .permission-header .icon {
+            font-size: 1.5rem;
+        }
+        .permission-header .badge {
+            background: rgba(251, 191, 36, 0.2);
+            color: var(--orb-awaiting);
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .permission-title {
+            font-size: 1.2rem;
+            color: var(--text-primary);
+            margin-bottom: 0.5rem;
+        }
+        .permission-target {
+            font-family: monospace;
+            font-size: 0.9rem;
+            color: var(--primary);
+            background: var(--bg-secondary);
+            padding: 0.5rem 0.75rem;
+            border-radius: 6px;
+            margin-bottom: 1rem;
+            word-break: break-all;
+        }
+        .permission-diff {
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            max-height: 300px;
+            overflow: auto;
+        }
+        .permission-diff pre {
+            margin: 0;
+            padding: 0.75rem;
+            font-family: monospace;
+            font-size: 0.85rem;
+            line-height: 1.4;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        .permission-diff .line-removed {
+            color: #F87171;
+            background: rgba(248, 113, 113, 0.1);
+        }
+        .permission-diff .line-added {
+            color: #4ADE80;
+            background: rgba(74, 222, 128, 0.1);
+        }
+        .permission-actions {
+            display: flex;
+            gap: 0.75rem;
+            margin-top: 1rem;
+        }
+        .permission-btn {
+            flex: 1;
+            padding: 0.75rem 1rem;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .permission-btn.allow {
+            background: var(--primary);
+            color: #1a1a1a;
+        }
+        .permission-btn.allow:hover {
+            opacity: 0.9;
+        }
+        .permission-btn.deny {
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+        }
+        .permission-btn.deny:hover {
+            background: rgba(248, 113, 113, 0.2);
+            border-color: #F87171;
+            color: #F87171;
         }
     </style>
 </head>

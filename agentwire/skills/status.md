@@ -22,11 +22,11 @@ No arguments needed - checks all configured machines.
    - Check remote machines (from `~/.agentwire/machines.json`)
    - Test SSH connectivity with 5-second timeout
 
-2. **Categorize by Role**
+2. **Categorize by Permission Mode**
    - Read `~/.agentwire/rooms.json` for session configuration
-   - Sessions with `chatbot_mode: true` → Chatbots
    - Session named `agentwire` → Orchestrator
-   - Other configured sessions → Workers
+   - Sessions with `bypass_permissions: true` → Bypass Sessions
+   - Sessions with `bypass_permissions: false` → Normal Sessions
    - Sessions not in rooms.json → Unconfigured
 
 3. **Display grouped output**
@@ -37,12 +37,12 @@ No arguments needed - checks all configured machines.
 Orchestrator:
   agentwire: 1 window (active)
 
-Workers:
+Bypass Sessions:
   api: 2 windows
   auth: 1 window
 
-Chatbots:
-  assistant: 1 window
+Normal Sessions:
+  untrusted-lib: 1 window
 
 Unconfigured:
   random-session: 1 window
@@ -59,8 +59,8 @@ MACHINES_FILE=~/.agentwire/machines.json
 
 # Arrays to hold sessions by category
 declare -a orchestrator=()
-declare -a workers=()
-declare -a chatbots=()
+declare -a bypass_sessions=()
+declare -a normal_sessions=()
 declare -a unconfigured=()
 
 # Get session info: "name:windows:active"
@@ -74,14 +74,16 @@ get_remote_sessions() {
         "tmux list-sessions -F '#{session_name}:#{session_windows}:#{?session_attached,active,}'" 2>/dev/null
 }
 
-# Check if session is a chatbot
-is_chatbot() {
+# Check if session has bypass_permissions enabled (default: true for backwards compat)
+has_bypass_permissions() {
     local session=$1
     if [[ -f "$ROOMS_FILE" ]]; then
-        jq -e --arg s "$session" '.[$s].chatbot_mode == true' "$ROOMS_FILE" &>/dev/null
+        # Return true if bypass_permissions is true or not set (defaults to true)
+        local val=$(jq -r --arg s "$session" '.[$s].bypass_permissions // true' "$ROOMS_FILE" 2>/dev/null)
+        [[ "$val" == "true" ]]
         return $?
     fi
-    return 1
+    return 0  # Default to bypass if no config
 }
 
 # Check if session is configured in rooms.json
@@ -115,10 +117,12 @@ categorize_session() {
 
     if [[ "$name" == "agentwire" ]]; then
         orchestrator+=("$line")
-    elif is_chatbot "$name"; then
-        chatbots+=("$line")
     elif is_configured "$name"; then
-        workers+=("$line")
+        if has_bypass_permissions "$name"; then
+            bypass_sessions+=("$line")
+        else
+            normal_sessions+=("$line")
+        fi
     else
         unconfigured+=("$line")
     fi
@@ -146,15 +150,15 @@ if [[ ${#orchestrator[@]} -gt 0 ]]; then
     echo ""
 fi
 
-if [[ ${#workers[@]} -gt 0 ]]; then
-    echo "Workers:"
-    printf '%s\n' "${workers[@]}"
+if [[ ${#bypass_sessions[@]} -gt 0 ]]; then
+    echo "Bypass Sessions:"
+    printf '%s\n' "${bypass_sessions[@]}"
     echo ""
 fi
 
-if [[ ${#chatbots[@]} -gt 0 ]]; then
-    echo "Chatbots:"
-    printf '%s\n' "${chatbots[@]}"
+if [[ ${#normal_sessions[@]} -gt 0 ]]; then
+    echo "Normal Sessions:"
+    printf '%s\n' "${normal_sessions[@]}"
     echo ""
 fi
 
@@ -170,12 +174,13 @@ fi
 
 ```json
 {
-  "assistant": {
-    "voice": "default",
-    "chatbot_mode": true
-  },
   "api": {
-    "path": "~/projects/api"
+    "voice": "default",
+    "bypass_permissions": true
+  },
+  "untrusted-lib": {
+    "voice": "default",
+    "bypass_permissions": false
   }
 }
 ```
@@ -196,8 +201,8 @@ fi
 ## Notes
 
 - `agentwire` session is always categorized as Orchestrator
-- Sessions with `chatbot_mode: true` in rooms.json are Chatbots
-- Other sessions in rooms.json are Workers
+- Sessions with `bypass_permissions: true` (or unset, defaults to true) are Bypass Sessions
+- Sessions with `bypass_permissions: false` are Normal Sessions (permission prompts enabled)
 - Sessions not in rooms.json are Unconfigured
 - Uses `BatchMode=yes` to prevent SSH password prompts
 - 5-second timeout prevents hanging on unreachable machines

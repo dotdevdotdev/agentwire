@@ -1,33 +1,32 @@
 {
   "api": {
-    "role": "worker",
     "voice": "default",
     "path": "~/projects/api",
-    "model": "sonnet"
+    "model": "sonnet",
+    "bypass_permissions": true
   },
   "frontend": {
-    "role": "worker",
     "voice": "default",
-    "path": "~/projects/frontend"
+    "path": "~/projects/frontend",
+    "bypass_permissions": true
   },
   "ml": {
-    "role": "worker",
     "voice": "default",
     "machine": "gpu-server",
-    "path": "/home/developer/projects/ml-training"
+    "path": "/home/developer/projects/ml-training",
+    "bypass_permissions": true
   },
-  "assistant": {
-    "role": "chatbot",
+  "untrusted-lib": {
     "voice": "tiny-tina",
-    "bypass_permissions": true,
     "model": "opus",
     "exaggeration": 0.7,
-    "cfg_weight": 0.5
+    "cfg_weight": 0.5,
+    "bypass_permissions": false
   },
   "bible-study": {
-    "role": "worker",
     "voice": "default",
     "machine": "mac-mini",
-    "path": "/Users/dotdev/projects/bible-study"
+    "path": "/Users/dotdev/projects/bible-study",
+    "bypass_permissions": true
   }
 }
