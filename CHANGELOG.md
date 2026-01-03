@@ -15,10 +15,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Device selectors for microphone and speaker
   - Voice selector per room
   - Image attachments via paste or file picker
+  - AskUserQuestion popup modal with clickable options
+  - "Type something" option with text input and Send button
 
 - **CLI Commands**
   - `agentwire init` - Interactive setup wizard
   - `agentwire portal start/stop/status` - Manage web portal
+  - `agentwire portal start --dev` - Run from source for development
   - `agentwire tts start/stop/status` - Manage TTS server
   - `agentwire say` - Speak text via TTS (local or to room)
   - `agentwire send` - Send prompt to a session
