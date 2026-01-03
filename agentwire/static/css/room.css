@@ -1173,3 +1173,13 @@ body {
     border-color: #F87171;
     color: #F87171;
 }
+
+.permission-btn.allow-always {
+    background: var(--bg-secondary);
+    color: var(--primary);
+    border: 1px solid var(--primary);
+}
+
+.permission-btn.allow-always:hover {
+    background: rgba(74, 222, 128, 0.15);
+}

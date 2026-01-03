@@ -406,9 +406,17 @@ def cmd_send(args) -> int:
         print(f"Session '{session}' not found", file=sys.stderr)
         return 1
 
-    # Send the prompt via tmux send-keys
+    # Send the prompt via tmux send-keys (text first, then Enter after delay)
     subprocess.run(
-        ["tmux", "send-keys", "-t", session, prompt, "Enter"],
+        ["tmux", "send-keys", "-t", session, prompt],
+        check=True
+    )
+
+    # Wait for text to be fully entered before pressing Enter
+    time.sleep(0.3)
+
+    subprocess.run(
+        ["tmux", "send-keys", "-t", session, "Enter"],
         check=True
     )
 
@@ -486,9 +494,21 @@ def cmd_new(args) -> int:
         check=True
     )
 
-    # Start Claude with skip-permissions flag
+    # Set AGENTWIRE_ROOM env var (used by permission hook)
     subprocess.run(
-        ["tmux", "send-keys", "-t", session_name, "claude --dangerously-skip-permissions", "Enter"],
+        ["tmux", "send-keys", "-t", session_name, f"export AGENTWIRE_ROOM={session_name}", "Enter"],
+        check=True
+    )
+    time.sleep(0.1)
+
+    # Start Claude (with or without skip-permissions flag)
+    if getattr(args, 'no_bypass', False):
+        claude_cmd = "claude"
+    else:
+        claude_cmd = "claude --dangerously-skip-permissions"
+
+    subprocess.run(
+        ["tmux", "send-keys", "-t", session_name, claude_cmd, "Enter"],
         check=True
     )
 
@@ -1280,33 +1300,37 @@ def cmd_skills_install(args) -> int:
     CLAUDE_SKILLS_DIR.mkdir(parents=True, exist_ok=True)
 
     # Check if already installed
+    skills_already_installed = False
     if target_dir.exists():
         if target_dir.is_symlink():
             current_target = target_dir.resolve()
             if current_target == source_dir.resolve():
                 print(f"Skills already installed (symlink to {source_dir})")
-                return 0
-            print(f"Existing symlink points to {current_target}")
+                skills_already_installed = True
+            else:
+                print(f"Existing symlink points to {current_target}")
         else:
             print(f"Skills directory already exists at {target_dir}")
 
-        if not args.force:
-            print("Use --force to overwrite")
-            return 1
+        if not skills_already_installed:
+            if not args.force:
+                print("Use --force to overwrite")
+                return 1
 
-        # Remove existing
-        if target_dir.is_symlink():
-            target_dir.unlink()
+            # Remove existing
+            if target_dir.is_symlink():
+                target_dir.unlink()
+            else:
+                shutil.rmtree(target_dir)
+
+    # Create symlink (preferred) or copy - unless already installed
+    if not skills_already_installed:
+        if args.copy:
+            shutil.copytree(source_dir, target_dir)
+            print(f"Copied skills to {target_dir}")
         else:
-            shutil.rmtree(target_dir)
-
-    # Create symlink (preferred) or copy
-    if args.copy:
-        shutil.copytree(source_dir, target_dir)
-        print(f"Copied skills to {target_dir}")
-    else:
-        target_dir.symlink_to(source_dir)
-        print(f"Linked skills: {target_dir} -> {source_dir}")
+            target_dir.symlink_to(source_dir)
+            print(f"Linked skills: {target_dir} -> {source_dir}")
 
     # Install permission hook
     hook_installed = install_permission_hook(force=args.force, copy=args.copy)
@@ -1510,6 +1534,7 @@ def main() -> int:
     new_parser.add_argument("-s", "--session", required=True, help="Session name (dots become underscores)")
     new_parser.add_argument("-p", "--path", help="Working directory (default: ~/projects/<name>)")
     new_parser.add_argument("-f", "--force", action="store_true", help="Replace existing session")
+    new_parser.add_argument("--no-bypass", action="store_true", help="Don't use --dangerously-skip-permissions (normal mode)")
     new_parser.set_defaults(func=cmd_new)
 
     # === output command (top-level) ===
