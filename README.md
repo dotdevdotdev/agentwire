@@ -88,11 +88,11 @@ agentwire voiceclone stop name  # Stop and upload as voice clone
 agentwire voiceclone list       # List available voices
 
 # Session Management
-agentwire session list          # List all tmux sessions
-agentwire session new <name>    # Create new Claude session
-agentwire session output <name> # Read session output
-agentwire session kill <name>   # Kill session (clean shutdown)
-agentwire send <session> "prompt"  # Send prompt to session
+agentwire list                        # List all tmux sessions
+agentwire new -s <name> [-p path] [-f] # Create new Claude session
+agentwire output -s <session> [-n 100] # Read session output
+agentwire kill -s <session>           # Kill session (clean shutdown)
+agentwire send -s <session> "prompt"  # Send prompt to session
 
 # Remote Machines
 agentwire machine list          # List registered machines

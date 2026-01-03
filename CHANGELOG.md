@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Simplified CLI Commands** - Top-level commands with consistent `-s/--session` flag pattern:
+  - `agentwire list` (was: `agentwire session list`)
+  - `agentwire new -s <name> [-p path] [-f]` (was: `agentwire session new`)
+  - `agentwire output -s <session> [-n lines]` (was: `agentwire session output`)
+  - `agentwire kill -s <session>` (was: `agentwire session kill`)
+  - `agentwire send-keys -s <session> <keys>...` - Send raw keys with pause between groups
+  - Legacy `agentwire session *` subcommands still work for backwards compatibility
+
 ## [0.1.1] - 2025-01-03
 
 ### Added

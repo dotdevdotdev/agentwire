@@ -65,13 +65,12 @@ agentwire say "Hello"      # Speak text locally
 agentwire say --room api "Done"  # Send TTS to room
 
 # Session management
-agentwire session list              # List all tmux sessions
-agentwire session new <name> [path] # Create Claude Code session
-agentwire session new <name> -f     # Replace existing session
-agentwire session output <name>     # Read recent session output
-agentwire session kill <name>       # Clean shutdown (/exit then kill)
-agentwire send -s <session> "prompt"          # Send prompt + Enter
-agentwire send-keys -s <session> "text" Enter # Send keys with pause between
+agentwire list                              # List all tmux sessions
+agentwire new -s <name> [-p path] [-f]      # Create Claude Code session
+agentwire output -s <session> [-n lines]    # Read recent session output
+agentwire kill -s <session>                 # Clean shutdown (/exit then kill)
+agentwire send -s <session> "prompt"        # Send prompt + Enter
+agentwire send-keys -s <session> "text" Enter  # Send keys with pause between
 
 # Machine management
 agentwire machine list                # List machines with status
