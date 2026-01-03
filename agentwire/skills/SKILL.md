@@ -104,23 +104,23 @@ Use the `agentwire` CLI commands:
 
 ```bash
 # List sessions
-agentwire session list
+agentwire list
 
 # Create session (uses --dangerously-skip-permissions automatically)
-agentwire session new <name> [path]
-agentwire session new dotdev.dev           # Creates dotdev_dev session in ~/projects/dotdev.dev
-agentwire session new api /path/to/api     # Explicit path
-agentwire session new api --force          # Replace existing
+agentwire new -s <name> [-p path] [-f]
+agentwire new -s dotdev.dev              # Creates dotdev_dev session in ~/projects/dotdev.dev
+agentwire new -s api -p /path/to/api     # Explicit path
+agentwire new -s api -f                  # Replace existing
 
 # Send prompt
-agentwire send <session> "<prompt>"
+agentwire send -s <session> "<prompt>"
 
 # Read output
-agentwire session output <session>
-agentwire session output <session> --lines 100
+agentwire output -s <session>
+agentwire output -s <session> -n 100
 
 # Kill session (sends /exit first for clean Claude shutdown)
-agentwire session kill <session>
+agentwire kill -s <session>
 ```
 
 **Session Naming:**
@@ -129,10 +129,10 @@ agentwire session kill <session>
 
 For remote sessions, wrap commands in SSH:
 ```bash
-ssh <host> "agentwire session list"
+ssh <host> "agentwire list"
 ```
 
-**Important:** `agentwire session new` automatically starts Claude with `--dangerously-skip-permissions` for autonomous work.
+**Important:** `agentwire new` automatically starts Claude with `--dangerously-skip-permissions` for autonomous work.
 
 ## Voice Integration
 

@@ -25,30 +25,34 @@ Read and display recent output from a tmux session.
    - With suffix: `ml@devbox-1` → remote session on devbox-1
 
 2. **Capture output**
-   - Use tmux capture-pane to get scrollback
-   - Negative offset captures from end of buffer
+   - Use `agentwire output` to get scrollback
+   - Returns last N lines from buffer
 
 3. **Return formatted output**
    - Display with session context
    - Handle empty output gracefully
 
-## Commands
+## Implementation
+
+Use the `agentwire output` CLI command:
 
 ```bash
 # Local session
-tmux capture-pane -t <session> -p -S -<lines>
+agentwire output -s <session>
+
+# With custom line count
+agentwire output -s <session> -n <lines>
 
 # Remote session (via SSH)
-ssh <host> "tmux capture-pane -t <session> -p -S -<lines>"
+ssh <host> "agentwire output -s <session> -n <lines>"
 ```
 
-### Flags Explained
+### Flags
 
 | Flag | Purpose |
 |------|---------|
-| `-t <session>` | Target session name |
-| `-p` | Print to stdout (not to buffer) |
-| `-S -<lines>` | Start from N lines before end |
+| `-s <session>` | Target session name (required) |
+| `-n <lines>` | Number of lines to capture (default: 50) |
 
 ## Examples
 
@@ -70,23 +74,7 @@ ssh <host> "tmux capture-pane -t <session> -p -S -<lines>"
 → Shows last 200 lines from "worker" session on devbox-1
 ```
 
-## Implementation Notes
-
-### Parsing Session Argument
-
-```bash
-# Split on @ to detect remote sessions
-if [[ "$session" == *"@"* ]]; then
-  name="${session%@*}"    # Before @
-  host="${session#*@}"    # After @
-  # Use SSH
-else
-  name="$session"
-  # Local tmux
-fi
-```
-
-### Error Cases
+## Error Cases
 
 | Error | Cause | Response |
 |-------|-------|----------|
