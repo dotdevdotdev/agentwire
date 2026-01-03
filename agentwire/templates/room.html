@@ -1803,6 +1803,89 @@
             }
         }
 
+        // Permission modal functions
+        function showPermissionModal(toolName, toolInput, message) {
+            // Set orb state to awaiting permission
+            setState(STATES.AWAITING_PERMISSION);
+
+            // Build title based on tool
+            let title = 'Claude wants to...';
+            let target = '';
+
+            if (toolName === 'Edit') {
+                title = 'Claude wants to edit';
+                target = toolInput.file_path || '';
+            } else if (toolName === 'Write') {
+                title = 'Claude wants to write to';
+                target = toolInput.file_path || '';
+            } else if (toolName === 'Bash') {
+                title = 'Claude wants to run';
+                target = toolInput.command || '';
+            } else {
+                title = `Claude wants to use ${toolName}`;
+                target = message || JSON.stringify(toolInput, null, 2);
+            }
+
+            elements.permissionTitle.textContent = title;
+            elements.permissionTarget.textContent = target;
+
+            // Show diff for Edit tool
+            if (toolName === 'Edit' && toolInput.old_string && toolInput.new_string) {
+                const diffHtml = generateDiffHtml(toolInput.old_string, toolInput.new_string);
+                elements.permissionDiffContent.innerHTML = diffHtml;
+                elements.permissionDiff.style.display = 'block';
+            } else {
+                elements.permissionDiff.style.display = 'none';
+            }
+
+            elements.permissionModal.classList.add('visible');
+        }
+
+        function hidePermissionModal() {
+            elements.permissionModal.classList.remove('visible');
+            // Return to idle state
+            if (currentState === STATES.AWAITING_PERMISSION) {
+                setState(STATES.IDLE);
+            }
+        }
+
+        function generateDiffHtml(oldText, newText) {
+            // Simple line-by-line diff display
+            const oldLines = oldText.split('\n');
+            const newLines = newText.split('\n');
+
+            let html = '';
+
+            // Show removed lines (old)
+            oldLines.forEach(line => {
+                const escaped = escapeHtml(line);
+                html += `<div class="line-removed">- ${escaped}</div>`;
+            });
+
+            // Show added lines (new)
+            newLines.forEach(line => {
+                const escaped = escapeHtml(line);
+                html += `<div class="line-added">+ ${escaped}</div>`;
+            });
+
+            return html;
+        }
+
+        async function respondToPermission(decision) {
+            try {
+                const resp = await fetch(`/api/permission/${ROOM}/respond`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ decision })
+                });
+                if (resp.ok) {
+                    hidePermissionModal();
+                }
+            } catch (e) {
+                console.error('Failed to respond to permission:', e);
+            }
+        }
+
         function toggleMode() {
             isAmbientMode = !isAmbientMode;
 
