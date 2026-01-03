@@ -1473,7 +1473,8 @@
 
             // Use pattern matching similar to the Python version
             // Pattern: ☐ header \n\n question? \n\n options_block
-            const fullPattern = /\s*☐\s+(.+?)\s*\n\s*\n(.+?\?)\s*\n\s*\n((?:[❯\s]+\d+\.\s+.+\n(?:\s{3,}.+\n)?)+)/;
+            // Use [\s\S] instead of . to match newlines in multi-line questions
+            const fullPattern = /\s*☐\s+(.+?)\s*\n\s*\n([\s\S]+?\?)\s*\n\s*\n((?:[❯\s]+\d+\.\s+[\s\S]+?\n(?:\s{3,}[\s\S]+?\n)?)+)/;
             const blockMatch = clean.match(fullPattern);
 
             if (!blockMatch) return null;
@@ -1507,9 +1508,17 @@
             elements.questionText.textContent = question;
 
             // Check if an option is a "type something" option
+            // Must be specific - "Type something", "Something else", or just "Other"
+            // NOT "Other players through walls" which is a real option
             const isTypeOption = (label) => {
-                const lower = label.toLowerCase();
-                return lower.includes('type') || lower.includes('something') || lower.includes('other');
+                const lower = label.toLowerCase().trim();
+                // Exact matches or starts with "type"
+                return lower.startsWith('type ') ||
+                       lower === 'type something' ||
+                       lower === 'type something.' ||
+                       lower === 'something else' ||
+                       lower === 'other' ||
+                       lower === 'other...';
             };
 
             // Build options HTML
@@ -1561,6 +1570,60 @@
             elements.questionCustom.classList.remove('visible');
 
             elements.questionModal.classList.add('visible');
+
+            // Generate TTS for the question
+            speakQuestion(header, question, options);
+        }
+
+        // Number to spoken word
+        function numberToWord(n) {
+            const words = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'];
+            return words[n] || String(n);
+        }
+
+        // Format question for TTS and speak it
+        async function speakQuestion(header, question, options) {
+            // Check if an option is a "type something" option
+            const isTypeOption = (label) => {
+                const lower = label.toLowerCase().trim();
+                return lower.startsWith('type ') ||
+                       lower === 'type something' ||
+                       lower === 'type something.' ||
+                       lower === 'something else' ||
+                       lower === 'other' ||
+                       lower === 'other...';
+            };
+
+            // Build the spoken text
+            // Format: "Title! Question? .. Is it one Label, or two Label, or three type something else!"
+            let spokenText = `${header}! ${question} .. Is it `;
+
+            const spokenOptions = options.map((opt, idx) => {
+                const num = numberToWord(parseInt(opt.num || opt.number || (idx + 1)));
+                // For "type something" options, say it differently
+                if (isTypeOption(opt.label)) {
+                    return `${num} type something else`;
+                }
+                return `${num} ${opt.label}`;
+            });
+
+            // Join with ", or " and add "!" at the end
+            if (spokenOptions.length === 1) {
+                spokenText += spokenOptions[0] + '!';
+            } else {
+                spokenText += spokenOptions.slice(0, -1).join(', or ') + ', or ' + spokenOptions[spokenOptions.length - 1] + '!';
+            }
+
+            // Send to TTS
+            try {
+                await fetch(`/api/say/${ROOM}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text: spokenText })
+                });
+            } catch (e) {
+                console.error('Failed to speak question:', e);
+            }
         }
 
         async function submitTypedAnswer(optionNumber) {
@@ -1741,15 +1804,18 @@
             }
 
             if (currentAudio) {
+                // Remove handler before pausing to prevent race conditions
+                currentAudio.onended = null;
                 currentAudio.pause();
                 currentAudio = null;
             }
 
-            currentAudio = new Audio('data:audio/wav;base64,' + base64Data);
+            const audio = new Audio('data:audio/wav;base64,' + base64Data);
+            currentAudio = audio;
 
-            if (selectedSpeakerId && 'setSinkId' in currentAudio) {
+            if (selectedSpeakerId && 'setSinkId' in audio) {
                 try {
-                    await currentAudio.setSinkId(selectedSpeakerId);
+                    await audio.setSinkId(selectedSpeakerId);
                 } catch (e) {
                     console.log('Could not set speaker:', e);
                 }
@@ -1757,15 +1823,20 @@
 
             setState(STATES.SPEAKING);
 
-            currentAudio.onended = () => {
-                currentAudio = null;
-                setState(STATES.IDLE);
+            audio.onended = () => {
+                // Only reset state if this is still the current audio
+                if (currentAudio === audio) {
+                    currentAudio = null;
+                    setState(STATES.IDLE);
+                }
             };
 
-            currentAudio.play().catch(e => {
+            audio.play().catch(e => {
                 console.error('Audio play failed:', e);
-                currentAudio = null;
-                setState(STATES.IDLE);
+                if (currentAudio === audio) {
+                    currentAudio = null;
+                    setState(STATES.IDLE);
+                }
             });
         }
 
