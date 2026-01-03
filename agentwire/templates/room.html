@@ -517,8 +517,8 @@
 
         /* Mic button - right side */
         .mic-btn {
-            width: 80px;
-            height: 80px;
+            width: 60px;
+            height: 60px;
             border-radius: 50%;
             border: none;
             cursor: pointer;
@@ -527,7 +527,7 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 2rem;
+            font-size: 1.5rem;
         }
         .mic-btn.idle {
             background: linear-gradient(135deg, var(--primary), var(--primary-dark));
@@ -572,16 +572,18 @@
             position: relative;
         }
         .actions-btn {
-            width: 40px;
-            height: 40px;
+            width: 60px;
+            height: 60px;
             border-radius: 50%;
             border: 1px solid var(--border);
             background: var(--bg-elevated);
             color: var(--text-muted);
-            font-size: 1.2rem;
+            font-size: 1.5rem;
             cursor: pointer;
             transition: all 0.2s;
             display: none;  /* Hidden in ambient mode */
+            z-index: 100;  /* Above actions menu */
+            position: relative;
         }
         .terminal-mode .actions-btn {
             display: flex;
@@ -600,41 +602,64 @@
         }
         .actions-menu {
             position: absolute;
-            bottom: 130px;  /* Above both buttons */
+            bottom: 100%;  /* Stack above mic-area content */
             right: 0;
-            background: var(--bg-elevated);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 0.5rem;
+            margin-bottom: 0.5rem;
             display: none;
             flex-direction: column;
-            gap: 0.25rem;
-            min-width: 160px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            align-items: flex-end;
+            gap: 0.5rem;
             z-index: 100;
+            pointer-events: auto;
         }
         .actions-menu.open {
             display: flex;
         }
         .action-item {
+            position: relative;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            border: 1px solid #444;
+            background: #1a1a1a;
+            color: #fff;
+            font-size: 1.5rem;
+            cursor: pointer;
+            transition: all 0.15s;
             display: flex;
             align-items: center;
-            gap: 0.75rem;
-            padding: 0.75rem 1rem;
-            background: none;
-            border: none;
-            border-radius: 8px;
-            color: var(--text-primary);
-            font-size: 0.9rem;
-            cursor: pointer;
-            text-align: left;
-            transition: background 0.15s;
-        }
-        .action-item:hover {
-            background: var(--primary-subtle);
+            justify-content: center;
+            padding: 0;
         }
         .action-icon {
-            font-size: 1.1rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .action-item:hover {
+            background: var(--primary);
+            color: #1a1a1a;
+            border-color: var(--primary);
+        }
+        .action-item:hover .action-label {
+            opacity: 1;
+            transform: translateX(0);
+        }
+        .action-label {
+            position: absolute;
+            right: 70px;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 0.5rem 0.75rem;
+            font-size: 0.85rem;
+            color: var(--text-primary);
+            white-space: nowrap;
+            opacity: 0;
+            transform: translateX(10px);
+            transition: all 0.15s;
+            pointer-events: none;
+            z-index: 200;
         }
 
         @keyframes mic-pulse {
@@ -906,6 +931,13 @@
         <div class="mic-area">
             <!-- Actions menu (pops up above) -->
             <div class="actions-menu" id="actionsMenu">
+                {% if is_system_session %}
+                <button class="action-item" onclick="actionRestartService()">
+                    <span class="action-icon">🔄</span>
+                    <span class="action-label">Restart Service</span>
+                </button>
+                {% endif %}
+                {% if is_project_session %}
                 <button class="action-item" onclick="actionNewRoom()">
                     <span class="action-icon">➕</span>
                     <span class="action-label">New Room</span>
@@ -918,6 +950,7 @@
                     <span class="action-icon">🔄</span>
                     <span class="action-label">Recreate Session</span>
                 </button>
+                {% endif %}
             </div>
             <!-- Actions toggle button -->
             <button class="actions-btn" id="actionsBtn" onclick="toggleActionsMenu()">⋯</button>
@@ -945,6 +978,7 @@
 
     <script>
         const ROOM = '{{ room_name }}';
+        const IS_SYSTEM_SESSION = {{ is_system_session_js }};
         const elements = {
             output: document.getElementById('output'),
             outputContent: document.getElementById('outputContent'),
@@ -1073,6 +1107,37 @@
             } catch (e) {
                 console.error('Failed to recreate session:', e);
                 alert('Failed to recreate session');
+            }
+        }
+
+        async function actionRestartService() {
+            closeActionsMenu();
+
+            const serviceName = ROOM.split('@')[0];
+            if (!confirm(`Restart the ${serviceName} service?`)) {
+                return;
+            }
+
+            try {
+                const resp = await fetch(`/api/room/${ROOM}/restart-service`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const data = await resp.json();
+                if (resp.ok) {
+                    alert(data.message || 'Service restarted');
+                    // For portal, page will become unavailable briefly
+                    if (serviceName === 'agentwire-portal') {
+                        setTimeout(() => window.location.reload(), 3000);
+                    } else {
+                        window.location.reload();
+                    }
+                } else {
+                    alert('Failed to restart service: ' + (data.error || 'Unknown error'));
+                }
+            } catch (e) {
+                console.error('Failed to restart service:', e);
+                alert('Failed to restart service');
             }
         }
 
@@ -1543,6 +1608,9 @@
 
         function toggleMode() {
             isAmbientMode = !isAmbientMode;
+
+            // Toggle terminal-mode class on body for CSS selectors
+            document.body.classList.toggle('terminal-mode', !isAmbientMode);
 
             // Remove initial CSS classes on first toggle
             elements.output.classList.remove('ambient-default');

@@ -910,6 +910,96 @@ def cmd_voiceclone_delete(args) -> int:
     return delete_voice(args.name)
 
 
+# === Rebuild/Uninstall Commands ===
+
+UV_CACHE_DIR = Path.home() / ".cache" / "uv"
+
+
+def cmd_rebuild(args) -> int:
+    """Rebuild: clear uv cache, uninstall, reinstall from source.
+
+    This is the correct way to pick up source changes when developing.
+    `uv tool install . --force` does NOT work - it uses cached wheels.
+    """
+    print("Rebuilding agentwire-dev...")
+    print()
+
+    # Step 1: Clear uv cache
+    if UV_CACHE_DIR.exists():
+        print(f"Clearing uv cache ({UV_CACHE_DIR})...")
+        shutil.rmtree(UV_CACHE_DIR)
+        print("  ✓ Cache cleared")
+    else:
+        print("  - No cache to clear")
+
+    # Step 2: Uninstall
+    print("Uninstalling agentwire-dev...")
+    result = subprocess.run(
+        ["uv", "tool", "uninstall", "agentwire-dev"],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode == 0:
+        print("  ✓ Uninstalled")
+    else:
+        # Might not be installed, that's fine
+        print("  - Not installed (continuing)")
+
+    # Step 3: Reinstall from current directory
+    # Find the project root (where pyproject.toml is)
+    project_root = Path(__file__).parent.parent
+    if not (project_root / "pyproject.toml").exists():
+        # Fallback: assume we're in ~/projects/agentwire
+        project_root = Path.home() / "projects" / "agentwire"
+
+    print(f"Installing from {project_root}...")
+    result = subprocess.run(
+        ["uv", "tool", "install", "."],
+        cwd=project_root,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        print(f"  ✗ Install failed: {result.stderr}", file=sys.stderr)
+        return 1
+
+    print("  ✓ Installed")
+    print()
+    print("Rebuild complete. New version is active.")
+    return 0
+
+
+def cmd_uninstall(args) -> int:
+    """Uninstall: clear uv cache and remove agentwire-dev tool."""
+    print("Uninstalling agentwire-dev...")
+    print()
+
+    # Step 1: Clear uv cache
+    if UV_CACHE_DIR.exists():
+        print(f"Clearing uv cache ({UV_CACHE_DIR})...")
+        shutil.rmtree(UV_CACHE_DIR)
+        print("  ✓ Cache cleared")
+    else:
+        print("  - No cache to clear")
+
+    # Step 2: Uninstall
+    print("Uninstalling tool...")
+    result = subprocess.run(
+        ["uv", "tool", "uninstall", "agentwire-dev"],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode == 0:
+        print("  ✓ Uninstalled")
+    else:
+        print(f"  - {result.stderr.strip() or 'Not installed'}")
+
+    print()
+    print("Uninstall complete.")
+    print("To reinstall: cd ~/projects/agentwire && uv tool install .")
+    return 0
+
+
 # === Skills Commands ===
 
 CLAUDE_SKILLS_DIR = Path.home() / ".claude" / "skills"
@@ -1289,6 +1379,18 @@ def main() -> int:
         "generate-certs", help="Generate SSL certificates"
     )
     certs_parser.set_defaults(func=cmd_generate_certs)
+
+    # === rebuild command ===
+    rebuild_parser = subparsers.add_parser(
+        "rebuild", help="Clear uv cache and reinstall from source (for development)"
+    )
+    rebuild_parser.set_defaults(func=cmd_rebuild)
+
+    # === uninstall command ===
+    uninstall_parser = subparsers.add_parser(
+        "uninstall", help="Clear uv cache and uninstall the tool"
+    )
+    uninstall_parser.set_defaults(func=cmd_uninstall)
 
     args = parser.parse_args()
 

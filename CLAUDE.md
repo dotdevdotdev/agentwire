@@ -14,25 +14,22 @@ Multi-room voice web interface for AI coding agents. Push-to-talk voice input fr
 
 **`uv tool install` caches builds and won't pick up source changes.**
 
-During development, use the `--dev` flag to run from source:
+### Option 1: Run from source with `--dev` (recommended)
 
 ```bash
-# Development - runs from source, picks up code changes
 agentwire portal stop
-agentwire portal start --dev
-
-# Production - runs installed binary (requires reinstall for changes)
-agentwire portal start
+agentwire portal start --dev   # Uses uv run, picks up code changes instantly
 ```
 
-The `--dev` flag uses `uv run` under the hood to run directly from source.
+### Option 2: Rebuild the installed tool
 
-**If you forget `--dev` and need to update the installed binary:**
 ```bash
-uv tool uninstall agentwire-dev && uv tool install .
+agentwire rebuild   # Clears uv cache, uninstalls, reinstalls from source
 ```
 
-Note: `uv tool install . --force` does NOT rebuild - it reinstalls the cached wheel.
+This is the correct way to update the installed binary. **Do NOT use:**
+- `uv tool install . --force` - uses cached wheel, ignores source changes
+- `uv tool uninstall && uv tool install .` - also uses cached wheel
 
 ---
 
@@ -87,6 +84,8 @@ agentwire skills uninstall            # Remove skills
 
 # Development
 agentwire dev              # Start orchestrator session (agentwire)
+agentwire rebuild          # Clear uv cache and reinstall from source
+agentwire uninstall        # Clear uv cache and remove tool
 agentwire generate-certs   # Generate SSL certificates
 ```
 
@@ -227,6 +226,8 @@ TTS audio includes 300ms silence padding to prevent first-syllable cutoff.
 
 In terminal mode, a ⋯ button appears above the mic button, revealing session actions:
 
+**For regular project sessions:**
+
 | Action | Description |
 |--------|-------------|
 | New Room | Creates a sibling session in a new worktree, opens in new tab (parallel work) |
@@ -234,6 +235,12 @@ In terminal mode, a ⋯ button appears above the mic button, revealing session a
 | Recreate Session | Destroys current session/worktree, pulls latest, creates fresh worktree and Claude Code session |
 
 **Fork Session** uses Claude Code's `--resume <id> --fork-session` to create a new session that inherits the conversation context. Useful when you want to try different approaches without losing the current session's progress.
+
+**For system sessions** (`agentwire`, `agentwire-portal`, `agentwire-tts`):
+
+| Action | Description |
+|--------|-------------|
+| Restart Service | Properly restarts the service (portal schedules delayed restart, TTS stops/starts, orchestrator restarts Claude) |
 
 ### Portal API
 
@@ -245,6 +252,7 @@ In terminal mode, a ⋯ button appears above the mic button, revealing session a
 | `/api/room/{name}/recreate` | POST | Destroy and recreate session with fresh worktree |
 | `/api/room/{name}/spawn-sibling` | POST | Create parallel session in new worktree |
 | `/api/room/{name}/fork` | POST | Fork Claude Code session (preserves conversation context) |
+| `/api/room/{name}/restart-service` | POST | Restart system service (agentwire, portal, TTS) |
 | `/api/say/{name}` | POST | Generate TTS and broadcast to room |
 | `/api/voices` | GET | List available TTS voices |
 | `/transcribe` | POST | Transcribe audio (multipart form) |

@@ -85,6 +85,7 @@ class AgentWireServer:
         self.app.router.add_post("/api/room/{name:.+}/recreate", self.api_recreate_session)
         self.app.router.add_post("/api/room/{name:.+}/spawn-sibling", self.api_spawn_sibling)
         self.app.router.add_post("/api/room/{name:.+}/fork", self.api_fork_session)
+        self.app.router.add_post("/api/room/{name:.+}/restart-service", self.api_restart_service)
         self.app.router.add_get("/api/voices", self.api_voices)
         self.app.router.add_delete("/api/sessions/{name:.+}", self.api_close_session)
         self.app.router.add_get("/api/sessions/archive", self.api_archived_sessions)
@@ -297,11 +298,21 @@ class AgentWireServer:
             headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
         )
 
+    # System sessions that get special treatment (restart instead of fork/new/recreate)
+    SYSTEM_SESSIONS = {"agentwire", "agentwire-portal", "agentwire-tts"}
+
+    def _is_system_session(self, name: str) -> bool:
+        """Check if this is a system session (agentwire services)."""
+        # Extract base session name (without @machine suffix)
+        base_name = name.split("@")[0]
+        return base_name in self.SYSTEM_SESSIONS
+
     async def handle_room(self, request: web.Request) -> web.Response:
         """Serve a room page."""
         name = request.match_info["name"]
         room_config = self._get_room_config(name)
         voices = await self._get_voices()
+        is_system_session = self._is_system_session(name)
 
         html = self._render_template(
             "room.html",
@@ -309,6 +320,9 @@ class AgentWireServer:
             config=room_config,
             voices=voices,
             current_voice=room_config.voice,
+            is_system_session=is_system_session,
+            is_project_session=not is_system_session,
+            is_system_session_js="true" if is_system_session else "false",
         )
         return web.Response(
             text=html,
@@ -1566,6 +1580,93 @@ projects:
 
         except Exception as e:
             logger.error(f"Fork session API failed: {e}")
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def api_restart_service(self, request: web.Request) -> web.Response:
+        """POST /api/room/{name}/restart-service - Restart a system service.
+
+        For system sessions (agentwire, agentwire-portal, agentwire-tts),
+        this properly restarts the service.
+        """
+        import subprocess
+
+        name = request.match_info["name"]
+        base_name = name.split("@")[0]
+
+        if base_name not in self.SYSTEM_SESSIONS:
+            return web.json_response(
+                {"error": f"'{name}' is not a system session"},
+                status=400
+            )
+
+        try:
+            logger.info(f"[{name}] Restarting service...")
+
+            if base_name == "agentwire-portal":
+                # Special case: we are the portal, need to restart ourselves
+                # Schedule restart after responding
+                # Can't use `agentwire portal start` as it tries to attach to terminal
+                async def delayed_restart():
+                    await asyncio.sleep(1)
+                    logger.info("Portal restarting...")
+                    # Kill the tmux session (which kills us)
+                    subprocess.run(
+                        ["tmux", "kill-session", "-t", "agentwire-portal"],
+                        capture_output=True
+                    )
+                    await asyncio.sleep(0.5)
+                    # Create new tmux session with portal serve command
+                    subprocess.run(
+                        ["tmux", "new-session", "-d", "-s", "agentwire-portal"],
+                        capture_output=True
+                    )
+                    subprocess.run(
+                        ["tmux", "send-keys", "-t", "agentwire-portal",
+                         "agentwire portal serve", "Enter"],
+                        capture_output=True
+                    )
+
+                asyncio.create_task(delayed_restart())
+                return web.json_response({
+                    "success": True,
+                    "message": "Portal restarting in 1 second..."
+                })
+
+            elif base_name == "agentwire-tts":
+                # Restart TTS server
+                result = subprocess.run(
+                    ["agentwire", "tts", "stop"],
+                    capture_output=True, text=True
+                )
+                await asyncio.sleep(0.5)
+                subprocess.Popen(
+                    ["agentwire", "tts", "start"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                return web.json_response({
+                    "success": True,
+                    "message": "TTS server restarted"
+                })
+
+            elif base_name == "agentwire":
+                # Restart the orchestrator session - kill Claude and restart it
+                self.agent.send_keys(name, "/exit")
+                await asyncio.sleep(1)
+
+                # Send the agent command to restart Claude
+                agent_cmd = self.agent.agent_command
+                self.agent.send_input(name, agent_cmd)
+
+                return web.json_response({
+                    "success": True,
+                    "message": "Orchestrator session restarted"
+                })
+
+            return web.json_response({"error": "Unknown system session"}, status=400)
+
+        except Exception as e:
+            logger.error(f"Restart service API failed: {e}")
             return web.json_response({"error": str(e)}, status=500)
 
     async def speak(self, room_name: str, text: str):

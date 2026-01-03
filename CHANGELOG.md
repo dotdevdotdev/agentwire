@@ -21,7 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - "New Room" - spawn parallel session in new worktree (opens in new tab)
     - "Fork Session" - fork Claude Code conversation context into new session
     - "Recreate Session" - destroys worktree, pulls latest, fresh start
+    - "Restart Service" - for system sessions (agentwire, portal, TTS)
   - Claude Code session ID tracking for fork support
+  - System session detection (different actions menu for agentwire services)
 
 - **CLI Commands**
   - `agentwire init` - Interactive setup wizard
