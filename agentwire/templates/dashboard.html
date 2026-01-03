@@ -372,6 +372,63 @@
         .session-voice { color: var(--primary); }
         .session-arrow { color: var(--text-muted); font-size: 1.2rem; }
         .no-sessions { color: var(--text-muted); padding: 1rem 0; }
+        /* Permission mode radio buttons */
+        .radio-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+        .radio-option {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.5rem;
+            padding: 0.5rem;
+            background: var(--bg-light);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .radio-option:hover {
+            border-color: var(--primary-dim);
+        }
+        .radio-option.selected {
+            border-color: var(--primary);
+            background: var(--primary-subtle);
+        }
+        .radio-option input[type="radio"] {
+            width: auto;
+            margin-top: 0.15rem;
+            accent-color: var(--primary);
+        }
+        .radio-option-content {
+            flex: 1;
+        }
+        .radio-option-label {
+            font-size: 0.85rem;
+            color: var(--text-primary);
+            font-weight: 500;
+        }
+        .radio-option-desc {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-top: 0.15rem;
+        }
+        /* Session permission badge */
+        .session-badge {
+            font-size: 0.7rem;
+            padding: 0.15rem 0.4rem;
+            border-radius: 3px;
+            margin-left: 0.5rem;
+        }
+        .session-badge.bypass {
+            background: rgba(0, 221, 0, 0.15);
+            color: var(--primary);
+        }
+        .session-badge.prompted {
+            background: rgba(248, 113, 113, 0.15);
+            color: var(--error);
+        }
 
     </style>
 </head>
@@ -413,6 +470,25 @@
                                         <option value="{{ voice }}"{% if voice == default_voice %} selected{% endif %}>{{ voice }}</option>
                                         {% endfor %}
                                     </select>
+                                </div>
+                                <div class="form-row">
+                                    <label>Permission Mode</label>
+                                    <div class="radio-group">
+                                        <label class="radio-option selected" onclick="selectPermissionMode(this, true)">
+                                            <input type="radio" name="bypassPermissions" value="true" checked>
+                                            <div class="radio-option-content">
+                                                <div class="radio-option-label">Bypass Permissions (Recommended)</div>
+                                                <div class="radio-option-desc">Claude auto-accepts all prompts for faster workflow</div>
+                                            </div>
+                                        </label>
+                                        <label class="radio-option" onclick="selectPermissionMode(this, false)">
+                                            <input type="radio" name="bypassPermissions" value="false">
+                                            <div class="radio-option-content">
+                                                <div class="radio-option-label">Normal Session</div>
+                                                <div class="radio-option-desc">Permission prompts appear in portal for approval</div>
+                                            </div>
+                                        </label>
+                                    </div>
                                 </div>
                                 <button class="action-btn" onclick="createSession()">Create</button>
                                 <div class="error" id="error"></div>
@@ -523,6 +599,15 @@
             group.classList.toggle('open');
         }
 
+        function selectPermissionMode(element, bypass) {
+            // Remove selected class from all options
+            document.querySelectorAll('.radio-option').forEach(opt => opt.classList.remove('selected'));
+            // Add selected class to clicked option
+            element.classList.add('selected');
+            // Check the radio button
+            element.querySelector('input[type="radio"]').checked = true;
+        }
+
         async function loadSessions() {
             const res = await fetch('/api/sessions');
             const sessions = await res.json();
@@ -539,10 +624,14 @@
             document.getElementById('sessionCount').innerHTML =
                 `<span class="count">${sessions.length}</span> active session${sessions.length !== 1 ? 's' : ''}`;
 
-            container.innerHTML = sessions.map(s => `
+            container.innerHTML = sessions.map(s => {
+                const bypassBadge = s.bypass_permissions !== false
+                    ? '<span class="session-badge bypass">Bypass</span>'
+                    : '<span class="session-badge prompted">Prompted</span>';
+                return `
                 <div class="session-card">
                     <a href="/room/${s.name}" style="flex:1;text-decoration:none;color:inherit;">
-                        <div class="session-name">${s.name}${s.machine ? '<span style="color:var(--text-muted);font-weight:normal">@' + s.machine + '</span>' : ''}</div>
+                        <div class="session-name">${s.name}${s.machine ? '<span style="color:var(--text-muted);font-weight:normal">@' + s.machine + '</span>' : ''}${bypassBadge}</div>
                         <div class="session-meta">
                             ${s.path || '~/projects/' + s.name}
                             <span class="session-voice">• ${s.voice || DEFAULT_VOICE}</span>
@@ -550,13 +639,14 @@
                     </a>
                     <button class="session-close" onclick="closeSession('${s.name}')" title="Close session">✕</button>
                 </div>
-            `).join('');
+            `}).join('');
         }
 
         async function createSession() {
             const name = document.getElementById('sessionName').value.trim();
             const path = document.getElementById('projectPath').value.trim();
             const voice = document.getElementById('sessionVoice').value;
+            const bypassPermissions = document.querySelector('input[name="bypassPermissions"]:checked').value === 'true';
             const error = document.getElementById('error');
 
             if (!name) {
@@ -569,7 +659,7 @@
             const res = await fetch('/api/create', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name, path: path || null, voice })
+                body: JSON.stringify({ name, path: path || null, voice, bypass_permissions: bypassPermissions })
             });
 
             const data = await res.json();
