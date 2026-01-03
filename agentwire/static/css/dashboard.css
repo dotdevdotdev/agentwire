@@ -1,0 +1,612 @@
+/* Dashboard CSS - AgentWire Dashboard Layout and Components */
+
+/* =============================================================================
+   Layout
+   ============================================================================= */
+
+.layout {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    max-width: 500px;
+    margin: 0 auto;
+    padding: var(--space-lg);
+}
+
+.left-column {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+}
+
+.right-column {
+    flex: 1;
+    padding: 0;
+    padding-top: var(--space-lg);
+    overflow-y: auto;
+}
+
+/* =============================================================================
+   Brand / Header
+   ============================================================================= */
+
+.brand {
+    text-align: center;
+    margin-bottom: var(--space-md);
+}
+
+.splash-logo {
+    max-width: 250px;
+    width: 100%;
+    height: auto;
+    border-radius: var(--radius-lg);
+}
+
+.tagline {
+    color: var(--text-muted);
+    margin-top: 0.75rem;
+    font-size: 1rem;
+}
+
+.version {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    margin-top: var(--space-xs);
+}
+
+/* =============================================================================
+   Actions / Accordion Groups
+   ============================================================================= */
+
+.actions {
+    margin-top: auto;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+}
+
+.action-group {
+    background: var(--bg-mid);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+}
+
+.action-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem var(--space-md);
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.2s;
+}
+
+.action-header:hover {
+    background: var(--bg-light);
+}
+
+.action-header h3 {
+    font-size: 1.1rem;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.action-toggle {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    transition: transform 0.2s;
+}
+
+.action-group.open .action-toggle {
+    transform: rotate(180deg);
+}
+
+.action-content {
+    display: none;
+    padding: 0 var(--space-md) var(--space-md);
+}
+
+.action-group.open .action-content {
+    display: block;
+}
+
+/* =============================================================================
+   Sub-actions (nested accordions)
+   ============================================================================= */
+
+.sub-action {
+    margin-top: var(--space-sm);
+    border-top: 1px solid var(--border);
+    padding-top: var(--space-sm);
+}
+
+.sub-action-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-sm) 0;
+    cursor: pointer;
+    user-select: none;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.sub-action-header:hover {
+    color: var(--text-primary);
+}
+
+.sub-action .action-toggle {
+    font-size: 0.7rem;
+}
+
+.sub-action.open .action-toggle {
+    transform: rotate(180deg);
+}
+
+.sub-action-content {
+    display: none;
+    padding-top: var(--space-sm);
+}
+
+.sub-action.open .sub-action-content {
+    display: block;
+}
+
+/* =============================================================================
+   Forms
+   ============================================================================= */
+
+.form-row {
+    margin-bottom: 0.75rem;
+}
+
+.form-row label {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-bottom: var(--space-xs);
+}
+
+.form-row input,
+.form-row select {
+    width: 100%;
+    padding: var(--space-sm);
+    background: var(--bg-light);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-size: 0.9rem;
+}
+
+.form-row input:focus,
+.form-row select:focus {
+    outline: none;
+    border-color: var(--primary);
+}
+
+/* Radio button groups (permission mode) */
+.radio-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+}
+
+.radio-option {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-sm);
+    padding: var(--space-sm);
+    background: var(--bg-light);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.radio-option:hover {
+    border-color: var(--primary-dim);
+}
+
+.radio-option.selected {
+    border-color: var(--primary);
+    background: var(--primary-subtle);
+}
+
+.radio-option input[type="radio"] {
+    width: auto;
+    margin-top: 0.15rem;
+    accent-color: var(--primary);
+}
+
+.radio-option-content {
+    flex: 1;
+}
+
+.radio-option-label {
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    font-weight: 500;
+}
+
+.radio-option-desc {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-top: 0.15rem;
+}
+
+/* =============================================================================
+   Buttons
+   ============================================================================= */
+
+.action-btn {
+    width: 100%;
+    padding: 0.6rem;
+    background: var(--primary-subtle);
+    border: 1px solid rgba(0, 221, 0, 0.3);
+    border-radius: var(--radius-sm);
+    color: var(--primary);
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.action-btn:hover {
+    background: rgba(0, 221, 0, 0.25);
+    border-color: var(--primary);
+}
+
+.action-btn.secondary {
+    background: var(--bg-light);
+    border-color: var(--border);
+    color: var(--text-secondary);
+}
+
+.action-btn.secondary:hover {
+    background: var(--bg-elevated);
+    border-color: var(--text-muted);
+    color: var(--text-primary);
+}
+
+.config-buttons {
+    display: flex;
+    gap: var(--space-sm);
+}
+
+.config-buttons .action-btn {
+    flex: 1;
+}
+
+/* =============================================================================
+   Status Messages
+   ============================================================================= */
+
+.error {
+    color: var(--error);
+    margin-top: var(--space-sm);
+    font-size: 0.8rem;
+}
+
+.success {
+    color: var(--primary);
+    margin-top: var(--space-sm);
+    font-size: 0.8rem;
+}
+
+/* =============================================================================
+   Sessions
+   ============================================================================= */
+
+.section-title {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: var(--space-md);
+}
+
+.sessions {
+    width: 100%;
+}
+
+.session-count {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    margin-bottom: var(--space-sm);
+}
+
+.session-count .count {
+    color: var(--primary);
+    font-weight: 600;
+}
+
+.session-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--bg-mid);
+    border-radius: var(--radius-md);
+    padding: var(--space-md);
+    margin-bottom: var(--space-sm);
+    text-decoration: none;
+    color: inherit;
+    transition: background 0.2s;
+}
+
+.session-card:hover {
+    background: var(--bg-light);
+}
+
+.session-name {
+    font-weight: 600;
+    color: var(--text-primary);
+    font-size: 1.1rem;
+}
+
+.session-meta {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    margin-top: var(--space-xs);
+}
+
+.session-voice {
+    color: var(--primary);
+}
+
+.session-arrow {
+    color: var(--text-muted);
+    font-size: 1.2rem;
+}
+
+.session-close {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: var(--space-xs) var(--space-sm);
+    font-size: 0.9rem;
+    border-radius: var(--radius-sm);
+    transition: all 0.2s;
+}
+
+.session-close:hover {
+    color: var(--error);
+    background: rgba(248, 113, 113, 0.1);
+}
+
+.session-badge {
+    font-size: 0.7rem;
+    padding: 0.15rem 0.4rem;
+    border-radius: 3px;
+    margin-left: var(--space-sm);
+}
+
+.session-badge.bypass {
+    background: rgba(0, 221, 0, 0.15);
+    color: var(--primary);
+}
+
+.session-badge.prompted {
+    background: rgba(248, 113, 113, 0.15);
+    color: var(--error);
+}
+
+.no-sessions {
+    color: var(--text-muted);
+    padding: var(--space-md) 0;
+}
+
+/* =============================================================================
+   Machines
+   ============================================================================= */
+
+.machines-list {
+    margin-bottom: 0.75rem;
+}
+
+.machine-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--space-sm);
+    background: var(--bg-light);
+    border-radius: var(--radius-sm);
+    margin-bottom: var(--space-xs);
+    font-size: 0.85rem;
+}
+
+.machine-item .machine-id {
+    color: var(--primary);
+    font-weight: 500;
+}
+
+.machine-item .machine-host {
+    color: var(--text-muted);
+}
+
+.machine-item .machine-local {
+    color: var(--text-muted);
+    font-size: 0.75rem;
+}
+
+.machine-remove {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 0.15rem 0.4rem;
+    font-size: 0.75rem;
+    border-radius: var(--radius-sm);
+    transition: all 0.2s;
+}
+
+.machine-remove:hover {
+    color: var(--error);
+    background: rgba(248, 113, 113, 0.1);
+}
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: var(--space-sm);
+}
+
+.status-dot.online {
+    background: var(--primary);
+}
+
+.status-dot.offline {
+    background: var(--error);
+}
+
+/* =============================================================================
+   Archive
+   ============================================================================= */
+
+.archive-list {}
+
+.archive-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.4rem 0;
+    font-size: 0.8rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.archive-item:last-child {
+    border-bottom: none;
+}
+
+.archive-item .archive-name {
+    color: var(--text-primary);
+}
+
+.archive-item .archive-time {
+    color: var(--text-muted);
+    font-size: 0.75rem;
+}
+
+.archive-empty {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+}
+
+/* =============================================================================
+   Config Editor
+   ============================================================================= */
+
+.config-path {
+    padding: var(--space-sm);
+    background: var(--bg-light);
+    border-radius: var(--radius-sm);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-bottom: var(--space-sm);
+    word-break: break-all;
+}
+
+.config-editor {
+    width: 100%;
+    min-height: 200px;
+    padding: 0.75rem;
+    background: var(--bg-light);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    line-height: 1.4;
+    resize: vertical;
+    margin-bottom: var(--space-sm);
+}
+
+.config-editor:focus {
+    outline: none;
+    border-color: var(--primary);
+}
+
+/* =============================================================================
+   Modal
+   ============================================================================= */
+
+.modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.9);
+    z-index: 1000;
+    padding: var(--space-xl);
+}
+
+.modal.open {
+    display: flex;
+}
+
+.modal-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    max-width: 900px;
+    margin: 0 auto;
+}
+
+.modal-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    margin-bottom: var(--space-md);
+}
+
+.modal-header h2 {
+    color: var(--primary);
+    font-size: 1.25rem;
+    font-weight: 600;
+}
+
+.modal-header .config-path {
+    margin: 0;
+    padding: var(--space-xs) var(--space-sm);
+}
+
+.modal-editor {
+    flex: 1;
+    width: 100%;
+    padding: var(--space-md);
+    background: var(--bg-light);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 0.9rem;
+    line-height: 1.5;
+    resize: none;
+}
+
+.modal-editor:focus {
+    outline: none;
+    border-color: var(--primary);
+}
+
+.modal-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: var(--space-md);
+    gap: var(--space-md);
+}
+
+.modal-messages {
+    flex: 1;
+}
+
+.modal-buttons {
+    display: flex;
+    gap: var(--space-sm);
+}

@@ -98,20 +98,20 @@ These tasks have dependencies - run sequentially or coordinate carefully.
 
 These tasks can run in parallel.
 
-- [ ] **3.1 Extract dashboard CSS**
+- [x] **3.1 Extract dashboard CSS**
   - Pull all `<style>` content from dashboard.html
   - Create `static/css/dashboard.css`
   - Organize into logical sections (layout, cards, buttons, forms)
   - Files: `static/css/dashboard.css`
 
-- [ ] **3.2 Extract dashboard JS**
+- [x] **3.2 Extract dashboard JS**
   - Pull all `<script>` content from dashboard.html
   - Create `static/js/dashboard.js` as ES module
   - Convert inline onclick handlers to addEventListener
   - Export init function, call on DOMContentLoaded
   - Files: `static/js/dashboard.js`
 
-- [ ] **3.3 Refactor dashboard.html**
+- [x] **3.3 Refactor dashboard.html**
   - `{% extends 'base.html' %}`
   - `{% block title %}AgentWire{% endblock %}`
   - `{% block styles %}<link rel="stylesheet" href="/static/css/dashboard.css">{% endblock %}`

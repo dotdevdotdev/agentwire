@@ -1,956 +1,187 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-    <meta http-equiv="Pragma" content="no-cache">
-    <meta http-equiv="Expires" content="0">
-    <link rel="icon" type="image/jpeg" href="/static/favicon-green.jpeg">
-    <title>AgentWire</title>
-    <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
+{% extends 'base.html' %}
 
-        :root {
-            /* Theme colors - Electric Green */
-            --primary: #00DD00;
-            --primary-dim: #00BB00;
-            --primary-dark: #009900;
-            --primary-glow: rgba(0, 221, 0, 0.4);
-            --primary-subtle: rgba(0, 221, 0, 0.15);
+{% block title %}AgentWire{% endblock %}
 
-            /* Backgrounds */
-            --bg-dark: #000;
-            --bg-mid: #0a0a0a;
-            --bg-light: #111;
-            --bg-elevated: #1a1a1a;
+{% block styles %}
+<link rel="stylesheet" href="/static/css/dashboard.css">
+{% endblock %}
 
-            /* Text */
-            --text-primary: #E8EEF2;
-            --text-secondary: #8899A6;
-            --text-muted: #5C6B7A;
-
-            /* Borders */
-            --border: #2A3A4D;
-            --border-light: #3D4F63;
-
-            /* States */
-            --error: #F87171;
-        }
-        body {
-            font-family: -apple-system, system-ui, sans-serif;
-            background: var(--bg-dark);
-            color: var(--text-primary);
-            min-height: 100vh;
-        }
-        /* Single layout - stacked, works everywhere */
-        .layout {
-            display: flex;
-            flex-direction: column;
-            min-height: 100vh;
-            max-width: 500px;
-            margin: 0 auto;
-            padding: 1.5rem;
-        }
-        .left-column {
-            display: flex;
-            flex-direction: column;
-            width: 100%;
-        }
-        .brand {
-            text-align: center;
-            margin-bottom: 1rem;
-        }
-        .splash-logo {
-            max-width: 250px;
-            width: 100%;
-            height: auto;
-            border-radius: 12px;
-        }
-        .tagline { color: var(--text-muted); margin-top: 0.75rem; font-size: 1rem; }
-        .version { font-size: 0.85rem; color: var(--text-muted); margin-top: 0.25rem; }
-        .actions {
-            margin-top: auto;
-            display: flex;
-            flex-direction: column;
-            gap: 0.5rem;
-        }
-        .action-group {
-            background: var(--bg-mid);
-            border-radius: 8px;
-            overflow: hidden;
-        }
-        .action-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 0.75rem 1rem;
-            cursor: pointer;
-            user-select: none;
-            transition: background 0.2s;
-        }
-        .action-header:hover {
-            background: var(--bg-light);
-        }
-        .action-header h3 {
-            font-size: 1.1rem;
-            font-weight: 500;
-            color: var(--text-primary);
-        }
-        .action-toggle {
-            color: var(--text-muted);
-            font-size: 0.8rem;
-            transition: transform 0.2s;
-        }
-        .action-group.open .action-toggle {
-            transform: rotate(180deg);
-        }
-        .action-content {
-            display: none;
-            padding: 0 1rem 1rem;
-        }
-        .action-group.open .action-content {
-            display: block;
-        }
-        .form-row { margin-bottom: 0.75rem; }
-        .form-row label { display: block; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.25rem; }
-        .form-row input, .form-row select {
-            width: 100%;
-            padding: 0.5rem;
-            background: var(--bg-light);
-            border: 1px solid var(--border);
-            border-radius: 4px;
-            color: var(--text-primary);
-            font-size: 0.9rem;
-        }
-        .form-row input:focus, .form-row select:focus { outline: none; border-color: var(--primary); }
-        .action-btn {
-            width: 100%;
-            padding: 0.6rem;
-            background: var(--primary-subtle);
-            border: 1px solid rgba(0, 221, 0, 0.3);
-            border-radius: 4px;
-            color: var(--primary);
-            font-size: 0.9rem;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        .action-btn:hover {
-            background: rgba(0, 221, 0, 0.25);
-            border-color: var(--primary);
-        }
-        .error { color: var(--error); margin-top: 0.5rem; font-size: 0.8rem; }
-        .success { color: var(--primary); margin-top: 0.5rem; font-size: 0.8rem; }
-        .machines-list { margin-bottom: 0.75rem; }
-        .machine-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 0.5rem;
-            background: var(--bg-light);
-            border-radius: 4px;
-            margin-bottom: 0.25rem;
-            font-size: 0.85rem;
-        }
-        .machine-item .machine-id { color: var(--primary); font-weight: 500; }
-        .machine-item .machine-host { color: var(--text-muted); }
-        .machine-item .machine-local { color: var(--text-muted); font-size: 0.75rem; }
-        .status-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            display: inline-block;
-            margin-right: 0.5rem;
-        }
-        .status-dot.online { background: var(--primary); }
-        .status-dot.offline { background: var(--error); }
-        .sub-action {
-            margin-top: 0.5rem;
-            border-top: 1px solid var(--border);
-            padding-top: 0.5rem;
-        }
-        .sub-action-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 0.5rem 0;
-            cursor: pointer;
-            user-select: none;
-            font-size: 0.85rem;
-            color: var(--text-secondary);
-        }
-        .sub-action-header:hover { color: var(--text-primary); }
-        .sub-action .action-toggle {
-            font-size: 0.7rem;
-        }
-        .sub-action.open .action-toggle {
-            transform: rotate(180deg);
-        }
-        .sub-action-content {
-            display: none;
-            padding-top: 0.5rem;
-        }
-        .sub-action.open .sub-action-content {
-            display: block;
-        }
-        .session-count {
-            font-size: 0.85rem;
-            color: var(--text-muted);
-            margin-bottom: 0.5rem;
-        }
-        .session-count .count { color: var(--primary); font-weight: 600; }
-        .archive-list { }
-        .archive-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 0.4rem 0;
-            font-size: 0.8rem;
-            border-bottom: 1px solid var(--border);
-        }
-        .archive-item:last-child { border-bottom: none; }
-        .archive-item .archive-name { color: var(--text-primary); }
-        .archive-item .archive-time { color: var(--text-muted); font-size: 0.75rem; }
-        .archive-empty { color: var(--text-muted); font-size: 0.8rem; }
-        .session-close, .machine-remove {
-            background: none;
-            border: none;
-            color: var(--text-muted);
-            cursor: pointer;
-            padding: 0.25rem 0.5rem;
-            font-size: 0.9rem;
-            border-radius: 4px;
-            transition: all 0.2s;
-        }
-        .session-close:hover, .machine-remove:hover {
-            color: var(--error);
-            background: rgba(248, 113, 113, 0.1);
-        }
-        .machine-remove {
-            font-size: 0.75rem;
-            padding: 0.15rem 0.4rem;
-        }
-        .config-path {
-            padding: 0.5rem;
-            background: var(--bg-light);
-            border-radius: 4px;
-            font-family: monospace;
-            font-size: 0.75rem;
-            color: var(--text-muted);
-            margin-bottom: 0.5rem;
-            word-break: break-all;
-        }
-        .config-editor {
-            width: 100%;
-            min-height: 200px;
-            padding: 0.75rem;
-            background: var(--bg-light);
-            border: 1px solid var(--border);
-            border-radius: 4px;
-            color: var(--text-primary);
-            font-family: monospace;
-            font-size: 0.8rem;
-            line-height: 1.4;
-            resize: vertical;
-            margin-bottom: 0.5rem;
-        }
-        .config-editor:focus {
-            outline: none;
-            border-color: var(--primary);
-        }
-        .config-buttons {
-            display: flex;
-            gap: 0.5rem;
-        }
-        .config-buttons .action-btn {
-            flex: 1;
-        }
-        .action-btn.secondary {
-            background: var(--bg-light);
-            border-color: var(--border);
-            color: var(--text-secondary);
-        }
-        .action-btn.secondary:hover {
-            background: var(--bg-elevated);
-            border-color: var(--text-muted);
-            color: var(--text-primary);
-        }
-        .modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.9);
-            z-index: 1000;
-            padding: 2rem;
-        }
-        .modal.open { display: flex; }
-        .modal-content {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            max-width: 900px;
-            margin: 0 auto;
-        }
-        .modal-header {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-            margin-bottom: 1rem;
-        }
-        .modal-header h2 {
-            color: var(--primary);
-            font-size: 1.25rem;
-            font-weight: 600;
-        }
-        .modal-header .config-path {
-            margin: 0;
-            padding: 0.25rem 0.5rem;
-        }
-        .modal-editor {
-            flex: 1;
-            width: 100%;
-            padding: 1rem;
-            background: var(--bg-light);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            color: var(--text-primary);
-            font-family: monospace;
-            font-size: 0.9rem;
-            line-height: 1.5;
-            resize: none;
-        }
-        .modal-editor:focus {
-            outline: none;
-            border-color: var(--primary);
-        }
-        .modal-footer {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-top: 1rem;
-            gap: 1rem;
-        }
-        .modal-messages { flex: 1; }
-        .modal-buttons {
-            display: flex;
-            gap: 0.5rem;
-        }
-        .right-column {
-            flex: 1;
-            padding: 0;
-            padding-top: 1.5rem;
-            overflow-y: auto;
-        }
-        .section-title {
-            font-size: 0.9rem;
-            color: var(--text-muted);
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            margin-bottom: 1rem;
-        }
-        .sessions {
-            width: 100%;
-        }
-        .session-card {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            background: var(--bg-mid);
-            border-radius: 8px;
-            padding: 1rem;
-            margin-bottom: 0.5rem;
-            text-decoration: none;
-            color: inherit;
-            transition: background 0.2s;
-        }
-        .session-card:hover { background: var(--bg-light); }
-        .session-name { font-weight: 600; color: var(--text-primary); font-size: 1.1rem; }
-        .session-meta { font-size: 0.9rem; color: var(--text-muted); margin-top: 0.25rem; }
-        .session-voice { color: var(--primary); }
-        .session-arrow { color: var(--text-muted); font-size: 1.2rem; }
-        .no-sessions { color: var(--text-muted); padding: 1rem 0; }
-        /* Permission mode radio buttons */
-        .radio-group {
-            display: flex;
-            flex-direction: column;
-            gap: 0.5rem;
-        }
-        .radio-option {
-            display: flex;
-            align-items: flex-start;
-            gap: 0.5rem;
-            padding: 0.5rem;
-            background: var(--bg-light);
-            border: 1px solid var(--border);
-            border-radius: 4px;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        .radio-option:hover {
-            border-color: var(--primary-dim);
-        }
-        .radio-option.selected {
-            border-color: var(--primary);
-            background: var(--primary-subtle);
-        }
-        .radio-option input[type="radio"] {
-            width: auto;
-            margin-top: 0.15rem;
-            accent-color: var(--primary);
-        }
-        .radio-option-content {
-            flex: 1;
-        }
-        .radio-option-label {
-            font-size: 0.85rem;
-            color: var(--text-primary);
-            font-weight: 500;
-        }
-        .radio-option-desc {
-            font-size: 0.75rem;
-            color: var(--text-muted);
-            margin-top: 0.15rem;
-        }
-        /* Session permission badge */
-        .session-badge {
-            font-size: 0.7rem;
-            padding: 0.15rem 0.4rem;
-            border-radius: 3px;
-            margin-left: 0.5rem;
-        }
-        .session-badge.bypass {
-            background: rgba(0, 221, 0, 0.15);
-            color: var(--primary);
-        }
-        .session-badge.prompted {
-            background: rgba(248, 113, 113, 0.15);
-            color: var(--error);
-        }
-
-    </style>
-</head>
-<body>
-    <div class="layout">
-        <div class="left-column">
-            <div class="brand">
-                <img src="/static/agentwire-logo-splash-green-dark.png" alt="AgentWire" class="splash-logo">
-                <p class="tagline">Voice Agent Interface</p>
-                <div class="version">v{{ version }}</div>
-            </div>
-
-            <div class="actions">
-                <div class="action-group" id="sessionsGroup">
-                    <div class="action-header" onclick="toggleAction('sessionsGroup')">
-                        <h3>Sessions</h3>
-                        <span class="action-toggle">▼</span>
-                    </div>
-                    <div class="action-content">
-                        <div id="sessionCount" class="session-count"></div>
-                        <div class="sub-action" id="createSessionGroup">
-                            <div class="sub-action-header" onclick="toggleAction('createSessionGroup')">
-                                <span>Create Session</span>
-                                <span class="action-toggle">▼</span>
-                            </div>
-                            <div class="sub-action-content">
-                                <div class="form-row">
-                                    <label>Session Name</label>
-                                    <input type="text" id="sessionName" placeholder="e.g., assistant">
-                                </div>
-                                <div class="form-row">
-                                    <label>Project Path (optional)</label>
-                                    <input type="text" id="projectPath" placeholder="~/projects/name">
-                                </div>
-                                <div class="form-row">
-                                    <label>Voice</label>
-                                    <select id="sessionVoice">
-                                        {% for voice in voices %}
-                                        <option value="{{ voice }}"{% if voice == default_voice %} selected{% endif %}>{{ voice }}</option>
-                                        {% endfor %}
-                                    </select>
-                                </div>
-                                <div class="form-row">
-                                    <label>Permission Mode</label>
-                                    <div class="radio-group">
-                                        <label class="radio-option selected" onclick="selectPermissionMode(this, true)">
-                                            <input type="radio" name="bypassPermissions" value="true" checked>
-                                            <div class="radio-option-content">
-                                                <div class="radio-option-label">Bypass Permissions (Recommended)</div>
-                                                <div class="radio-option-desc">Claude auto-accepts all prompts for faster workflow</div>
-                                            </div>
-                                        </label>
-                                        <label class="radio-option" onclick="selectPermissionMode(this, false)">
-                                            <input type="radio" name="bypassPermissions" value="false">
-                                            <div class="radio-option-content">
-                                                <div class="radio-option-label">Normal Session</div>
-                                                <div class="radio-option-desc">Permission prompts appear in portal for approval</div>
-                                            </div>
-                                        </label>
-                                    </div>
-                                </div>
-                                <button class="action-btn" onclick="createSession()">Create</button>
-                                <div class="error" id="error"></div>
-                            </div>
-                        </div>
-                        <div class="sub-action" id="archiveGroup">
-                            <div class="sub-action-header" onclick="toggleAction('archiveGroup')">
-                                <span>Archive</span>
-                                <span class="action-toggle">▼</span>
-                            </div>
-                            <div class="sub-action-content">
-                                <div id="archiveList" class="archive-list"></div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="action-group" id="machinesGroup">
-                    <div class="action-header" onclick="toggleAction('machinesGroup')">
-                        <h3>Machines</h3>
-                        <span class="action-toggle">▼</span>
-                    </div>
-                    <div class="action-content">
-                        <div id="machinesList" class="machines-list"></div>
-                        <div class="sub-action" id="addMachineGroup">
-                            <div class="sub-action-header" onclick="toggleAction('addMachineGroup')">
-                                <span>Add Machine</span>
-                                <span class="action-toggle">▼</span>
-                            </div>
-                            <div class="sub-action-content">
-                                <div class="form-row">
-                                    <label>Machine ID</label>
-                                    <input type="text" id="machineId" placeholder="e.g., gpu-server">
-                                </div>
-                                <div class="form-row">
-                                    <label>Host</label>
-                                    <input type="text" id="machineHost" placeholder="e.g., 192.168.1.100">
-                                </div>
-                                <div class="form-row">
-                                    <label>User (optional)</label>
-                                    <input type="text" id="machineUser" placeholder="e.g., ubuntu">
-                                </div>
-                                <div class="form-row">
-                                    <label>Projects Dir (optional)</label>
-                                    <input type="text" id="machineProjectsDir" placeholder="e.g., ~/projects">
-                                </div>
-                                <button class="action-btn" onclick="addMachine()">Add</button>
-                                <div class="error" id="machineError"></div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="action-group" id="configGroup">
-                    <div class="action-header" onclick="toggleAction('configGroup')">
-                        <h3>Config</h3>
-                        <span class="action-toggle">▼</span>
-                    </div>
-                    <div class="action-content">
-                        <div id="configPath" class="config-path"></div>
-                        <textarea id="configEditor" class="config-editor" spellcheck="false"></textarea>
-                        <div class="config-buttons">
-                            <button class="action-btn" onclick="saveConfig()">Save</button>
-                            <button class="action-btn secondary" onclick="reloadConfig()">Save & Reload</button>
-                            <button class="action-btn secondary" onclick="openConfigModal()" title="Fullscreen editor">⛶</button>
-                        </div>
-                        <div class="success" id="configSuccess"></div>
-                        <div class="error" id="configError"></div>
-                    </div>
-                </div>
-            </div>
+{% block content %}
+<div class="layout">
+    <div class="left-column">
+        <div class="brand">
+            <img src="/static/agentwire-logo-splash-green-dark.png" alt="AgentWire" class="splash-logo">
+            <p class="tagline">Voice Agent Interface</p>
+            <div class="version">v{{ version }}</div>
         </div>
 
-        <div class="right-column">
-            <div class="section-title">Active Sessions</div>
-            <div class="sessions" id="sessions">
-                <div class="no-sessions">Loading sessions...</div>
-            </div>
-        </div>
-    </div>
-
-    <div id="configModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2>Config Editor</h2>
-                <span id="modalConfigPath" class="config-path"></span>
-            </div>
-            <textarea id="modalConfigEditor" class="modal-editor" spellcheck="false"></textarea>
-            <div class="modal-footer">
-                <div class="modal-messages">
-                    <div class="success" id="modalConfigSuccess"></div>
-                    <div class="error" id="modalConfigError"></div>
+        <div class="actions">
+            <!-- Sessions Group -->
+            <div class="action-group" id="sessionsGroup">
+                <div class="action-header">
+                    <h3>Sessions</h3>
+                    <span class="action-toggle">▼</span>
                 </div>
-                <div class="modal-buttons">
-                    <button class="action-btn secondary" onclick="closeConfigModal()">Close</button>
-                    <button class="action-btn secondary" onclick="saveConfigModal()">Save</button>
-                    <button class="action-btn" onclick="reloadConfigModal()">Save & Reload</button>
+                <div class="action-content">
+                    <div id="sessionCount" class="session-count"></div>
+
+                    <!-- Create Session Sub-action -->
+                    <div class="sub-action" id="createSessionGroup">
+                        <div class="sub-action-header">
+                            <span>Create Session</span>
+                            <span class="action-toggle">▼</span>
+                        </div>
+                        <div class="sub-action-content">
+                            <div class="form-row">
+                                <label>Session Name</label>
+                                <input type="text" id="sessionName" placeholder="e.g., assistant">
+                            </div>
+                            <div class="form-row">
+                                <label>Project Path (optional)</label>
+                                <input type="text" id="projectPath" placeholder="~/projects/name">
+                            </div>
+                            <div class="form-row">
+                                <label>Voice</label>
+                                <select id="sessionVoice">
+                                    {% for voice in voices %}
+                                    <option value="{{ voice }}"{% if voice == default_voice %} selected{% endif %}>{{ voice }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="form-row">
+                                <label>Permission Mode</label>
+                                <div class="radio-group">
+                                    <label class="radio-option selected">
+                                        <input type="radio" name="bypassPermissions" value="true" checked>
+                                        <div class="radio-option-content">
+                                            <div class="radio-option-label">Bypass Permissions (Recommended)</div>
+                                            <div class="radio-option-desc">Claude auto-accepts all prompts for faster workflow</div>
+                                        </div>
+                                    </label>
+                                    <label class="radio-option">
+                                        <input type="radio" name="bypassPermissions" value="false">
+                                        <div class="radio-option-content">
+                                            <div class="radio-option-label">Normal Session</div>
+                                            <div class="radio-option-desc">Permission prompts appear in portal for approval</div>
+                                        </div>
+                                    </label>
+                                </div>
+                            </div>
+                            <button class="action-btn">Create</button>
+                            <div class="error" id="error"></div>
+                        </div>
+                    </div>
+
+                    <!-- Archive Sub-action -->
+                    <div class="sub-action" id="archiveGroup">
+                        <div class="sub-action-header">
+                            <span>Archive</span>
+                            <span class="action-toggle">▼</span>
+                        </div>
+                        <div class="sub-action-content">
+                            <div id="archiveList" class="archive-list"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Machines Group -->
+            <div class="action-group" id="machinesGroup">
+                <div class="action-header">
+                    <h3>Machines</h3>
+                    <span class="action-toggle">▼</span>
+                </div>
+                <div class="action-content">
+                    <div id="machinesList" class="machines-list"></div>
+
+                    <!-- Add Machine Sub-action -->
+                    <div class="sub-action" id="addMachineGroup">
+                        <div class="sub-action-header">
+                            <span>Add Machine</span>
+                            <span class="action-toggle">▼</span>
+                        </div>
+                        <div class="sub-action-content">
+                            <div class="form-row">
+                                <label>Machine ID</label>
+                                <input type="text" id="machineId" placeholder="e.g., gpu-server">
+                            </div>
+                            <div class="form-row">
+                                <label>Host</label>
+                                <input type="text" id="machineHost" placeholder="e.g., 192.168.1.100">
+                            </div>
+                            <div class="form-row">
+                                <label>User (optional)</label>
+                                <input type="text" id="machineUser" placeholder="e.g., ubuntu">
+                            </div>
+                            <div class="form-row">
+                                <label>Projects Dir (optional)</label>
+                                <input type="text" id="machineProjectsDir" placeholder="e.g., ~/projects">
+                            </div>
+                            <button class="action-btn">Add</button>
+                            <div class="error" id="machineError"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Config Group -->
+            <div class="action-group" id="configGroup">
+                <div class="action-header">
+                    <h3>Config</h3>
+                    <span class="action-toggle">▼</span>
+                </div>
+                <div class="action-content">
+                    <div id="configPath" class="config-path"></div>
+                    <textarea id="configEditor" class="config-editor" spellcheck="false"></textarea>
+                    <div class="config-buttons">
+                        <button class="action-btn">Save</button>
+                        <button class="action-btn secondary">Save & Reload</button>
+                        <button class="action-btn secondary" title="Fullscreen editor">⛶</button>
+                    </div>
+                    <div class="success" id="configSuccess"></div>
+                    <div class="error" id="configError"></div>
                 </div>
             </div>
         </div>
     </div>
 
-    <script>
-        const DEFAULT_VOICE = '{{ default_voice }}';
+    <div class="right-column">
+        <div class="section-title">Active Sessions</div>
+        <div class="sessions" id="sessions">
+            <div class="no-sessions">Loading sessions...</div>
+        </div>
+    </div>
+</div>
 
-        function toggleAction(id) {
-            const group = document.getElementById(id);
-            group.classList.toggle('open');
-        }
+<!-- Config Modal -->
+<div id="configModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>Config Editor</h2>
+            <span id="modalConfigPath" class="config-path"></span>
+        </div>
+        <textarea id="modalConfigEditor" class="modal-editor" spellcheck="false"></textarea>
+        <div class="modal-footer">
+            <div class="modal-messages">
+                <div class="success" id="modalConfigSuccess"></div>
+                <div class="error" id="modalConfigError"></div>
+            </div>
+            <div class="modal-buttons">
+                <button class="action-btn secondary">Close</button>
+                <button class="action-btn secondary">Save</button>
+                <button class="action-btn">Save & Reload</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
 
-        function selectPermissionMode(element, bypass) {
-            // Remove selected class from all options
-            document.querySelectorAll('.radio-option').forEach(opt => opt.classList.remove('selected'));
-            // Add selected class to clicked option
-            element.classList.add('selected');
-            // Check the radio button
-            element.querySelector('input[type="radio"]').checked = true;
-        }
-
-        async function loadSessions() {
-            const res = await fetch('/api/sessions');
-            const sessions = await res.json();
-            const container = document.getElementById('sessions');
-
-            if (sessions.length === 0) {
-                container.innerHTML = '<div class="no-sessions">No active sessions. Create one to get started.</div>';
-                document.getElementById('sessionCount').innerHTML =
-                    '<span class="count">0</span> active sessions';
-                return;
-            }
-
-            // Update session count in left column
-            document.getElementById('sessionCount').innerHTML =
-                `<span class="count">${sessions.length}</span> active session${sessions.length !== 1 ? 's' : ''}`;
-
-            container.innerHTML = sessions.map(s => {
-                const bypassBadge = s.bypass_permissions !== false
-                    ? '<span class="session-badge bypass">Bypass</span>'
-                    : '<span class="session-badge prompted">Prompted</span>';
-                return `
-                <div class="session-card">
-                    <a href="/room/${s.name}" style="flex:1;text-decoration:none;color:inherit;">
-                        <div class="session-name">${s.name}${s.machine ? '<span style="color:var(--text-muted);font-weight:normal">@' + s.machine + '</span>' : ''}${bypassBadge}</div>
-                        <div class="session-meta">
-                            ${s.path || '~/projects/' + s.name}
-                            <span class="session-voice">• ${s.voice || DEFAULT_VOICE}</span>
-                        </div>
-                    </a>
-                    <button class="session-close" onclick="closeSession('${s.name}')" title="Close session">✕</button>
-                </div>
-            `}).join('');
-        }
-
-        async function createSession() {
-            const name = document.getElementById('sessionName').value.trim();
-            const path = document.getElementById('projectPath').value.trim();
-            const voice = document.getElementById('sessionVoice').value;
-            const bypassPermissions = document.querySelector('input[name="bypassPermissions"]:checked').value === 'true';
-            const error = document.getElementById('error');
-
-            if (!name) {
-                error.textContent = 'Session name is required';
-                return;
-            }
-
-            error.textContent = '';
-
-            const res = await fetch('/api/create', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name, path: path || null, voice, bypass_permissions: bypassPermissions })
-            });
-
-            const data = await res.json();
-            if (data.error) {
-                error.textContent = data.error;
-            } else {
-                window.location.href = '/room/' + name;
-            }
-        }
-
-        document.getElementById('sessionName').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') createSession();
-        });
-
-        async function loadMachines() {
-            const res = await fetch('/api/machines');
-            const machines = await res.json();
-            const container = document.getElementById('machinesList');
-
-            if (machines.length === 0) {
-                container.innerHTML = '<div style="color:var(--text-muted);font-size:0.8rem;margin-bottom:0.5rem;">No machines available</div>';
-                return;
-            }
-
-            container.innerHTML = machines.map(m => `
-                <div class="machine-item">
-                    <div>
-                        <span class="status-dot ${m.status}"></span>
-                        <span class="machine-id">${m.id}</span>
-                        ${m.local ? '<span class="machine-local">(this machine)</span>' : ''}
-                    </div>
-                    <div>
-                        <span class="machine-host">${m.local ? '' : (m.user ? m.user + '@' : '') + m.host}</span>
-                        ${!m.local ? `<button class="machine-remove" onclick="removeMachine('${m.id}')" title="Remove machine">✕</button>` : ''}
-                    </div>
-                </div>
-            `).join('');
-        }
-
-        async function addMachine() {
-            const id = document.getElementById('machineId').value.trim();
-            const host = document.getElementById('machineHost').value.trim();
-            const user = document.getElementById('machineUser').value.trim();
-            const projectsDir = document.getElementById('machineProjectsDir').value.trim();
-            const error = document.getElementById('machineError');
-
-            if (!id || !host) {
-                error.textContent = 'ID and host are required';
-                return;
-            }
-
-            error.textContent = '';
-
-            const res = await fetch('/api/machines', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    id,
-                    host,
-                    user: user || null,
-                    projects_dir: projectsDir || null
-                })
-            });
-
-            const data = await res.json();
-            if (data.error) {
-                error.textContent = data.error;
-            } else {
-                document.getElementById('machineId').value = '';
-                document.getElementById('machineHost').value = '';
-                document.getElementById('machineUser').value = '';
-                document.getElementById('machineProjectsDir').value = '';
-                loadMachines();
-            }
-        }
-
-        async function removeMachine(id) {
-            if (!confirm(`Remove machine "${id}" from AgentWire?\n\nThis only removes it from the portal. The remote machine itself is not affected.`)) return;
-
-            const res = await fetch(`/api/machines/${encodeURIComponent(id)}`, {
-                method: 'DELETE'
-            });
-            const data = await res.json();
-
-            if (data.error) {
-                alert('Failed to remove machine: ' + data.error);
-            } else {
-                loadMachines();
-                if (data.rooms_removed && data.rooms_removed.length > 0) {
-                    console.log('Removed room configs:', data.rooms_removed);
-                }
-            }
-        }
-
-        async function loadConfig() {
-            const res = await fetch('/api/config');
-            const data = await res.json();
-
-            const pathText = data.path + (data.exists ? '' : ' (new file)');
-            document.getElementById('configPath').textContent = pathText;
-            document.getElementById('modalConfigPath').textContent = pathText;
-            document.getElementById('configEditor').value = data.content;
-            document.getElementById('modalConfigEditor').value = data.content;
-        }
-
-        function openConfigModal() {
-            // Sync content from inline editor to modal
-            document.getElementById('modalConfigEditor').value =
-                document.getElementById('configEditor').value;
-            document.getElementById('modalConfigSuccess').textContent = '';
-            document.getElementById('modalConfigError').textContent = '';
-            document.getElementById('configModal').classList.add('open');
-            document.getElementById('modalConfigEditor').focus();
-        }
-
-        function closeConfigModal() {
-            // Sync content from modal back to inline editor
-            document.getElementById('configEditor').value =
-                document.getElementById('modalConfigEditor').value;
-            document.getElementById('configModal').classList.remove('open');
-        }
-
-        async function saveConfigModal() {
-            const error = document.getElementById('modalConfigError');
-            const success = document.getElementById('modalConfigSuccess');
-            const content = document.getElementById('modalConfigEditor').value;
-            error.textContent = '';
-            success.textContent = '';
-
-            const res = await fetch('/api/config', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ content })
-            });
-            const data = await res.json();
-
-            if (data.error) {
-                error.textContent = data.error;
-            } else {
-                success.textContent = 'Config saved';
-                // Sync to inline editor
-                document.getElementById('configEditor').value = content;
-                setTimeout(() => { success.textContent = ''; }, 3000);
-            }
-        }
-
-        async function reloadConfigModal() {
-            const error = document.getElementById('modalConfigError');
-            const success = document.getElementById('modalConfigSuccess');
-            const content = document.getElementById('modalConfigEditor').value;
-            error.textContent = '';
-            success.textContent = '';
-
-            // Save first
-            let res = await fetch('/api/config', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ content })
-            });
-            let data = await res.json();
-
-            if (data.error) {
-                error.textContent = data.error;
-                return;
-            }
-
-            // Then reload
-            res = await fetch('/api/config/reload', { method: 'POST' });
-            data = await res.json();
-
-            if (data.error) {
-                error.textContent = data.error;
-            } else {
-                // Sync to inline editor and close modal
-                document.getElementById('configEditor').value = content;
-                document.getElementById('configModal').classList.remove('open');
-            }
-        }
-
-        async function saveConfig() {
-            const error = document.getElementById('configError');
-            const success = document.getElementById('configSuccess');
-            const content = document.getElementById('configEditor').value;
-            error.textContent = '';
-            success.textContent = '';
-
-            const res = await fetch('/api/config', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ content })
-            });
-            const data = await res.json();
-
-            if (data.error) {
-                error.textContent = data.error;
-            } else {
-                success.textContent = 'Config saved';
-                setTimeout(() => { success.textContent = ''; }, 3000);
-            }
-        }
-
-        async function reloadConfig() {
-            const error = document.getElementById('configError');
-            const success = document.getElementById('configSuccess');
-            error.textContent = '';
-            success.textContent = '';
-
-            // Save first
-            const content = document.getElementById('configEditor').value;
-            let res = await fetch('/api/config', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ content })
-            });
-            let data = await res.json();
-
-            if (data.error) {
-                error.textContent = data.error;
-                return;
-            }
-
-            // Then reload
-            res = await fetch('/api/config/reload', { method: 'POST' });
-            data = await res.json();
-
-            if (data.error) {
-                error.textContent = data.error;
-            } else {
-                success.textContent = 'Config saved & reloaded';
-                setTimeout(() => { success.textContent = ''; }, 3000);
-            }
-        }
-
-        async function closeSession(name) {
-            if (!confirm(`Close session "${name}"?`)) return;
-
-            const res = await fetch(`/api/sessions/${encodeURIComponent(name)}`, {
-                method: 'DELETE'
-            });
-            const data = await res.json();
-
-            if (data.error) {
-                alert('Failed to close session: ' + data.error);
-            } else {
-                loadSessions();
-                loadArchive();
-            }
-        }
-
-        async function loadArchive() {
-            const res = await fetch('/api/sessions/archive');
-            const archive = await res.json();
-            const container = document.getElementById('archiveList');
-
-            if (archive.length === 0) {
-                container.innerHTML = '<div class="archive-empty">No archived sessions</div>';
-                return;
-            }
-
-            container.innerHTML = archive.slice(0, 10).map(s => {
-                const date = new Date(s.closed_at * 1000);
-                const timeAgo = formatTimeAgo(date);
-                return `
-                    <div class="archive-item">
-                        <span class="archive-name">${s.name}</span>
-                        <span class="archive-time">${timeAgo}</span>
-                    </div>
-                `;
-            }).join('');
-        }
-
-        function formatTimeAgo(date) {
-            const seconds = Math.floor((new Date() - date) / 1000);
-            if (seconds < 60) return 'just now';
-            if (seconds < 3600) return Math.floor(seconds / 60) + 'm ago';
-            if (seconds < 86400) return Math.floor(seconds / 3600) + 'h ago';
-            return Math.floor(seconds / 86400) + 'd ago';
-        }
-
-        // Close modal on Escape key
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape' && document.getElementById('configModal').classList.contains('open')) {
-                closeConfigModal();
-            }
-        });
-
-        loadSessions();
-        loadMachines();
-        loadConfig();
-        loadArchive();
-        setInterval(loadSessions, 5000);
-    </script>
-</body>
-</html>
+{% block scripts %}
+<script>
+    // Pass server-side config to JS module
+    window.AGENTWIRE_CONFIG = {
+        defaultVoice: '{{ default_voice }}'
+    };
+</script>
+<script type="module" src="/static/js/dashboard.js"></script>
+{% endblock %}
