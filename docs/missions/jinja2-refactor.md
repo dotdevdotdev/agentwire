@@ -55,8 +55,8 @@ agentwire/
 
 ## Wave 1: Setup (BLOCKING - Human/Dependencies)
 
-- [ ] **1.1** Add `aiohttp-jinja2` and `jinja2` to dependencies in `pyproject.toml`
-- [ ] **1.2** Run `uv pip install -e .` to install new dependencies
+- [x] **1.1** Add `aiohttp-jinja2` and `jinja2` to dependencies in `pyproject.toml`
+- [x] **1.2** Run `uv pip install -e .` to install new dependencies
 
 ---
 
