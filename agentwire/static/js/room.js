@@ -311,7 +311,7 @@ async function handleRecordingComplete(audioBlob) {
         await fetch('/send/' + ROOM, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text: '[Remote voice - use remote-say] ' + text })
+            body: JSON.stringify({ text: '[Remote voice - use remote-say "message"] ' + text })
         });
 
         processingTimeout = setTimeout(() => {
@@ -562,7 +562,7 @@ async function sendTextInput() {
         await fetch('/send/' + ROOM, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text: '[Remote text - use remote-say] ' + finalText })
+            body: JSON.stringify({ text: '[Remote text - use remote-say "message"] ' + finalText })
         });
 
         if (elements.textInputAmbient) elements.textInputAmbient.value = '';
