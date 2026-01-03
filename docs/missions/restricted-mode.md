@@ -87,6 +87,7 @@ Note: Silent deny chosen over custom message ("3" + text) to keep response fast 
 | 7.1 | Manual test: create restricted session via CLI, verify say works, other commands denied | All previous waves |
 | 7.2 | Manual test: create restricted session via dashboard, verify badges show correctly | All previous waves |
 | 7.3 | Update CLAUDE.md with restricted mode documentation | None - starts immediately |
+| 7.4 | Remove deprecated `chatbot_mode` references from codebase (replaced by restricted) | None - starts immediately |
 
 ---
 
@@ -98,6 +99,7 @@ Note: Silent deny chosen over custom message ("3" + text) to keep response fast 
 - [ ] Dashboard shows "Restricted" badge for restricted sessions
 - [ ] Create Session form has Restricted option
 - [ ] CLAUDE.md documents the three session modes
+- [ ] `chatbot_mode` references removed from code
 
 ---
 
