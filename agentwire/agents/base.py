@@ -47,8 +47,23 @@ class AgentBackend(ABC):
         pass
 
     @abstractmethod
+    def send_keys(self, name: str, keys: str) -> bool:
+        """Send keys to a session WITHOUT Enter.
+
+        Use for keypresses like selecting menu options.
+
+        Args:
+            name: Session name
+            keys: Keys to send
+
+        Returns:
+            True if keys were sent successfully
+        """
+        pass
+
+    @abstractmethod
     def send_input(self, name: str, text: str) -> bool:
-        """Send input to a session.
+        """Send input to a session (text + Enter).
 
         Args:
             name: Session name

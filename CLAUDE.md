@@ -10,6 +10,32 @@ Multi-room voice web interface for AI coding agents. Push-to-talk voice input fr
 
 ---
 
+## CRITICAL: Development Workflow
+
+**`uv tool install` caches builds and won't pick up source changes.**
+
+During development, use the `--dev` flag to run from source:
+
+```bash
+# Development - runs from source, picks up code changes
+agentwire portal stop
+agentwire portal start --dev
+
+# Production - runs installed binary (requires reinstall for changes)
+agentwire portal start
+```
+
+The `--dev` flag uses `uv run` under the hood to run directly from source.
+
+**If you forget `--dev` and need to update the installed binary:**
+```bash
+uv tool uninstall agentwire-dev && uv tool install .
+```
+
+Note: `uv tool install . --force` does NOT rebuild - it reinstalls the cached wheel.
+
+---
+
 ## What Is AgentWire?
 
 A complete voice-enabled orchestration system for AI coding agents:
@@ -376,29 +402,29 @@ The LLM runs on Anthropic's servers - local machine just needs RAM for Node.js a
 
 ## Development
 
-AgentWire is installed as a **uv tool**, meaning the CLI runs from `~/.local/share/uv/tools/agentwire/`, not your source directory.
+### Running During Development
 
-### After Making Code Changes
-
-**You must reinstall before restarting the portal:**
+Use `--dev` flag to run from source - code changes are picked up on restart:
 
 ```bash
-# 1. Reinstall from source (required after ANY code change)
-uv tool install . --force
-
-# 2. Restart the portal
-agentwire portal stop
-agentwire portal start
+agentwire portal start --dev   # Runs from source via uv run
+agentwire portal stop          # Stop portal
+agentwire portal start --dev   # Restart with latest code
 ```
 
-Simply restarting the portal does NOT pick up source changes - the package must be reinstalled first.
+### Installing as CLI Tool
 
-### Initial Setup
+For production/stable use, install as a uv tool:
 
 ```bash
 cd ~/projects/agentwire
 uv tool install .
 agentwire --help
+```
+
+To update installed binary after code changes:
+```bash
+uv tool uninstall agentwire-dev && uv tool install .
 ```
 
 ### Test Imports

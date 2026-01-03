@@ -214,8 +214,32 @@ class TmuxAgent(AgentBackend):
 
         return result.stdout
 
+    def send_keys(self, name: str, keys: str) -> bool:
+        """Send keys to a tmux session WITHOUT Enter.
+
+        Use this for keypresses like selecting menu options.
+        For text input followed by Enter, use send_input instead.
+        """
+        session_name, machine = self._parse_session_name(name)
+
+        if machine:
+            cmd = f"tmux send-keys -t {shlex.quote(session_name)} -l {shlex.quote(keys)}"
+            result = self._run_remote(machine, cmd)
+        else:
+            result = self._run_local([
+                "tmux", "send-keys",
+                "-t", session_name,
+                "-l", keys,
+            ])
+
+        if result.returncode != 0:
+            logger.error(f"Failed to send keys: {result.stderr}")
+            return False
+
+        return True
+
     def send_input(self, name: str, text: str) -> bool:
-        """Send input to a tmux session."""
+        """Send input to a tmux session (text + Enter)."""
         import time
         session_name, machine = self._parse_session_name(name)
 

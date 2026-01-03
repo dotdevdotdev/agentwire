@@ -53,6 +53,7 @@ class Room:
     last_output: str = ""
     output_task: asyncio.Task | None = None
     played_says: set = field(default_factory=set)
+    last_question: str | None = None  # Track AskUserQuestion to avoid duplicates
 
 
 class AgentWireServer:
@@ -79,6 +80,7 @@ class AgentWireServer:
         self.app.router.add_post("/upload", self.handle_upload)
         self.app.router.add_post("/send/{name:.+}", self.handle_send)
         self.app.router.add_post("/api/say/{name:.+}", self.api_say)
+        self.app.router.add_post("/api/answer/{name:.+}", self.api_answer)
         self.app.router.add_get("/api/voices", self.api_voices)
         self.app.router.add_delete("/api/sessions/{name:.+}", self.api_close_session)
         self.app.router.add_get("/api/sessions/archive", self.api_archived_sessions)
@@ -322,6 +324,7 @@ class AgentWireServer:
         room = self.rooms[name]
         client_id = str(id(ws))
         room.clients.add(ws)
+        logger.info(f"[{name}] Client connected (total: {len(room.clients)})")
 
         # Send current output immediately on connect
         try:
@@ -382,6 +385,40 @@ class AgentWireServer:
     SAY_PATTERN = re.compile(r'(?:remote-)?say\s+(?:"([^"]+)"|\'([^\']+)\')', re.IGNORECASE)
     ANSI_PATTERN = re.compile(r'\x1b\[[0-9;]*m|\x1b\].*?\x07')
 
+    # Pattern to detect AskUserQuestion UI blocks
+    # Format: ☐ Header\n\nQuestion?\n\n❯ 1. Label\n     Description\n  2. Label...
+    ASK_PATTERN = re.compile(
+        r'\s*☐\s+(.+?)\s*\n\s*\n'  # ☐ Header
+        r'(.+?\?)\s*\n'            # Question text ending with ?
+        r'\s*\n'                   # Blank line
+        r'((?:[❯\s]+\d+\.\s+.+\n(?:\s{3,}.+\n)?)+)',  # Options block
+        re.MULTILINE
+    )
+
+    def _parse_ask_options(self, options_block: str) -> list[dict]:
+        """Parse numbered options from AskUserQuestion block."""
+        options = []
+        current_option = None
+
+        for line in options_block.split('\n'):
+            line = self.ANSI_PATTERN.sub('', line)
+            option_match = re.match(r'[❯\s]*(\d+)\.\s+(.+)', line)
+            if option_match:
+                if current_option:
+                    options.append(current_option)
+                current_option = {
+                    'number': int(option_match.group(1)),
+                    'label': option_match.group(2).strip(),
+                    'description': '',
+                }
+            elif current_option and line.strip():
+                current_option['description'] = line.strip()
+
+        if current_option:
+            options.append(current_option)
+
+        return options
+
     async def _poll_output(self, room: Room):
         """Poll agent output and broadcast to room clients."""
         while room.clients:
@@ -433,6 +470,34 @@ class AgentWireServer:
 
                         # Generate and broadcast TTS
                         await self._say_to_room(room.name, say_text)
+
+                # Detect AskUserQuestion blocks (check full output - questions persist)
+                clean_output = self.ANSI_PATTERN.sub('', output)
+                ask_match = self.ASK_PATTERN.search(clean_output)
+
+                if ask_match:
+                    header = ask_match.group(1)
+                    question = ask_match.group(2).strip()
+                    options_block = ask_match.group(3)
+                    options = self._parse_ask_options(options_block)
+
+                    question_key = f"{header}:{question}"
+
+                    if question_key != room.last_question and options:
+                        room.last_question = question_key
+                        logger.info(f"[{room.name}] Question: {question[:50]}...")
+
+                        await self._broadcast(room, {
+                            "type": "question",
+                            "header": header,
+                            "question": question,
+                            "options": options,
+                        })
+
+                elif room.last_question and not ask_match:
+                    # Question was answered (UI disappeared)
+                    room.last_question = None
+                    await self._broadcast(room, {"type": "question_answered"})
 
             except Exception as e:
                 logger.debug(f"Output poll error for {room.name}: {e}")
@@ -1126,6 +1191,50 @@ projects:
 
         except Exception as e:
             logger.error(f"Say API failed: {e}")
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def api_answer(self, request: web.Request) -> web.Response:
+        """POST /api/answer/{room} - Answer an AskUserQuestion prompt."""
+        name = request.match_info["name"]
+        try:
+            data = await request.json()
+            answer = data.get("answer", "").strip()
+            is_custom = data.get("custom", False)
+            option_number = data.get("option_number")  # For "type something" flow
+
+            if not answer:
+                return web.json_response({"error": "No answer provided"}, status=400)
+
+            # Three modes:
+            # 1. Regular option: just send the number key (no Enter)
+            # 2. "Type something" option: send number key, wait, send text + Enter
+            # 3. Legacy custom: just send text + Enter (for "Other" without number)
+            if option_number:
+                # "Type something" flow: select option first (no Enter), then type
+                self.agent.send_keys(name, str(option_number))
+                await asyncio.sleep(0.5)  # Wait for Claude to show text input
+                success = self.agent.send_input(name, answer)  # text + Enter
+            elif is_custom:
+                # Legacy custom answer: type the text and press Enter
+                success = self.agent.send_input(name, answer)
+            else:
+                # Just send the number key - AskUserQuestion responds to single keypress
+                success = self.agent.send_keys(name, str(answer))
+
+            if not success:
+                return web.json_response({"error": "Failed to send answer"}, status=500)
+
+            # Notify clients the question was answered
+            if name in self.rooms:
+                room = self.rooms[name]
+                room.last_question = None
+                await self._broadcast(room, {"type": "question_answered"})
+
+            logger.info(f"[{name}] Answered: {answer}")
+            return web.json_response({"success": True})
+
+        except Exception as e:
+            logger.error(f"Answer API failed: {e}")
             return web.json_response({"error": str(e)}, status=500)
 
     async def speak(self, room_name: str, text: str):

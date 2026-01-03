@@ -592,6 +592,152 @@
         /* Start in ambient mode by default via CSS */
         .output.ambient-default { display: none; }
         .ambient.ambient-default { display: flex; }
+
+        /* Question popup modal */
+        .question-modal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.85);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            padding: 1.5rem;
+        }
+        .question-modal.visible { display: flex; }
+        .question-card {
+            background: var(--bg-elevated);
+            border: 2px solid var(--primary);
+            border-radius: 16px;
+            padding: 1.5rem;
+            max-width: 400px;
+            width: 100%;
+            box-shadow: 0 0 40px var(--primary-glow);
+        }
+        .question-header {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 0.75rem;
+        }
+        .question-header .badge {
+            background: var(--primary-subtle);
+            color: var(--primary);
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .question-text {
+            font-size: 1.1rem;
+            color: var(--text-primary);
+            margin-bottom: 1.25rem;
+            line-height: 1.4;
+        }
+        .question-options {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+        .question-option {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.75rem;
+            padding: 0.75rem 1rem;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.15s;
+            text-align: left;
+        }
+        .question-option:hover {
+            background: var(--primary-subtle);
+            border-color: var(--primary);
+        }
+        .question-option .num {
+            background: var(--primary);
+            color: var(--bg-primary);
+            width: 1.5rem;
+            height: 1.5rem;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.85rem;
+            font-weight: 600;
+            flex-shrink: 0;
+        }
+        .question-option .label {
+            color: var(--text-primary);
+            font-size: 0.95rem;
+            line-height: 1.4;
+        }
+        .question-option .desc {
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            margin-top: 0.25rem;
+        }
+        .question-custom {
+            margin-top: 0.75rem;
+            display: none;
+        }
+        .question-custom.visible { display: block; }
+        .question-custom input {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-size: 0.95rem;
+        }
+        .question-custom input:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+        /* Type something option */
+        .question-option.type-option {
+            cursor: default;
+        }
+        .question-option.type-option:hover {
+            background: var(--bg-secondary);
+            border-color: var(--border);
+        }
+        .type-input-wrapper {
+            flex: 1;
+            display: flex;
+            gap: 0.5rem;
+        }
+        .type-input {
+            flex: 1;
+            padding: 0.5rem 0.75rem;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-size: 0.9rem;
+        }
+        .type-input:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+        .type-submit {
+            padding: 0.5rem 1rem;
+            background: var(--primary);
+            color: #1a1a1a;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: opacity 0.15s;
+        }
+        .type-submit:hover {
+            opacity: 0.9;
+        }
     </style>
 </head>
 <body>
@@ -688,6 +834,20 @@
     <!-- Hidden file input -->
     <input type="file" id="fileInput" accept="image/*" style="display:none" onchange="handleFileSelect(event)">
 
+    <!-- Question popup modal -->
+    <div class="question-modal" id="questionModal">
+        <div class="question-card">
+            <div class="question-header">
+                <span class="badge" id="questionBadge">Question</span>
+            </div>
+            <div class="question-text" id="questionText"></div>
+            <div class="question-options" id="questionOptions"></div>
+            <div class="question-custom" id="questionCustom">
+                <input type="text" id="questionCustomInput" placeholder="Type your answer..." autocomplete="off">
+            </div>
+        </div>
+    </div>
+
     <script>
         const ROOM = '{{ room_name }}';
         const elements = {
@@ -706,6 +866,12 @@
             aiBubble: document.getElementById('aiBubble'),
             userBubble: document.getElementById('userBubble'),
             aiBubbleContainer: document.querySelector('.ai-bubble-container'),
+            questionModal: document.getElementById('questionModal'),
+            questionBadge: document.getElementById('questionBadge'),
+            questionText: document.getElementById('questionText'),
+            questionOptions: document.getElementById('questionOptions'),
+            questionCustom: document.getElementById('questionCustom'),
+            questionCustomInput: document.getElementById('questionCustomInput'),
             userBubbleContainer: document.querySelector('.user-bubble-container'),
             textToggleBtn: document.getElementById('textToggleBtn'),
             textInputExpanded: document.getElementById('textInputExpanded'),
@@ -1035,6 +1201,160 @@
             elements.aiBubble.classList.add('visible');
         }
 
+        // AskUserQuestion detection and handling
+        let currentQuestion = null;
+
+        function parseQuestion(text) {
+            // Look for AskUserQuestion UI pattern in terminal output
+            // Pattern from trigger-system branch:
+            //   ☐ Header
+            //
+            //   Question text?
+            //
+            //   ❯ 1. Label
+            //        Description
+            //     2. Label
+            //
+            //   Enter to select · Tab/Arrow keys to navigate · Esc to cancel
+
+            // Clean ANSI codes
+            const clean = text.replace(/\x1b\[[0-9;]*m/g, '');
+
+            // Use pattern matching similar to the Python version
+            // Pattern: ☐ header \n\n question? \n\n options_block
+            const fullPattern = /\s*☐\s+(.+?)\s*\n\s*\n(.+?\?)\s*\n\s*\n((?:[❯\s]+\d+\.\s+.+\n(?:\s{3,}.+\n)?)+)/;
+            const blockMatch = clean.match(fullPattern);
+
+            if (!blockMatch) return null;
+
+            const header = blockMatch[1].trim();
+            const question = blockMatch[2].trim();
+            const optionsBlock = blockMatch[3];
+
+            // Parse numbered options from the options block
+            const options = [];
+            const optionRegex = /[❯\s]+(\d+)\.\s+(.+?)(?:\n\s{3,}(.+?))?(?=\n[❯\s]+\d+\.|\n\s*\n|\n\s*Enter|$)/g;
+            let match;
+            while ((match = optionRegex.exec(optionsBlock)) !== null) {
+                const label = match[2].trim();
+                options.push({
+                    num: match[1],
+                    label: label,
+                    desc: match[3] ? match[3].trim() : ''
+                });
+            }
+
+            if (options.length === 0) return null;
+
+            return { header, question, options };
+        }
+
+        function showQuestionModal(header, question, options) {
+            currentQuestion = { header, question, options };
+
+            elements.questionBadge.textContent = header;
+            elements.questionText.textContent = question;
+
+            // Check if an option is a "type something" option
+            const isTypeOption = (label) => {
+                const lower = label.toLowerCase();
+                return lower.includes('type') || lower.includes('something') || lower.includes('other');
+            };
+
+            // Build options HTML
+            elements.questionOptions.innerHTML = options.map(opt => {
+                if (isTypeOption(opt.label)) {
+                    // Show text input for "type something" option
+                    return `
+                        <div class="question-option type-option">
+                            <span class="num">${opt.number}</span>
+                            <div class="type-input-wrapper">
+                                <input type="text"
+                                       class="type-input"
+                                       id="typeInput${opt.number}"
+                                       placeholder="${opt.label}..."
+                                       autocomplete="off">
+                                <button class="type-submit" onclick="submitTypedAnswer(${opt.number})">
+                                    Send
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                }
+                return `
+                    <button class="question-option" onclick="submitAnswer('${opt.number}', false)">
+                        <span class="num">${opt.number}</span>
+                        <div>
+                            <div class="label">${opt.label}</div>
+                            ${opt.description ? `<div class="desc">${opt.description}</div>` : ''}
+                        </div>
+                    </button>
+                `;
+            }).join('');
+
+            // Add enter key handler for type inputs
+            options.forEach(opt => {
+                if (isTypeOption(opt.label)) {
+                    const input = document.getElementById(`typeInput${opt.number}`);
+                    if (input) {
+                        input.onkeydown = (e) => {
+                            if (e.key === 'Enter' && input.value.trim()) {
+                                submitTypedAnswer(opt.number);
+                            }
+                        };
+                    }
+                }
+            });
+
+            // Hide the old custom input area (no longer needed)
+            elements.questionCustom.classList.remove('visible');
+
+            elements.questionModal.classList.add('visible');
+        }
+
+        async function submitTypedAnswer(optionNumber) {
+            const input = document.getElementById(`typeInput${optionNumber}`);
+            const text = input ? input.value.trim() : '';
+            if (!text) return;
+
+            try {
+                const resp = await fetch(`/api/answer/${ROOM}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        answer: text,
+                        option_number: optionNumber
+                    })
+                });
+                if (resp.ok) {
+                    hideQuestionModal();
+                }
+            } catch (e) {
+                console.error('Failed to submit typed answer:', e);
+            }
+        }
+
+        function hideQuestionModal() {
+            elements.questionModal.classList.remove('visible');
+            elements.questionCustom.classList.remove('visible');
+            currentQuestion = null;
+        }
+
+        async function submitAnswer(answer, isCustom) {
+            try {
+                const resp = await fetch(`/api/answer/${ROOM}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ answer, custom: isCustom })
+                });
+                if (resp.ok) {
+                    hideQuestionModal();
+                }
+            } catch (e) {
+                console.error('Failed to submit answer:', e);
+            }
+        }
+
         function toggleMode() {
             isAmbientMode = !isAmbientMode;
 
@@ -1107,6 +1427,27 @@
                     elements.output.scrollTop = elements.output.scrollHeight;
                     // Output received = session is processing something
                     handleSessionActivity();
+
+                    // Check for AskUserQuestion UI pattern
+                    if (!currentQuestion) {
+                        // Debug: check if ☐ is in the output
+                        if (msg.data.includes('☐')) {
+                            console.log('[AskUser] Found ☐ marker, attempting parse...');
+                            console.log('[AskUser] Data length:', msg.data.length);
+                        }
+                        const question = parseQuestion(msg.data);
+                        if (question) {
+                            console.log('[AskUser] Detected question:', question);
+                            showQuestionModal(question.header, question.question, question.options);
+                        } else if (msg.data.includes('☐')) {
+                            console.log('[AskUser] Parse failed despite ☐ marker');
+                        }
+                    }
+                } else if (msg.type === 'question') {
+                    // Server detected a question (alternative to client-side parsing)
+                    showQuestionModal(msg.header, msg.question, msg.options);
+                } else if (msg.type === 'question_answered') {
+                    hideQuestionModal();
                 } else if (msg.type === 'activity') {
                     // Agent is actively working
                     handleSessionActivity();

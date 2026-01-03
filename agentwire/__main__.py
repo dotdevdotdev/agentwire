@@ -102,7 +102,12 @@ def cmd_portal_start(args) -> int:
         return 0
 
     # Build the server command
-    cmd_parts = ["agentwire", "portal", "serve"]
+    # --dev runs from source with uv run (picks up code changes immediately)
+    if getattr(args, 'dev', False):
+        cmd_parts = ["uv", "run", "python", "-m", "agentwire", "portal", "serve"]
+    else:
+        cmd_parts = ["agentwire", "portal", "serve"]
+
     if args.port:
         cmd_parts.extend(["--port", str(args.port)])
     if args.host:
@@ -117,7 +122,8 @@ def cmd_portal_start(args) -> int:
     server_cmd = " ".join(cmd_parts)
 
     # Create tmux session and start server
-    print(f"Starting AgentWire portal in tmux session '{session_name}'...")
+    mode = "dev mode (from source)" if getattr(args, 'dev', False) else "installed"
+    print(f"Starting AgentWire portal ({mode}) in tmux session '{session_name}'...")
     subprocess.run([
         "tmux", "new-session", "-d", "-s", session_name,
     ])
@@ -1054,6 +1060,8 @@ def main() -> int:
     portal_start.add_argument("--host", type=str, help="Override host")
     portal_start.add_argument("--no-tts", action="store_true", help="Disable TTS")
     portal_start.add_argument("--no-stt", action="store_true", help="Disable STT")
+    portal_start.add_argument("--dev", action="store_true",
+                              help="Run from source (uv run) - picks up code changes")
     portal_start.set_defaults(func=cmd_portal_start)
 
     # portal serve (run in foreground)
