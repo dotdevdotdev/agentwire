@@ -176,13 +176,13 @@ These tasks can run in parallel.
 
 These tasks can run in parallel.
 
-- [ ] **5.1 Extract room CSS**
+- [x] **5.1 Extract room CSS**
   - Pull remaining styles from room.html
   - Create `static/css/room.css`
   - Organize: layout, header, controls, floating-controls, bubbles
   - Files: `static/css/room.css`
 
-- [ ] **5.2 Extract WebSocket handling**
+- [x] **5.2 Extract WebSocket handling**
   - Create `static/js/websocket.js` as ES module:
     - `export function connect(roomName, handlers)`
     - `export function send(type, data)`
@@ -191,7 +191,7 @@ These tasks can run in parallel.
   - Auto-reconnect with exponential backoff
   - Files: `static/js/websocket.js`
 
-- [ ] **5.3 Extract audio handling**
+- [x] **5.3 Extract audio handling**
   - Create `static/js/audio.js` as ES module:
     - `export function initRecorder(onRecordingComplete)`
     - `export function startRecording()`
