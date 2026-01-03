@@ -210,7 +210,7 @@ These tasks can run in parallel.
 
 These tasks are sequential.
 
-- [ ] **6.1 Create room.js orchestrator** (do first)
+- [x] **6.1 Create room.js orchestrator** (do first)
   - ES module that imports all room modules:
     ```js
     import * as ws from './websocket.js';
@@ -224,7 +224,7 @@ These tasks are sequential.
   - State management across components
   - Files: `static/js/room.js`
 
-- [ ] **6.2 Refactor room.html** (needs 6.1)
+- [x] **6.2 Refactor room.html** (needs 6.1)
   - `{% extends 'base.html' %}`
   - `{% from 'components/device_selector.html' import device_selector %}`
   - `{% include 'components/orb.html' %}`
@@ -235,7 +235,7 @@ These tasks are sequential.
   - Target: ~150-200 lines of clean template
   - Files: `templates/room.html`
 
-- [ ] **6.3 Remove old template engine** (do last)
+- [x] **6.3 Remove old template engine** (do last)
   - Delete `_render_template()` method from server.py
   - Replace all `self._render_template()` calls with `aiohttp_jinja2.render_template()`
   - Clean up unused regex imports
