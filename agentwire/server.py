@@ -6,17 +6,14 @@ Multi-room voice web interface for AI coding agents.
 
 import asyncio
 import base64
-import io
 import json
 import logging
 import re
-import shutil
 import ssl
 import struct
 import tempfile
 import time
 import uuid
-import wave
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -26,7 +23,7 @@ import jinja2
 from aiohttp import web
 
 from .config import Config, load_config
-from .worktree import ensure_worktree, get_project_type, get_session_path, parse_session_name, remove_worktree
+from .worktree import get_project_type, get_session_path, parse_session_name
 
 __version__ = "0.1.0"
 
@@ -548,7 +545,7 @@ class AgentWireServer:
             return web.json_response([])
 
     async def api_create_session(self, request: web.Request) -> web.Response:
-        """Create a new agent session."""
+        """Create a new agent session via CLI."""
         try:
             data = await request.json()
             name = data.get("name", "").strip()
@@ -559,59 +556,29 @@ class AgentWireServer:
             if not name:
                 return web.json_response({"error": "Session name is required"})
 
-            # Parse session name
-            project, branch, machine = parse_session_name(name)
-
-            # Determine working directory
+            # Build CLI args
+            args = ["new", "-s", name]
             if custom_path:
-                work_dir = Path(custom_path).expanduser()
-            elif branch and self.config.projects.worktrees.enabled:
-                work_dir = get_session_path(
-                    name,
-                    self.config.projects.dir,
-                    self.config.projects.worktrees.suffix,
-                )
-                # Ensure worktree exists
-                project_path = self.config.projects.dir / project
-                if not ensure_worktree(
-                    project_path,
-                    branch,
-                    work_dir,
-                    self.config.projects.worktrees.auto_create_branch,
-                ):
-                    return web.json_response({
-                        "error": f"Failed to create worktree. Is '{project}' a git repo?"
-                    })
-            else:
-                work_dir = self.config.projects.dir / project
+                args.extend(["-p", custom_path])
+            if not bypass_permissions:
+                args.append("--no-bypass")
 
-            # Generate Claude session ID for tracking/forking
-            claude_session_id = str(uuid.uuid4())
+            # Call CLI
+            success, result = await self.run_agentwire_cmd(args)
 
-            # Create session with session ID and bypass_permissions
-            success = self.agent.create_session(
-                name, str(work_dir),
-                options={
-                    "session_id": claude_session_id,
-                    "bypass_permissions": bypass_permissions,
-                    "room_name": name,  # Pass room name for AGENTWIRE_ROOM env var
-                }
-            )
             if not success:
-                return web.json_response({"error": "Failed to create session"})
+                error_msg = result.get("error", "Failed to create session")
+                return web.json_response({"error": error_msg})
 
-            # Save room config with Claude session ID and bypass_permissions
+            # CLI updates rooms.json with bypass_permissions, but we need to add voice
+            session_name = result.get("session", name)
             configs = self._load_room_configs()
-            configs[name] = {
-                "voice": voice,
-                "claude_session_id": claude_session_id,
-                "bypass_permissions": bypass_permissions,
-            }
-            if custom_path:
-                configs[name]["path"] = custom_path
+            if session_name not in configs:
+                configs[session_name] = {}
+            configs[session_name]["voice"] = voice
             self._save_room_configs(configs)
 
-            return web.json_response({"success": True, "name": name})
+            return web.json_response({"success": True, "name": session_name})
 
         except Exception as e:
             logger.error(f"Failed to create session: {e}")
@@ -1414,133 +1381,29 @@ projects:
         await self._say_to_room(room_name, text)
 
     async def api_recreate_session(self, request: web.Request) -> web.Response:
-        """POST /api/room/{name}/recreate - Destroy session/worktree and create fresh one.
-
-        Workflow:
-        1. Kill the tmux session (and Claude Code within it)
-        2. Remove the git worktree (if applicable)
-        3. Git pull latest in the main project directory
-        4. Create new worktree with timestamp-based branch
-        5. Spawn new tmux session with Claude Code
-        """
-        import subprocess
-
+        """POST /api/room/{name}/recreate - Destroy session/worktree and create fresh one via CLI."""
         name = request.match_info["name"]
         try:
             logger.info(f"[{name}] Recreating session...")
 
-            # Parse session name
-            project, branch, machine = parse_session_name(name)
-            projects_dir = self.config.projects.dir
-            project_path = projects_dir / project
-
-            # Step 1: Kill the current session gracefully
-            logger.info(f"[{name}] Killing current session...")
-            self.agent.send_keys(name, "/exit")
-            await asyncio.sleep(1)
-            self.agent.kill_session(name)
-            await asyncio.sleep(0.5)
-
-            # Step 2: Remove old worktree (if this was a worktree session)
-            if branch and self.config.projects.worktrees.enabled:
-                old_worktree_path = get_session_path(
-                    name,
-                    projects_dir,
-                    self.config.projects.worktrees.suffix,
-                )
-                logger.info(f"[{name}] Removing worktree at {old_worktree_path}...")
-                if old_worktree_path.exists():
-                    # Use git worktree remove
-                    removed = await asyncio.get_event_loop().run_in_executor(
-                        None, lambda: remove_worktree(project_path, old_worktree_path)
-                    )
-                    if not removed:
-                        # Force remove if git worktree remove fails
-                        logger.warning(f"[{name}] git worktree remove failed, forcing...")
-                        subprocess.run(
-                            ["git", "worktree", "remove", "--force", str(old_worktree_path)],
-                            cwd=project_path,
-                            capture_output=True,
-                        )
-
-            # Step 3: Git pull latest in main project
-            logger.info(f"[{name}] Pulling latest in {project_path}...")
-            result = await asyncio.get_event_loop().run_in_executor(
-                None,
-                lambda: subprocess.run(
-                    ["git", "pull"],
-                    cwd=project_path,
-                    capture_output=True,
-                    text=True,
-                )
-            )
-            if result.returncode != 0:
-                logger.warning(f"[{name}] git pull failed: {result.stderr}")
-                # Continue anyway - might be offline or no remote
-
-            # Step 4: Create new session (worktree or simple)
-            if self.config.projects.worktrees.enabled:
-                # Create worktree with timestamp-based branch
-                new_branch = f"session-{int(time.time())}"
-                new_session_name = f"{project}/{new_branch}"
-                if machine:
-                    new_session_name = f"{new_session_name}@{machine}"
-
-                new_worktree_path = get_session_path(
-                    new_session_name,
-                    projects_dir,
-                    self.config.projects.worktrees.suffix,
-                )
-
-                logger.info(f"[{name}] Creating worktree at {new_worktree_path}...")
-                worktree_created = await asyncio.get_event_loop().run_in_executor(
-                    None,
-                    lambda: ensure_worktree(
-                        project_path,
-                        new_branch,
-                        new_worktree_path,
-                        self.config.projects.worktrees.auto_create_branch,
-                    )
-                )
-
-                if not worktree_created:
-                    return web.json_response(
-                        {"error": f"Failed to create worktree for '{new_branch}'"},
-                        status=500
-                    )
-
-                work_dir = str(new_worktree_path)
-            else:
-                # Simple session without worktree
-                new_session_name = project
-                if machine:
-                    new_session_name = f"{new_session_name}@{machine}"
-                work_dir = str(project_path)
-
-            # Step 5: Create new tmux session with new Claude session ID
-            # Get old config for inheriting settings
+            # Get old config for inheriting settings (before CLI deletes it)
             configs = self._load_room_configs()
             old_config = configs.get(name, {})
             bypass_permissions = old_config.get("bypass_permissions", True)
 
-            claude_session_id = str(uuid.uuid4())
-            logger.info(f"[{name}] Creating new session '{new_session_name}'...")
-            success = await asyncio.get_event_loop().run_in_executor(
-                None, lambda: self.agent.create_session(
-                    new_session_name, work_dir,
-                    options={
-                        "session_id": claude_session_id,
-                        "bypass_permissions": bypass_permissions,
-                        "room_name": new_session_name,
-                    }
-                )
-            )
+            # Build CLI args
+            args = ["recreate", "-s", name]
+            if not bypass_permissions:
+                args.append("--no-bypass")
+
+            # Call CLI - handles kill, worktree removal, git pull, new worktree, new session
+            success, result = await self.run_agentwire_cmd(args)
 
             if not success:
-                return web.json_response(
-                    {"error": "Failed to create new session"},
-                    status=500
-                )
+                error_msg = result.get("error", "Failed to recreate session")
+                return web.json_response({"error": error_msg}, status=500)
+
+            new_session_name = result.get("session", name)
 
             # Clean up old room state
             if name in self.rooms:
@@ -1549,12 +1412,11 @@ projects:
                     room.output_task.cancel()
                 del self.rooms[name]
 
-            # Save new room config with session ID and inherited settings
-            configs[new_session_name] = {
-                "voice": old_config.get("voice", self.config.tts.default_voice),
-                "claude_session_id": claude_session_id,
-                "bypass_permissions": bypass_permissions,
-            }
+            # CLI updates rooms.json with bypass_permissions, add voice
+            configs = self._load_room_configs()
+            if new_session_name not in configs:
+                configs[new_session_name] = {}
+            configs[new_session_name]["voice"] = old_config.get("voice", self.config.tts.default_voice)
             self._save_room_configs(configs)
 
             logger.info(f"[{name}] Session recreated as '{new_session_name}'")
@@ -1565,7 +1427,7 @@ projects:
             return web.json_response({"error": str(e)}, status=500)
 
     async def api_spawn_sibling(self, request: web.Request) -> web.Response:
-        """POST /api/room/{name}/spawn-sibling - Create a new session in same project.
+        """POST /api/room/{name}/spawn-sibling - Create a new session in same project via CLI.
 
         Creates a parallel session in a new worktree without destroying the current one.
         Useful for working on multiple features in the same project simultaneously.
@@ -1576,114 +1438,62 @@ projects:
 
             # Parse session name to get project and machine
             project, _, machine = parse_session_name(name)
-            projects_dir = self.config.projects.dir
-            project_path = projects_dir / project
 
-            if not self.config.projects.worktrees.enabled:
-                return web.json_response(
-                    {"error": "Worktrees are disabled in config"},
-                    status=400
-                )
-
-            # Create new worktree with timestamp-based branch
-            new_branch = f"session-{int(time.time())}"
-            new_session_name = f"{project}/{new_branch}"
-            if machine:
-                new_session_name = f"{new_session_name}@{machine}"
-
-            new_worktree_path = get_session_path(
-                new_session_name,
-                projects_dir,
-                self.config.projects.worktrees.suffix,
-            )
-
-            logger.info(f"[{name}] Creating sibling worktree at {new_worktree_path}...")
-            worktree_created = await asyncio.get_event_loop().run_in_executor(
-                None,
-                lambda: ensure_worktree(
-                    project_path,
-                    new_branch,
-                    new_worktree_path,
-                    self.config.projects.worktrees.auto_create_branch,
-                )
-            )
-
-            if not worktree_created:
-                return web.json_response(
-                    {"error": f"Failed to create worktree for '{new_branch}'"},
-                    status=500
-                )
-
-            # Create new tmux session with session ID
             # Get old config for inheriting settings
             configs = self._load_room_configs()
             old_config = configs.get(name, {})
             bypass_permissions = old_config.get("bypass_permissions", True)
 
-            claude_session_id = str(uuid.uuid4())
-            logger.info(f"[{name}] Creating sibling session '{new_session_name}'...")
-            success = await asyncio.get_event_loop().run_in_executor(
-                None, lambda: self.agent.create_session(
-                    new_session_name, str(new_worktree_path),
-                    options={
-                        "session_id": claude_session_id,
-                        "bypass_permissions": bypass_permissions,
-                        "room_name": new_session_name,
-                    }
-                )
-            )
+            # Build new session name: project/session-<timestamp>[@machine]
+            new_branch = f"session-{int(time.time())}"
+            new_session_name = f"{project}/{new_branch}"
+            if machine:
+                new_session_name = f"{new_session_name}@{machine}"
+
+            # Build CLI args - use `agentwire new` with the sibling session name
+            args = ["new", "-s", new_session_name]
+            if not bypass_permissions:
+                args.append("--no-bypass")
+
+            # Call CLI - handles worktree creation and session setup
+            success, result = await self.run_agentwire_cmd(args)
 
             if not success:
-                return web.json_response(
-                    {"error": "Failed to create session"},
-                    status=500
-                )
+                error_msg = result.get("error", "Failed to create sibling session")
+                return web.json_response({"error": error_msg}, status=500)
 
-            # Save room config with session ID and inherited settings
-            configs[new_session_name] = {
-                "voice": old_config.get("voice", self.config.tts.default_voice),
-                "claude_session_id": claude_session_id,
-                "bypass_permissions": bypass_permissions,
-            }
+            session_name = result.get("session", new_session_name)
+
+            # CLI updates rooms.json with bypass_permissions, add voice
+            configs = self._load_room_configs()
+            if session_name not in configs:
+                configs[session_name] = {}
+            configs[session_name]["voice"] = old_config.get("voice", self.config.tts.default_voice)
             self._save_room_configs(configs)
 
-            logger.info(f"[{name}] Sibling session created: '{new_session_name}'")
-            return web.json_response({"success": True, "session": new_session_name})
+            logger.info(f"[{name}] Sibling session created: '{session_name}'")
+            return web.json_response({"success": True, "session": session_name})
 
         except Exception as e:
             logger.error(f"Spawn sibling API failed: {e}")
             return web.json_response({"error": str(e)}, status=500)
 
     async def api_fork_session(self, request: web.Request) -> web.Response:
-        """POST /api/room/{name}/fork - Fork the Claude Code session.
+        """POST /api/room/{name}/fork - Fork the Claude Code session via CLI.
 
         Creates a new session that continues from the current conversation context.
-        Uses Claude Code's --resume --fork-session to fork the session.
         """
         name = request.match_info["name"]
         try:
-            # Get current room config to find Claude session ID
+            # Get current room config for inheriting settings
             room_config = self._get_room_config(name)
-            if not room_config.claude_session_id:
-                return web.json_response(
-                    {"error": "No Claude session ID found. Session may have been created before fork support was added."},
-                    status=400
-                )
 
-            logger.info(f"[{name}] Forking session from {room_config.claude_session_id}...")
+            logger.info(f"[{name}] Forking session...")
 
             # Parse session name to get project and machine
             project, _, machine = parse_session_name(name)
-            projects_dir = self.config.projects.dir
-            project_path = projects_dir / project
 
-            if not self.config.projects.worktrees.enabled:
-                return web.json_response(
-                    {"error": "Worktrees are disabled in config"},
-                    status=400
-                )
-
-            # Find next available fork number
+            # Find next available fork number for target name
             configs = self._load_room_configs()
             fork_num = 1
             while True:
@@ -1694,92 +1504,35 @@ projects:
                     break
                 fork_num += 1
 
+            # Build target session name: project/fork-N[@machine]
             new_branch = f"fork-{fork_num}"
-            new_session_name = f"{project}-fork-{fork_num}"
+            target_session = f"{project}/{new_branch}"
             if machine:
-                new_session_name = f"{new_session_name}@{machine}"
+                target_session = f"{target_session}@{machine}"
 
-            new_worktree_path = get_session_path(
-                new_session_name,
-                projects_dir,
-                self.config.projects.worktrees.suffix,
-            )
+            # Build CLI args
+            args = ["fork", "-s", name, "-t", target_session]
+            if not room_config.bypass_permissions:
+                args.append("--no-bypass")
 
-            logger.info(f"[{name}] Creating fork worktree at {new_worktree_path}...")
-            worktree_created = await asyncio.get_event_loop().run_in_executor(
-                None,
-                lambda: ensure_worktree(
-                    project_path,
-                    new_branch,
-                    new_worktree_path,
-                    self.config.projects.worktrees.auto_create_branch,
-                )
-            )
-
-            if not worktree_created:
-                return web.json_response(
-                    {"error": f"Failed to create worktree for '{new_branch}'"},
-                    status=500
-                )
-
-            # Copy Claude session file to worktree's project directory
-            # Claude stores sessions per-project path, so we need to copy the source session
-            def copy_session_file():
-                claude_dir = Path.home() / ".claude" / "projects"
-                # Encode paths like Claude does: /foo/bar -> -foo-bar
-                orig_encoded = str(project_path).replace("/", "-")
-                if orig_encoded.startswith("-"):
-                    orig_encoded = orig_encoded  # Keep leading dash
-                new_encoded = str(new_worktree_path).replace("/", "-")
-
-                orig_session_file = claude_dir / orig_encoded / f"{room_config.claude_session_id}.jsonl"
-                new_project_dir = claude_dir / new_encoded
-
-                if orig_session_file.exists():
-                    new_project_dir.mkdir(parents=True, exist_ok=True)
-                    new_session_file = new_project_dir / f"{room_config.claude_session_id}.jsonl"
-                    shutil.copy2(orig_session_file, new_session_file)
-                    logger.info(f"[{name}] Copied session file to {new_session_file}")
-                    return True
-                else:
-                    logger.warning(f"[{name}] Original session file not found: {orig_session_file}")
-                    return False
-
-            await asyncio.get_event_loop().run_in_executor(None, copy_session_file)
-
-            # Create new session with fork - new session ID but forking from original
-            # Inherit bypass_permissions from parent room
-            new_claude_session_id = str(uuid.uuid4())
-            logger.info(f"[{name}] Creating forked session '{new_session_name}'...")
-            success = await asyncio.get_event_loop().run_in_executor(
-                None, lambda: self.agent.create_session(
-                    new_session_name, str(new_worktree_path),
-                    options={
-                        "session_id": new_claude_session_id,
-                        "fork_from": room_config.claude_session_id,
-                        "bypass_permissions": room_config.bypass_permissions,
-                        "room_name": new_session_name,
-                    }
-                )
-            )
+            # Call CLI - handles worktree creation and session setup
+            success, result = await self.run_agentwire_cmd(args)
 
             if not success:
-                return web.json_response(
-                    {"error": "Failed to create forked session"},
-                    status=500
-                )
+                error_msg = result.get("error", "Failed to fork session")
+                return web.json_response({"error": error_msg}, status=500)
 
-            # Save room config with new session ID and inherited settings
+            session_name = result.get("session", target_session)
+
+            # CLI updates rooms.json with bypass_permissions, add voice
             configs = self._load_room_configs()
-            configs[new_session_name] = {
-                "voice": room_config.voice,
-                "claude_session_id": new_claude_session_id,
-                "bypass_permissions": room_config.bypass_permissions,
-            }
+            if session_name not in configs:
+                configs[session_name] = {}
+            configs[session_name]["voice"] = room_config.voice
             self._save_room_configs(configs)
 
-            logger.info(f"[{name}] Session forked as '{new_session_name}'")
-            return web.json_response({"success": True, "session": new_session_name})
+            logger.info(f"[{name}] Session forked as '{session_name}'")
+            return web.json_response({"success": True, "session": session_name})
 
         except Exception as e:
             logger.error(f"Fork session API failed: {e}")
