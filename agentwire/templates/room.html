@@ -1117,6 +1117,25 @@
         </div>
     </div>
 
+    <!-- Permission request modal -->
+    <div class="permission-modal" id="permissionModal">
+        <div class="permission-card">
+            <div class="permission-header">
+                <span class="icon">&#x1F512;</span>
+                <span class="badge">Permission Request</span>
+            </div>
+            <div class="permission-title" id="permissionTitle">Claude wants to...</div>
+            <div class="permission-target" id="permissionTarget"></div>
+            <div class="permission-diff" id="permissionDiff" style="display: none;">
+                <pre id="permissionDiffContent"></pre>
+            </div>
+            <div class="permission-actions">
+                <button class="permission-btn deny" onclick="respondToPermission('deny')">Deny</button>
+                <button class="permission-btn allow" onclick="respondToPermission('allow')">Allow</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         const ROOM = '{{ room_name }}';
         const IS_SYSTEM_SESSION = {{ is_system_session_js }};
@@ -1142,6 +1161,11 @@
             questionOptions: document.getElementById('questionOptions'),
             questionCustom: document.getElementById('questionCustom'),
             questionCustomInput: document.getElementById('questionCustomInput'),
+            permissionModal: document.getElementById('permissionModal'),
+            permissionTitle: document.getElementById('permissionTitle'),
+            permissionTarget: document.getElementById('permissionTarget'),
+            permissionDiff: document.getElementById('permissionDiff'),
+            permissionDiffContent: document.getElementById('permissionDiffContent'),
             userBubbleContainer: document.querySelector('.user-bubble-container'),
             textToggleBtn: document.getElementById('textToggleBtn'),
             textInputExpanded: document.getElementById('textInputExpanded'),
@@ -1522,7 +1546,8 @@
             processing: { label: 'Processing', btnText: 'Processing...' },
             generating: { label: 'Generating', btnText: 'Generating Voice...' },
             speaking: { label: 'Speaking', btnText: 'Tap to Interrupt' },
-            locked: { label: 'Busy', btnText: 'Someone else is talking...' }
+            locked: { label: 'Busy', btnText: 'Someone else is talking...' },
+            awaiting_permission: { label: 'Awaiting Permission', btnText: 'Permission needed...' }
         };
 
         function setState(newState) {
