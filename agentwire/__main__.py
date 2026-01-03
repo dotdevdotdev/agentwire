@@ -1,9 +1,11 @@
 """CLI entry point for AgentWire."""
 
 import argparse
+import datetime
 import importlib.resources
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -11,6 +13,7 @@ import time
 from pathlib import Path
 
 from . import __version__
+from .worktree import parse_session_name, get_session_path, ensure_worktree, remove_worktree
 
 # Default config directory
 CONFIG_DIR = Path.home() / ".agentwire"
@@ -87,6 +90,124 @@ def load_config() -> dict:
         except Exception:
             pass
     return {}
+
+
+# === Wave 2: Remote Infrastructure Helpers ===
+
+
+def _get_machine_config(machine_id: str) -> dict | None:
+    """Load machine config from machines.json.
+
+    Returns:
+        Machine dict with id, host, user, projects_dir, etc.
+        None if machine not found.
+    """
+    machines_file = CONFIG_DIR / "machines.json"
+    if not machines_file.exists():
+        return None
+
+    try:
+        with open(machines_file) as f:
+            machines_data = json.load(f)
+    except (json.JSONDecodeError, IOError):
+        return None
+
+    machines = machines_data.get("machines", [])
+    for m in machines:
+        if m.get("id") == machine_id:
+            return m
+
+    return None
+
+
+def _parse_session_target(name: str) -> tuple[str, str | None]:
+    """Parse 'session@machine' into (session, machine_id).
+
+    Examples:
+        "myapp" -> ("myapp", None)
+        "myapp@gpu-server" -> ("myapp", "gpu-server")
+        "myapp/feature@gpu-server" -> ("myapp/feature", "gpu-server")
+    """
+    if "@" in name:
+        session, machine = name.rsplit("@", 1)
+        return session, machine
+    return name, None
+
+
+def _run_remote(machine_id: str, command: str) -> subprocess.CompletedProcess:
+    """Run command on remote machine via SSH.
+
+    Args:
+        machine_id: Machine ID from machines.json
+        command: Shell command to run
+
+    Returns:
+        subprocess.CompletedProcess with stdout, stderr, returncode
+    """
+    machine = _get_machine_config(machine_id)
+    if machine is None:
+        # Return a failed result
+        result = subprocess.CompletedProcess(
+            args=["ssh", machine_id, command],
+            returncode=1,
+            stdout="",
+            stderr=f"Machine '{machine_id}' not found in machines.json",
+        )
+        return result
+
+    host = machine.get("host", machine_id)
+    user = machine.get("user")
+
+    # Build SSH target
+    if user:
+        ssh_target = f"{user}@{host}"
+    else:
+        ssh_target = host
+
+    return subprocess.run(
+        ["ssh", ssh_target, command],
+        capture_output=True,
+        text=True,
+    )
+
+
+def _get_all_machines() -> list[dict]:
+    """Get list of all registered machines from machines.json."""
+    machines_file = CONFIG_DIR / "machines.json"
+    if not machines_file.exists():
+        return []
+
+    try:
+        with open(machines_file) as f:
+            machines_data = json.load(f)
+            return machines_data.get("machines", [])
+    except (json.JSONDecodeError, IOError):
+        return []
+
+
+def _output_json(data: dict) -> None:
+    """Output JSON to stdout."""
+    print(json.dumps(data, indent=2))
+
+
+def _output_result(success: bool, json_mode: bool, message: str = "", **kwargs) -> int:
+    """Output result in text or JSON mode.
+
+    Returns:
+        0 if success, 1 otherwise
+    """
+    if json_mode:
+        result = {"success": success, **kwargs}
+        if not success and "error" not in result:
+            result["error"] = message
+        _output_json(result)
+    else:
+        if message:
+            if success:
+                print(message)
+            else:
+                print(message, file=sys.stderr)
+    return 0 if success else 1
 
 
 # === Portal Commands ===
@@ -385,11 +506,14 @@ def _remote_say(text: str, room: str, portal_url: str) -> int:
 # === Session Commands ===
 
 def cmd_send(args) -> int:
-    """Send a prompt to a tmux session (adds Enter automatically)."""
-    session = args.session
+    """Send a prompt to a tmux session (adds Enter automatically).
+
+    Supports remote sessions with session@machine format.
+    """
+    session_full = args.session
     prompt = " ".join(args.prompt) if args.prompt else ""
 
-    if not session:
+    if not session_full:
         print("Usage: agentwire send -s <session> <prompt>", file=sys.stderr)
         return 1
 
@@ -397,6 +521,36 @@ def cmd_send(args) -> int:
         print("Usage: agentwire send -s <session> <prompt>", file=sys.stderr)
         return 1
 
+    # Parse session@machine format
+    session, machine_id = _parse_session_target(session_full)
+
+    if machine_id:
+        # Remote: SSH and run tmux commands
+        machine = _get_machine_config(machine_id)
+        if machine is None:
+            print(f"Machine '{machine_id}' not found in machines.json", file=sys.stderr)
+            return 1
+
+        # Build remote command
+        quoted_session = shlex.quote(session)
+        quoted_prompt = shlex.quote(prompt)
+
+        # Send text, sleep, send Enter
+        cmd = f"tmux send-keys -t {quoted_session} {quoted_prompt} && sleep 0.3 && tmux send-keys -t {quoted_session} Enter"
+
+        # For multi-line text, add another Enter
+        if "\n" in prompt or len(prompt) > 200:
+            cmd += f" && sleep 0.5 && tmux send-keys -t {quoted_session} Enter"
+
+        result = _run_remote(machine_id, cmd)
+        if result.returncode != 0:
+            print(f"Failed to send to {session_full}: {result.stderr}", file=sys.stderr)
+            return 1
+
+        print(f"Sent to {session_full}")
+        return 0
+
+    # Local: existing logic
     # Check if session exists
     result = subprocess.run(
         ["tmux", "has-session", "-t", session],
@@ -434,48 +588,262 @@ def cmd_send(args) -> int:
 
 
 def cmd_list(args) -> int:
-    """List all tmux sessions."""
+    """List all tmux sessions from local and all registered machines."""
+    json_mode = getattr(args, 'json', False)
+    local_only = getattr(args, 'local', False)
+
+    all_sessions = []
+
+    # Get local sessions
     result = subprocess.run(
-        ["tmux", "list-sessions", "-F", "#{session_name}: #{session_windows} windows (#{session_path})"],
+        ["tmux", "list-sessions", "-F", "#{session_name}:#{session_windows}:#{pane_current_path}"],
         capture_output=True,
         text=True
     )
-    if result.returncode != 0:
+
+    local_sessions = []
+    if result.returncode == 0:
+        for line in result.stdout.strip().split("\n"):
+            if line:
+                parts = line.split(":", 2)
+                if len(parts) >= 2:
+                    session_info = {
+                        "name": parts[0],
+                        "windows": int(parts[1]) if parts[1].isdigit() else 1,
+                        "path": parts[2] if len(parts) > 2 else "",
+                        "machine": None,
+                    }
+                    local_sessions.append(session_info)
+                    all_sessions.append(session_info)
+
+    # Get remote sessions from all registered machines
+    remote_by_machine = {}
+    if not local_only:
+        machines = _get_all_machines()
+        for machine in machines:
+            machine_id = machine.get("id")
+            if not machine_id:
+                continue
+
+            cmd = "tmux list-sessions -F '#{session_name}:#{session_windows}:#{pane_current_path}' 2>/dev/null || echo ''"
+            result = _run_remote(machine_id, cmd)
+
+            machine_sessions = []
+            if result.returncode == 0 and result.stdout.strip():
+                for line in result.stdout.strip().split("\n"):
+                    if line:
+                        parts = line.split(":", 2)
+                        if len(parts) >= 2:
+                            session_info = {
+                                "name": f"{parts[0]}@{machine_id}",
+                                "windows": int(parts[1]) if parts[1].isdigit() else 1,
+                                "path": parts[2] if len(parts) > 2 else "",
+                                "machine": machine_id,
+                            }
+                            machine_sessions.append(session_info)
+                            all_sessions.append(session_info)
+
+            remote_by_machine[machine_id] = machine_sessions
+
+    # Output
+    if json_mode:
+        _output_json({"success": True, "sessions": all_sessions})
+        return 0
+
+    # Text output - grouped by machine
+    if not local_sessions and not any(remote_by_machine.values()):
         print("No sessions running")
         return 0
 
-    print(result.stdout.strip())
+    # Local sessions
+    if local_sessions:
+        print("LOCAL:")
+        for s in local_sessions:
+            print(f"  {s['name']}: {s['windows']} window(s) ({s['path']})")
+        print()
+
+    # Remote sessions
+    for machine_id, sessions in remote_by_machine.items():
+        print(f"{machine_id}:")
+        if sessions:
+            for s in sessions:
+                # Remove @machine suffix for display within machine group
+                display_name = s['name'].rsplit('@', 1)[0] if '@' in s['name'] else s['name']
+                print(f"  {display_name}: {s['windows']} window(s) ({s['path']})")
+        else:
+            print("  (no sessions)")
+        print()
+
     return 0
 
 
 def cmd_new(args) -> int:
-    """Create a new Claude Code session in tmux."""
+    """Create a new Claude Code session in tmux.
+
+    Supports:
+    - "project" -> simple session in ~/projects/project/
+    - "project/branch" -> worktree session in ~/projects/project-worktrees/branch/
+    - "project@machine" -> remote session
+    - "project/branch@machine" -> remote worktree session
+    """
     name = args.session
     path = args.path
+    json_mode = getattr(args, 'json', False)
 
     if not name:
-        print("Usage: agentwire new -s <name> [-p path] [-f]", file=sys.stderr)
-        return 1
+        return _output_result(False, json_mode, "Usage: agentwire new -s <name> [-p path] [-f]")
 
-    # Convert dots to underscores for tmux session name
-    session_name = name.replace(".", "_")
+    # Parse session name: project, branch, machine
+    project, branch, machine_id = parse_session_name(name)
 
+    # Build the tmux session name (convert dots/slashes to underscores)
+    if branch:
+        session_name = f"{project}_{branch}".replace(".", "_").replace("/", "_")
+    else:
+        session_name = project.replace(".", "_")
+
+    # Load config
+    config = load_config()
+    projects_dir = Path(config.get("projects", {}).get("dir", "~/projects")).expanduser()
+    worktrees_config = config.get("projects", {}).get("worktrees", {})
+    worktrees_enabled = worktrees_config.get("enabled", True)
+    worktree_suffix = worktrees_config.get("suffix", "-worktrees")
+    auto_create_branch = worktrees_config.get("auto_create_branch", True)
+
+    # Handle remote session
+    if machine_id:
+        machine = _get_machine_config(machine_id)
+        if machine is None:
+            return _output_result(False, json_mode, f"Machine '{machine_id}' not found in machines.json")
+
+        remote_projects_dir = machine.get("projects_dir", "~/projects")
+
+        # Build remote path
+        if path:
+            remote_path = path
+        elif branch:
+            remote_path = f"{remote_projects_dir}/{project}{worktree_suffix}/{branch}"
+        else:
+            remote_path = f"{remote_projects_dir}/{project}"
+
+        # If branch specified, create worktree on remote
+        if branch:
+            # Create worktree on remote
+            project_path = f"{remote_projects_dir}/{project}"
+            worktree_path = remote_path
+
+            # Check if worktree already exists
+            check_cmd = f"test -d {shlex.quote(worktree_path)}"
+            result = _run_remote(machine_id, check_cmd)
+
+            if result.returncode != 0:
+                # Create worktree
+                # First check if branch exists
+                branch_check = f"cd {shlex.quote(project_path)} && git rev-parse --verify refs/heads/{shlex.quote(branch)} 2>/dev/null"
+                result = _run_remote(machine_id, branch_check)
+
+                if result.returncode == 0:
+                    # Branch exists, create worktree
+                    create_cmd = f"cd {shlex.quote(project_path)} && mkdir -p $(dirname {shlex.quote(worktree_path)}) && git worktree add {shlex.quote(worktree_path)} {shlex.quote(branch)}"
+                elif auto_create_branch:
+                    # Create branch with worktree
+                    create_cmd = f"cd {shlex.quote(project_path)} && mkdir -p $(dirname {shlex.quote(worktree_path)}) && git worktree add -b {shlex.quote(branch)} {shlex.quote(worktree_path)}"
+                else:
+                    return _output_result(False, json_mode, f"Branch '{branch}' does not exist and auto_create_branch is disabled")
+
+                result = _run_remote(machine_id, create_cmd)
+                if result.returncode != 0:
+                    return _output_result(False, json_mode, f"Failed to create remote worktree: {result.stderr}")
+
+        # Check if remote session already exists
+        check_cmd = f"tmux has-session -t ={shlex.quote(session_name)} 2>/dev/null"
+        result = _run_remote(machine_id, check_cmd)
+        if result.returncode == 0:
+            if args.force:
+                # Kill existing session
+                kill_cmd = f"tmux send-keys -t {shlex.quote(session_name)} /exit Enter && sleep 2 && tmux kill-session -t {shlex.quote(session_name)} 2>/dev/null"
+                _run_remote(machine_id, kill_cmd)
+            else:
+                return _output_result(False, json_mode, f"Session '{session_name}' already exists on {machine_id}. Use -f to replace.")
+
+        # Create remote tmux session
+        bypass_flag = "" if getattr(args, 'no_bypass', False) else " --dangerously-skip-permissions"
+        create_cmd = (
+            f"tmux new-session -d -s {shlex.quote(session_name)} -c {shlex.quote(remote_path)} && "
+            f"tmux send-keys -t {shlex.quote(session_name)} 'export AGENTWIRE_ROOM={shlex.quote(session_name)}' Enter && "
+            f"sleep 0.1 && "
+            f"tmux send-keys -t {shlex.quote(session_name)} 'claude{bypass_flag}' Enter"
+        )
+
+        result = _run_remote(machine_id, create_cmd)
+        if result.returncode != 0:
+            return _output_result(False, json_mode, f"Failed to create remote session: {result.stderr}")
+
+        # Update local rooms.json with remote session info
+        rooms_file = Path.home() / ".agentwire" / "rooms.json"
+        rooms_file.parent.mkdir(parents=True, exist_ok=True)
+
+        configs = {}
+        if rooms_file.exists():
+            try:
+                with open(rooms_file) as f:
+                    configs = json.load(f)
+            except Exception:
+                pass
+
+        room_key = f"{session_name}@{machine_id}"
+        bypass_permissions = not getattr(args, 'no_bypass', False)
+        configs[room_key] = {"bypass_permissions": bypass_permissions}
+
+        with open(rooms_file, "w") as f:
+            json.dump(configs, f, indent=2)
+
+        if json_mode:
+            _output_json({
+                "success": True,
+                "session": f"{session_name}@{machine_id}",
+                "path": remote_path,
+                "branch": branch,
+                "machine": machine_id,
+            })
+        else:
+            print(f"Created session '{session_name}' on {machine_id} in {remote_path}")
+            print(f"Attach via portal or: ssh {machine.get('host', machine_id)} -t tmux attach -t {session_name}")
+
+        return 0
+
+    # Local session
     # Resolve path
     if path:
         session_path = Path(path).expanduser().resolve()
+    elif branch and worktrees_enabled:
+        # Worktree session: ~/projects/project-worktrees/branch/
+        project_path = projects_dir / project
+        session_path = projects_dir / f"{project}{worktree_suffix}" / branch
+
+        # Ensure worktree exists
+        if not session_path.exists():
+            if not project_path.exists():
+                return _output_result(False, json_mode, f"Project path does not exist: {project_path}")
+
+            success = ensure_worktree(
+                project_path,
+                branch,
+                session_path,
+                auto_create_branch=auto_create_branch,
+            )
+            if not success:
+                return _output_result(False, json_mode, f"Failed to create worktree for branch '{branch}' in {project_path}")
     else:
-        # Default to ~/projects/<name> (using original name with dots)
-        config = load_config()
-        projects_dir = Path(config.get("projects", {}).get("dir", "~/projects")).expanduser()
-        session_path = projects_dir / name
+        # Simple session: ~/projects/project/
+        session_path = projects_dir / project
 
     if not session_path.exists():
-        print(f"Path does not exist: {session_path}", file=sys.stderr)
-        return 1
+        return _output_result(False, json_mode, f"Path does not exist: {session_path}")
 
     # Check if session already exists
     result = subprocess.run(
-        ["tmux", "has-session", "-t", session_name],
+        ["tmux", "has-session", "-t", f"={session_name}"],
         capture_output=True
     )
     if result.returncode == 0:
@@ -485,8 +853,7 @@ def cmd_new(args) -> int:
             time.sleep(2)
             subprocess.run(["tmux", "kill-session", "-t", session_name], capture_output=True)
         else:
-            print(f"Session '{session_name}' already exists. Use -f to replace.", file=sys.stderr)
-            return 1
+            return _output_result(False, json_mode, f"Session '{session_name}' already exists. Use -f to replace.")
 
     # Create new tmux session
     subprocess.run(
@@ -525,27 +892,59 @@ def cmd_new(args) -> int:
             pass
 
     bypass_permissions = not getattr(args, 'no_bypass', False)
-    configs[session_name] = {
-        "bypass_permissions": bypass_permissions,
-    }
+    configs[session_name] = {"bypass_permissions": bypass_permissions}
 
     with open(rooms_file, "w") as f:
         json.dump(configs, f, indent=2)
 
-    print(f"Created session '{session_name}' in {session_path}")
-    print(f"Attach with: tmux attach -t {session_name}")
+    if json_mode:
+        _output_json({
+            "success": True,
+            "session": session_name,
+            "path": str(session_path),
+            "branch": branch,
+            "machine": None,
+        })
+    else:
+        print(f"Created session '{session_name}' in {session_path}")
+        print(f"Attach with: tmux attach -t {session_name}")
+
     return 0
 
 
 def cmd_output(args) -> int:
-    """Read output from a tmux session."""
-    session = args.session
+    """Read output from a tmux session.
+
+    Supports remote sessions with session@machine format.
+    """
+    session_full = args.session
     lines = args.lines or 50
 
-    if not session:
+    if not session_full:
         print("Usage: agentwire output -s <session> [-n lines]", file=sys.stderr)
         return 1
 
+    # Parse session@machine format
+    session, machine_id = _parse_session_target(session_full)
+
+    if machine_id:
+        # Remote: SSH and run tmux capture-pane
+        machine = _get_machine_config(machine_id)
+        if machine is None:
+            print(f"Machine '{machine_id}' not found in machines.json", file=sys.stderr)
+            return 1
+
+        cmd = f"tmux capture-pane -t {shlex.quote(session)} -p -S -{lines}"
+        result = _run_remote(machine_id, cmd)
+
+        if result.returncode != 0:
+            print(f"Session '{session}' not found on {machine_id}", file=sys.stderr)
+            return 1
+
+        print(result.stdout)
+        return 0
+
+    # Local: existing logic
     result = subprocess.run(
         ["tmux", "has-session", "-t", session],
         capture_output=True
@@ -564,13 +963,62 @@ def cmd_output(args) -> int:
 
 
 def cmd_kill(args) -> int:
-    """Kill a tmux session (with clean Claude exit)."""
-    session = args.session
+    """Kill a tmux session (with clean Claude exit).
 
-    if not session:
+    Supports remote sessions with session@machine format.
+    """
+    session_full = args.session
+
+    if not session_full:
         print("Usage: agentwire kill -s <session>", file=sys.stderr)
         return 1
 
+    # Parse session@machine format
+    session, machine_id = _parse_session_target(session_full)
+
+    if machine_id:
+        # Remote: SSH and run tmux commands
+        machine = _get_machine_config(machine_id)
+        if machine is None:
+            print(f"Machine '{machine_id}' not found in machines.json", file=sys.stderr)
+            return 1
+
+        # Check if session exists
+        check_cmd = f"tmux has-session -t {shlex.quote(session)} 2>/dev/null"
+        result = _run_remote(machine_id, check_cmd)
+        if result.returncode != 0:
+            print(f"Session '{session}' not found on {machine_id}", file=sys.stderr)
+            return 1
+
+        # Send /exit to Claude first for clean shutdown
+        exit_cmd = f"tmux send-keys -t {shlex.quote(session)} /exit Enter"
+        _run_remote(machine_id, exit_cmd)
+        print(f"Sent /exit to {session_full}, waiting 3s...")
+        time.sleep(3)
+
+        # Kill the session
+        kill_cmd = f"tmux kill-session -t {shlex.quote(session)}"
+        _run_remote(machine_id, kill_cmd)
+        print(f"Killed session '{session_full}'")
+
+        # Clean up rooms.json
+        rooms_file = Path.home() / ".agentwire" / "rooms.json"
+        if rooms_file.exists():
+            try:
+                with open(rooms_file) as f:
+                    configs = json.load(f)
+
+                room_key = f"{session}@{machine_id}"
+                if room_key in configs:
+                    del configs[room_key]
+                    with open(rooms_file, "w") as f:
+                        json.dump(configs, f, indent=2)
+            except Exception:
+                pass
+
+        return 0
+
+    # Local: existing logic
     result = subprocess.run(
         ["tmux", "has-session", "-t", session],
         capture_output=True
@@ -587,6 +1035,21 @@ def cmd_kill(args) -> int:
     # Kill the session
     subprocess.run(["tmux", "kill-session", "-t", session])
     print(f"Killed session '{session}'")
+
+    # Clean up rooms.json
+    rooms_file = Path.home() / ".agentwire" / "rooms.json"
+    if rooms_file.exists():
+        try:
+            with open(rooms_file) as f:
+                configs = json.load(f)
+
+            if session in configs:
+                del configs[session]
+                with open(rooms_file, "w") as f:
+                    json.dump(configs, f, indent=2)
+        except Exception:
+            pass
+
     return 0
 
 
@@ -595,11 +1058,13 @@ def cmd_send_keys(args) -> int:
 
     Each argument is sent as a separate key group with a brief pause between.
     Useful for sending special keys like Enter, Escape, C-c, etc.
+
+    Supports remote sessions with session@machine format.
     """
-    session = args.session
+    session_full = args.session
     keys = args.keys if args.keys else []
 
-    if not session:
+    if not session_full:
         print("Usage: agentwire send-keys -s <session> <keys>...", file=sys.stderr)
         return 1
 
@@ -612,6 +1077,35 @@ def cmd_send_keys(args) -> int:
         print("  agentwire send-keys -s mysession 'hello world' Enter", file=sys.stderr)
         return 1
 
+    # Parse session@machine format
+    session, machine_id = _parse_session_target(session_full)
+
+    if machine_id:
+        # Remote: SSH and run tmux commands
+        machine = _get_machine_config(machine_id)
+        if machine is None:
+            print(f"Machine '{machine_id}' not found in machines.json", file=sys.stderr)
+            return 1
+
+        # Build remote command with pauses between keys
+        quoted_session = shlex.quote(session)
+        cmd_parts = []
+        for i, key in enumerate(keys):
+            cmd_parts.append(f"tmux send-keys -t {quoted_session} {shlex.quote(key)}")
+            if i < len(keys) - 1:
+                cmd_parts.append("sleep 0.1")
+
+        cmd = " && ".join(cmd_parts)
+
+        result = _run_remote(machine_id, cmd)
+        if result.returncode != 0:
+            print(f"Failed to send keys to {session_full}: {result.stderr}", file=sys.stderr)
+            return 1
+
+        print(f"Sent keys to {session_full}")
+        return 0
+
+    # Local: existing logic
     # Check if session exists
     result = subprocess.run(
         ["tmux", "has-session", "-t", session],
@@ -745,6 +1239,431 @@ def cmd_session_kill(args) -> int:
     # Kill the session
     subprocess.run(["tmux", "kill-session", "-t", session])
     print(f"Killed session '{session}'")
+    return 0
+
+
+# === Wave 5: Recreate and Fork Commands ===
+
+
+def cmd_recreate(args) -> int:
+    """Destroy and recreate a session with fresh worktree.
+
+    Steps:
+    1. Kill existing session (local or remote)
+    2. Remove worktree
+    3. Pull latest on main repo
+    4. Create new worktree with timestamp branch
+    5. Create new session
+
+    Supports remote sessions with session@machine format.
+    """
+    session_full = args.session
+    json_mode = getattr(args, 'json', False)
+
+    if not session_full:
+        return _output_result(False, json_mode, "Usage: agentwire recreate -s <session>")
+
+    # Parse session name
+    project, branch, machine_id = parse_session_name(session_full)
+
+    # Load config
+    config = load_config()
+    projects_dir = Path(config.get("projects", {}).get("dir", "~/projects")).expanduser()
+    worktrees_config = config.get("projects", {}).get("worktrees", {})
+    worktree_suffix = worktrees_config.get("suffix", "-worktrees")
+
+    # Build session name for tmux
+    if branch:
+        session_name = f"{project}_{branch}".replace(".", "_").replace("/", "_")
+    else:
+        session_name = project.replace(".", "_")
+
+    if machine_id:
+        # Remote recreate
+        machine = _get_machine_config(machine_id)
+        if machine is None:
+            return _output_result(False, json_mode, f"Machine '{machine_id}' not found in machines.json")
+
+        remote_projects_dir = machine.get("projects_dir", "~/projects")
+
+        # Step 1: Kill existing session
+        kill_cmd = f"tmux send-keys -t {shlex.quote(session_name)} /exit Enter 2>/dev/null; sleep 2; tmux kill-session -t {shlex.quote(session_name)} 2>/dev/null"
+        _run_remote(machine_id, kill_cmd)
+
+        # Determine paths
+        project_path = f"{remote_projects_dir}/{project}"
+        if branch:
+            worktree_path = f"{remote_projects_dir}/{project}{worktree_suffix}/{branch}"
+        else:
+            worktree_path = project_path
+
+        # Step 2: Remove worktree (if branch session)
+        if branch:
+            remove_cmd = f"cd {shlex.quote(project_path)} && git worktree remove {shlex.quote(worktree_path)} --force 2>/dev/null; rm -rf {shlex.quote(worktree_path)}"
+            _run_remote(machine_id, remove_cmd)
+
+        # Step 3: Pull latest on main repo
+        pull_cmd = f"cd {shlex.quote(project_path)} && git pull origin main 2>/dev/null || git pull origin master 2>/dev/null || true"
+        _run_remote(machine_id, pull_cmd)
+
+        # Step 4: Create new worktree with timestamp branch
+        if branch:
+            timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+            new_branch = f"{branch}-{timestamp}"
+
+            create_wt_cmd = f"cd {shlex.quote(project_path)} && mkdir -p $(dirname {shlex.quote(worktree_path)}) && git worktree add -b {shlex.quote(new_branch)} {shlex.quote(worktree_path)}"
+            result = _run_remote(machine_id, create_wt_cmd)
+            if result.returncode != 0:
+                return _output_result(False, json_mode, f"Failed to create worktree: {result.stderr}")
+
+        # Step 5: Create new session
+        bypass_flag = "" if getattr(args, 'no_bypass', False) else " --dangerously-skip-permissions"
+        session_path = worktree_path if branch else project_path
+
+        create_cmd = (
+            f"tmux new-session -d -s {shlex.quote(session_name)} -c {shlex.quote(session_path)} && "
+            f"tmux send-keys -t {shlex.quote(session_name)} 'export AGENTWIRE_ROOM={shlex.quote(session_name)}' Enter && "
+            f"sleep 0.1 && "
+            f"tmux send-keys -t {shlex.quote(session_name)} 'claude{bypass_flag}' Enter"
+        )
+
+        result = _run_remote(machine_id, create_cmd)
+        if result.returncode != 0:
+            return _output_result(False, json_mode, f"Failed to create session: {result.stderr}")
+
+        if json_mode:
+            _output_json({
+                "success": True,
+                "session": f"{session_name}@{machine_id}",
+                "path": session_path,
+                "branch": new_branch if branch else None,
+                "machine": machine_id,
+            })
+        else:
+            print(f"Recreated session '{session_name}' on {machine_id} in {session_path}")
+
+        return 0
+
+    # Local recreate
+    # Step 1: Kill existing session
+    result = subprocess.run(
+        ["tmux", "has-session", "-t", f"={session_name}"],
+        capture_output=True
+    )
+    if result.returncode == 0:
+        subprocess.run(["tmux", "send-keys", "-t", session_name, "/exit", "Enter"])
+        time.sleep(2)
+        subprocess.run(["tmux", "kill-session", "-t", session_name], capture_output=True)
+
+    # Determine paths
+    project_path = projects_dir / project
+    if branch:
+        worktree_path = projects_dir / f"{project}{worktree_suffix}" / branch
+    else:
+        worktree_path = project_path
+
+    # Step 2: Remove worktree (if branch session)
+    if branch and worktree_path.exists():
+        remove_worktree(project_path, worktree_path)
+        # Force remove if git worktree remove failed
+        if worktree_path.exists():
+            shutil.rmtree(worktree_path, ignore_errors=True)
+
+    # Step 3: Pull latest on main repo
+    if project_path.exists():
+        subprocess.run(
+            ["git", "pull", "origin", "main"],
+            cwd=project_path,
+            capture_output=True
+        )
+
+    # Step 4: Create new worktree with timestamp branch
+    if branch:
+        timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        new_branch = f"{branch}-{timestamp}"
+
+        success = ensure_worktree(
+            project_path,
+            new_branch,
+            worktree_path,
+            auto_create_branch=True,
+        )
+        if not success:
+            return _output_result(False, json_mode, f"Failed to create worktree for branch '{new_branch}'")
+
+    session_path = worktree_path if branch else project_path
+
+    if not session_path.exists():
+        return _output_result(False, json_mode, f"Path does not exist: {session_path}")
+
+    # Step 5: Create new session
+    subprocess.run(
+        ["tmux", "new-session", "-d", "-s", session_name, "-c", str(session_path)],
+        check=True
+    )
+
+    subprocess.run(
+        ["tmux", "send-keys", "-t", session_name, f"export AGENTWIRE_ROOM={session_name}", "Enter"],
+        check=True
+    )
+    time.sleep(0.1)
+
+    if getattr(args, 'no_bypass', False):
+        claude_cmd = "claude"
+    else:
+        claude_cmd = "claude --dangerously-skip-permissions"
+
+    subprocess.run(
+        ["tmux", "send-keys", "-t", session_name, claude_cmd, "Enter"],
+        check=True
+    )
+
+    # Update rooms.json
+    rooms_file = Path.home() / ".agentwire" / "rooms.json"
+    rooms_file.parent.mkdir(parents=True, exist_ok=True)
+
+    configs = {}
+    if rooms_file.exists():
+        try:
+            with open(rooms_file) as f:
+                configs = json.load(f)
+        except Exception:
+            pass
+
+    bypass_permissions = not getattr(args, 'no_bypass', False)
+    configs[session_name] = {"bypass_permissions": bypass_permissions}
+
+    with open(rooms_file, "w") as f:
+        json.dump(configs, f, indent=2)
+
+    if json_mode:
+        _output_json({
+            "success": True,
+            "session": session_name,
+            "path": str(session_path),
+            "branch": new_branch if branch else None,
+            "machine": None,
+        })
+    else:
+        print(f"Recreated session '{session_name}' in {session_path}")
+        print(f"Attach with: tmux attach -t {session_name}")
+
+    return 0
+
+
+def cmd_fork(args) -> int:
+    """Fork a session into a new worktree with copied Claude context.
+
+    Creates a new worktree from current branch state and optionally
+    copies Claude session file for conversation continuity.
+
+    Supports remote sessions with session@machine format.
+    """
+    source_full = args.source
+    target_full = args.target
+    json_mode = getattr(args, 'json', False)
+
+    if not source_full or not target_full:
+        return _output_result(False, json_mode, "Usage: agentwire fork -s <source> -t <target>")
+
+    # Parse session names
+    source_project, source_branch, source_machine = parse_session_name(source_full)
+    target_project, target_branch, target_machine = parse_session_name(target_full)
+
+    # Validate: source and target should be same project
+    if source_project != target_project:
+        return _output_result(False, json_mode, f"Source and target must be same project (got {source_project} vs {target_project})")
+
+    # Validate: target must have a branch
+    if not target_branch:
+        return _output_result(False, json_mode, "Target must include a branch name (e.g., project/new-branch)")
+
+    # Machines must match
+    if source_machine != target_machine:
+        return _output_result(False, json_mode, f"Source and target must be on same machine (got {source_machine} vs {target_machine})")
+
+    machine_id = source_machine
+
+    # Load config
+    config = load_config()
+    projects_dir = Path(config.get("projects", {}).get("dir", "~/projects")).expanduser()
+    worktrees_config = config.get("projects", {}).get("worktrees", {})
+    worktree_suffix = worktrees_config.get("suffix", "-worktrees")
+
+    # Build session names
+    if source_branch:
+        source_session = f"{source_project}_{source_branch}".replace(".", "_").replace("/", "_")
+    else:
+        source_session = source_project.replace(".", "_")
+
+    target_session = f"{target_project}_{target_branch}".replace(".", "_").replace("/", "_")
+
+    if machine_id:
+        # Remote fork
+        machine = _get_machine_config(machine_id)
+        if machine is None:
+            return _output_result(False, json_mode, f"Machine '{machine_id}' not found in machines.json")
+
+        remote_projects_dir = machine.get("projects_dir", "~/projects")
+
+        # Build paths
+        project_path = f"{remote_projects_dir}/{source_project}"
+        if source_branch:
+            source_path = f"{remote_projects_dir}/{source_project}{worktree_suffix}/{source_branch}"
+        else:
+            source_path = project_path
+        target_path = f"{remote_projects_dir}/{target_project}{worktree_suffix}/{target_branch}"
+
+        # Check if target already exists
+        check_cmd = f"test -d {shlex.quote(target_path)}"
+        result = _run_remote(machine_id, check_cmd)
+        if result.returncode == 0:
+            return _output_result(False, json_mode, f"Target worktree already exists: {target_path}")
+
+        # Create new worktree from source
+        create_cmd = f"cd {shlex.quote(source_path)} && mkdir -p $(dirname {shlex.quote(target_path)}) && git worktree add -b {shlex.quote(target_branch)} {shlex.quote(target_path)}"
+        result = _run_remote(machine_id, create_cmd)
+        if result.returncode != 0:
+            return _output_result(False, json_mode, f"Failed to create worktree: {result.stderr}")
+
+        # Create new session
+        bypass_flag = "" if getattr(args, 'no_bypass', False) else " --dangerously-skip-permissions"
+        create_session_cmd = (
+            f"tmux new-session -d -s {shlex.quote(target_session)} -c {shlex.quote(target_path)} && "
+            f"tmux send-keys -t {shlex.quote(target_session)} 'export AGENTWIRE_ROOM={shlex.quote(target_session)}' Enter && "
+            f"sleep 0.1 && "
+            f"tmux send-keys -t {shlex.quote(target_session)} 'claude{bypass_flag}' Enter"
+        )
+
+        result = _run_remote(machine_id, create_session_cmd)
+        if result.returncode != 0:
+            return _output_result(False, json_mode, f"Failed to create session: {result.stderr}")
+
+        # Update local rooms.json
+        rooms_file = Path.home() / ".agentwire" / "rooms.json"
+        rooms_file.parent.mkdir(parents=True, exist_ok=True)
+
+        configs = {}
+        if rooms_file.exists():
+            try:
+                with open(rooms_file) as f:
+                    configs = json.load(f)
+            except Exception:
+                pass
+
+        room_key = f"{target_session}@{machine_id}"
+        bypass_permissions = not getattr(args, 'no_bypass', False)
+        configs[room_key] = {"bypass_permissions": bypass_permissions}
+
+        with open(rooms_file, "w") as f:
+            json.dump(configs, f, indent=2)
+
+        if json_mode:
+            _output_json({
+                "success": True,
+                "session": f"{target_session}@{machine_id}",
+                "path": target_path,
+                "branch": target_branch,
+                "machine": machine_id,
+                "forked_from": source_full,
+            })
+        else:
+            print(f"Forked '{source_full}' to '{target_session}' on {machine_id}")
+            print(f"  Path: {target_path}")
+
+        return 0
+
+    # Local fork
+    # Build paths
+    project_path = projects_dir / source_project
+    if source_branch:
+        source_path = projects_dir / f"{source_project}{worktree_suffix}" / source_branch
+    else:
+        source_path = project_path
+    target_path = projects_dir / f"{target_project}{worktree_suffix}" / target_branch
+
+    # Check if target already exists
+    if target_path.exists():
+        return _output_result(False, json_mode, f"Target worktree already exists: {target_path}")
+
+    # Check source exists
+    if not source_path.exists():
+        return _output_result(False, json_mode, f"Source path does not exist: {source_path}")
+
+    # Create new worktree from source
+    success = ensure_worktree(
+        source_path,  # Use source as base for the worktree
+        target_branch,
+        target_path,
+        auto_create_branch=True,
+    )
+    if not success:
+        # Try from project path instead
+        if project_path.exists():
+            success = ensure_worktree(
+                project_path,
+                target_branch,
+                target_path,
+                auto_create_branch=True,
+            )
+
+    if not success:
+        return _output_result(False, json_mode, f"Failed to create worktree for branch '{target_branch}'")
+
+    # Create new session
+    subprocess.run(
+        ["tmux", "new-session", "-d", "-s", target_session, "-c", str(target_path)],
+        check=True
+    )
+
+    subprocess.run(
+        ["tmux", "send-keys", "-t", target_session, f"export AGENTWIRE_ROOM={target_session}", "Enter"],
+        check=True
+    )
+    time.sleep(0.1)
+
+    if getattr(args, 'no_bypass', False):
+        claude_cmd = "claude"
+    else:
+        claude_cmd = "claude --dangerously-skip-permissions"
+
+    subprocess.run(
+        ["tmux", "send-keys", "-t", target_session, claude_cmd, "Enter"],
+        check=True
+    )
+
+    # Update rooms.json
+    rooms_file = Path.home() / ".agentwire" / "rooms.json"
+    rooms_file.parent.mkdir(parents=True, exist_ok=True)
+
+    configs = {}
+    if rooms_file.exists():
+        try:
+            with open(rooms_file) as f:
+                configs = json.load(f)
+        except Exception:
+            pass
+
+    bypass_permissions = not getattr(args, 'no_bypass', False)
+    configs[target_session] = {"bypass_permissions": bypass_permissions}
+
+    with open(rooms_file, "w") as f:
+        json.dump(configs, f, indent=2)
+
+    if json_mode:
+        _output_json({
+            "success": True,
+            "session": target_session,
+            "path": str(target_path),
+            "branch": target_branch,
+            "machine": None,
+            "forked_from": source_full,
+        })
+    else:
+        print(f"Forked '{source_full}' to '{target_session}'")
+        print(f"  Path: {target_path}")
+        print(f"Attach with: tmux attach -t {target_session}")
+
     return 0
 
 
@@ -1533,7 +2452,7 @@ def main() -> int:
 
     # === send command ===
     send_parser = subparsers.add_parser("send", help="Send prompt to a session (adds Enter)")
-    send_parser.add_argument("-s", "--session", required=True, help="Target session name")
+    send_parser.add_argument("-s", "--session", required=True, help="Target session (supports session@machine)")
     send_parser.add_argument("prompt", nargs="*", help="Prompt to send")
     send_parser.set_defaults(func=cmd_send)
 
@@ -1541,32 +2460,50 @@ def main() -> int:
     send_keys_parser = subparsers.add_parser(
         "send-keys", help="Send raw keys to a session (with pause between groups)"
     )
-    send_keys_parser.add_argument("-s", "--session", required=True, help="Target session name")
+    send_keys_parser.add_argument("-s", "--session", required=True, help="Target session (supports session@machine)")
     send_keys_parser.add_argument("keys", nargs="*", help="Key groups to send (e.g., 'hello world' Enter)")
     send_keys_parser.set_defaults(func=cmd_send_keys)
 
     # === list command (top-level) ===
-    list_parser = subparsers.add_parser("list", help="List all tmux sessions")
+    list_parser = subparsers.add_parser("list", help="List all tmux sessions (local + remote)")
+    list_parser.add_argument("--json", action="store_true", help="Output as JSON")
+    list_parser.add_argument("--local", action="store_true", help="Only show local sessions")
     list_parser.set_defaults(func=cmd_list)
 
     # === new command (top-level) ===
     new_parser = subparsers.add_parser("new", help="Create new Claude Code session")
-    new_parser.add_argument("-s", "--session", required=True, help="Session name (dots become underscores)")
+    new_parser.add_argument("-s", "--session", required=True, help="Session name (project, project/branch, or project/branch@machine)")
     new_parser.add_argument("-p", "--path", help="Working directory (default: ~/projects/<name>)")
     new_parser.add_argument("-f", "--force", action="store_true", help="Replace existing session")
     new_parser.add_argument("--no-bypass", action="store_true", help="Don't use --dangerously-skip-permissions (normal mode)")
+    new_parser.add_argument("--json", action="store_true", help="Output as JSON")
     new_parser.set_defaults(func=cmd_new)
 
     # === output command (top-level) ===
     output_parser = subparsers.add_parser("output", help="Read session output")
-    output_parser.add_argument("-s", "--session", required=True, help="Session name")
+    output_parser.add_argument("-s", "--session", required=True, help="Session name (supports session@machine)")
     output_parser.add_argument("-n", "--lines", type=int, default=50, help="Lines to show (default: 50)")
     output_parser.set_defaults(func=cmd_output)
 
     # === kill command (top-level) ===
     kill_parser = subparsers.add_parser("kill", help="Kill a session (clean shutdown)")
-    kill_parser.add_argument("-s", "--session", required=True, help="Session name")
+    kill_parser.add_argument("-s", "--session", required=True, help="Session name (supports session@machine)")
     kill_parser.set_defaults(func=cmd_kill)
+
+    # === recreate command (top-level) ===
+    recreate_parser = subparsers.add_parser("recreate", help="Destroy and recreate session with fresh worktree")
+    recreate_parser.add_argument("-s", "--session", required=True, help="Session name (project/branch or project/branch@machine)")
+    recreate_parser.add_argument("--no-bypass", action="store_true", help="Don't use --dangerously-skip-permissions")
+    recreate_parser.add_argument("--json", action="store_true", help="Output as JSON")
+    recreate_parser.set_defaults(func=cmd_recreate)
+
+    # === fork command (top-level) ===
+    fork_parser = subparsers.add_parser("fork", help="Fork a session into a new worktree")
+    fork_parser.add_argument("-s", "--source", required=True, help="Source session (project or project/branch)")
+    fork_parser.add_argument("-t", "--target", required=True, help="Target session (must include branch: project/new-branch)")
+    fork_parser.add_argument("--no-bypass", action="store_true", help="Don't use --dangerously-skip-permissions")
+    fork_parser.add_argument("--json", action="store_true", help="Output as JSON")
+    fork_parser.set_defaults(func=cmd_fork)
 
     # === session command group (legacy, kept for backwards compat) ===
     session_parser = subparsers.add_parser("session", help="Manage tmux sessions")
