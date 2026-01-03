@@ -460,14 +460,22 @@ function generateDiffHtml(oldText, newText) {
     return html;
 }
 
-async function respondToPermission(decision) {
+async function respondToPermission(decision, message = '') {
+    // For custom feedback, require a message
+    if (decision === 'custom' && !message.trim()) {
+        return;
+    }
+
     try {
         await fetch(`/api/permission/${ROOM}/respond`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ decision })
+            body: JSON.stringify({ decision, message })
         });
         hidePermissionModal();
+        // Clear the custom input
+        const customInput = document.getElementById('permissionCustomInput');
+        if (customInput) customInput.value = '';
     } catch (e) {
         console.error('Failed to respond to permission:', e);
     }

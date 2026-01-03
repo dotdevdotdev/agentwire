@@ -1310,6 +1310,49 @@ projects:
                 room.pending_permission.decision["message"] = data.get("message", "User denied permission")
             room.pending_permission.event.set()
 
+            # Send keystroke to tmux session to respond to Claude's interactive prompt
+            # Get session name (strip @machine suffix if present)
+            session_name = name.split("@")[0]
+
+            try:
+                import subprocess
+                import time as sync_time
+
+                if decision == "custom":
+                    # Custom feedback: send "3", then message, then Enter
+                    custom_message = data.get("message", "")
+                    if custom_message:
+                        subprocess.run(
+                            ["tmux", "send-keys", "-t", session_name, "3"],
+                            check=True, capture_output=True
+                        )
+                        sync_time.sleep(0.3)
+                        subprocess.run(
+                            ["tmux", "send-keys", "-t", session_name, custom_message],
+                            check=True, capture_output=True
+                        )
+                        sync_time.sleep(0.3)
+                        subprocess.run(
+                            ["tmux", "send-keys", "-t", session_name, "Enter"],
+                            check=True, capture_output=True
+                        )
+                        logger.info(f"[{name}] Sent custom feedback: {custom_message[:50]}...")
+                else:
+                    # Map decision to keystroke: allow=1, allow_always=2, deny=Escape
+                    keystroke_map = {
+                        "allow": "1",
+                        "allow_always": "2",
+                        "deny": "Escape",
+                    }
+                    keystroke = keystroke_map.get(decision, "Escape")
+                    subprocess.run(
+                        ["tmux", "send-keys", "-t", session_name, keystroke],
+                        check=True, capture_output=True
+                    )
+                    logger.info(f"[{name}] Sent keystroke '{keystroke}' to session")
+            except Exception as e:
+                logger.error(f"[{name}] Failed to send keystroke: {e}")
+
             # Broadcast permission_resolved to all clients (Task 3.7)
             await self._broadcast(room, {
                 "type": "permission_resolved",

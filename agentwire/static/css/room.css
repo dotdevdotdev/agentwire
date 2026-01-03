@@ -1183,3 +1183,38 @@ body {
 .permission-btn.allow-always:hover {
     background: rgba(74, 222, 128, 0.15);
 }
+
+.permission-custom {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--border);
+}
+
+.permission-custom input {
+    flex: 1;
+    padding: 0.6rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    font-size: 0.9rem;
+}
+
+.permission-custom input:focus {
+    outline: none;
+    border-color: var(--primary);
+}
+
+.permission-btn.custom {
+    padding: 0.6rem 1rem;
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+}
+
+.permission-btn.custom:hover {
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+}
