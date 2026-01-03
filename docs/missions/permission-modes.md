@@ -294,16 +294,16 @@ Default: `bypass_permissions: true` (current behavior, no breaking change)
 
 ## Completion Criteria
 
-- [ ] Can create bypass vs normal sessions from portal
-- [ ] Normal sessions trigger PermissionRequest hook
-- [ ] Hook POSTs to AgentWire API
-- [ ] Permission modal appears in portal
-- [ ] Allow/Deny sends decision back to hook
-- [ ] Claude proceeds or aborts based on decision
-- [ ] `/status` groups sessions by permission mode
-- [ ] `chatbot_mode` removed from codebase
-- [ ] Existing sessions default to bypass (no breaking change)
-- [ ] Hook installed via `agentwire skills install`
+- [x] Can create bypass vs normal sessions from portal
+- [x] Normal sessions trigger PermissionRequest hook
+- [x] Hook POSTs to AgentWire API
+- [x] Permission modal appears in portal
+- [x] Allow/Deny sends decision back to hook
+- [x] Claude proceeds or aborts based on decision
+- [x] `/status` groups sessions by permission mode
+- [x] `chatbot_mode` removed from codebase
+- [x] Existing sessions default to bypass (no breaking change)
+- [x] Hook installed via `agentwire skills install`
 
 ## Edge Cases
 
