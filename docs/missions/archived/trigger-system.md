@@ -1,8 +1,14 @@
 # Mission: Trigger System
 
+> **ABANDONED** - Attempted but didn't work reliably. The `tmux pipe-pane` approach had issues with FIFO handling and async coordination. Current polling approach works fine for our needs.
+>
+> **Code reference:** `mission/trigger-system` branch has the attempted implementation if needed for future reference.
+
+---
+
 > Real-time MUD-style text matching with configurable actions for tmux output streams.
 
-**Branch:** `mission/trigger-system` (created on execution)
+**Branch:** `mission/trigger-system`
 
 ## Context
 
