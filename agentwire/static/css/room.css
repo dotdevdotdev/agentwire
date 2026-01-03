@@ -1,0 +1,1175 @@
+/* Room CSS - Layout, header, controls, bubbles, modals */
+
+/* Layout variables */
+:root {
+    --header-height: 60px;
+    --tts-height: 40px;
+    --controls-height: 190px;
+
+    /* Orb states - will be moved to orb.css in Wave 4 */
+    --orb-idle: var(--primary);
+    --orb-idle-dark: var(--primary-dark);
+    --orb-listening: #FBBF24;
+    --orb-listening-dark: #D97706;
+    --orb-processing: #A855F7;
+    --orb-processing-dark: #7C3AED;
+    --orb-generating: #3B82F6;
+    --orb-generating-dark: #1D4ED8;
+    --orb-speaking: #4ADE80;
+    --orb-speaking-dark: #22C55E;
+    --orb-awaiting: #FBBF24;
+    --orb-awaiting-dark: #D97706;
+}
+
+/* Room body - override base.css for room-specific layout */
+body {
+    height: 100dvh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+/* ============================================
+   Header
+   ============================================ */
+
+.header {
+    height: var(--header-height);
+    padding: 0 1rem;
+    background: #000;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.header h1 {
+    font-size: 1.25rem;
+    color: var(--text-secondary);
+}
+
+.header a {
+    color: var(--text-muted);
+    text-decoration: none;
+    font-size: 0.9rem;
+}
+
+.header-brand {
+    color: var(--primary);
+    font-weight: 600;
+    font-size: 1.1rem;
+    margin-right: 0.75rem;
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.header-logo {
+    width: 32px;
+    height: 32px;
+    border-radius: 4px;
+}
+
+.header-left {
+    display: flex;
+    align-items: center;
+}
+
+.header-right {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    position: relative;
+}
+
+.status {
+    font-size: 1rem;
+    color: var(--text-muted);
+}
+
+.status.connected {
+    color: var(--primary);
+}
+
+/* ============================================
+   Settings Dropdown
+   ============================================ */
+
+.settings-btn {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 1.8rem;
+    cursor: pointer;
+    padding: 0.25rem;
+    line-height: 1;
+}
+
+.settings-btn:hover {
+    color: var(--primary);
+}
+
+.settings-dropdown {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    background: var(--bg-light);
+    border: 1px solid var(--border-light);
+    border-radius: 8px;
+    padding: 0.75rem;
+    display: none;
+    flex-direction: column;
+    gap: 0.5rem;
+    min-width: 200px;
+    z-index: 100;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.settings-dropdown.open {
+    display: flex;
+}
+
+.settings-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.settings-group label {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.settings-group select,
+.settings-group button {
+    padding: 0.6rem 0.75rem;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text-primary);
+    font-size: 1rem;
+    cursor: pointer;
+    width: 100%;
+    text-align: left;
+}
+
+.settings-group select:hover,
+.settings-group button:hover {
+    border-color: var(--primary);
+}
+
+/* ============================================
+   Terminal Mode - Output View
+   ============================================ */
+
+.output {
+    flex: 1;
+    padding: 1rem;
+    overflow-y: scroll;
+    -webkit-overflow-scrolling: touch;
+    font-family: ui-monospace, monospace;
+    font-size: 0.8rem;
+    background: var(--bg-dark);
+    color: var(--text-secondary);
+    min-height: 0;
+}
+
+.output-content {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+.output.hidden {
+    display: none;
+}
+
+/* Default to ambient mode via CSS */
+.output.ambient-default {
+    display: none;
+}
+
+/* ============================================
+   Ambient Mode Container
+   ============================================ */
+
+.ambient {
+    flex: 1;
+    display: none;
+    flex-direction: column;
+    background: var(--bg-dark);
+    min-height: 0;
+    position: relative;
+}
+
+.ambient.active {
+    display: flex;
+}
+
+.ambient.ambient-default {
+    display: flex;
+}
+
+/* ============================================
+   AI Speech Bubble (top)
+   ============================================ */
+
+.ai-bubble-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    padding: 1.25rem;
+    z-index: 10;
+    pointer-events: none;
+}
+
+.ai-bubble {
+    pointer-events: auto;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    border-top-left-radius: 4px;
+    padding: 1rem 1.25rem;
+    font-size: 1.1rem;
+    line-height: 1.5;
+    color: var(--text-primary);
+    max-width: 92%;
+    position: relative;
+    opacity: 0;
+    transform: translateY(-10px);
+    transition: all 0.3s ease;
+}
+
+.ai-bubble.visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.ai-bubble.speaking {
+    border-color: var(--orb-speaking);
+    box-shadow: 0 0 20px rgba(74, 222, 128, 0.2);
+}
+
+.ai-bubble::before {
+    content: '\1F916'; /* robot emoji */
+    position: absolute;
+    top: -0.5rem;
+    left: -0.5rem;
+    font-size: 1.3rem;
+}
+
+/* ============================================
+   User Speech Bubble (bottom)
+   ============================================ */
+
+.user-bubble-container {
+    position: absolute;
+    bottom: 140px; /* Above floating controls */
+    left: 0;
+    right: 0;
+    padding: 0 1.5rem;
+    z-index: 10;
+    pointer-events: none;
+    display: flex;
+    justify-content: flex-end;
+}
+
+.user-bubble {
+    pointer-events: auto;
+    background: var(--primary-subtle);
+    border: 1px solid rgba(0, 221, 0, 0.3);
+    border-radius: 16px;
+    border-bottom-right-radius: 4px;
+    padding: 1rem 1.25rem;
+    font-size: 1.1rem;
+    line-height: 1.5;
+    color: var(--text-primary);
+    max-width: 92%;
+    margin-left: auto;
+    position: relative;
+    opacity: 0;
+    transform: translateY(10px);
+    transition: all 0.3s ease;
+}
+
+.user-bubble.visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.user-bubble.listening {
+    border-color: var(--orb-listening);
+    background: rgba(245, 158, 11, 0.15);
+}
+
+.user-bubble::after {
+    content: '\1F464'; /* bust emoji */
+    position: absolute;
+    bottom: -0.5rem;
+    right: -0.5rem;
+    font-size: 1.2rem;
+}
+
+/* ============================================
+   Orb Area (center of ambient mode)
+   ============================================ */
+
+.orb-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1.5rem;
+}
+
+/* State label above orb */
+.state-label {
+    font-size: 2rem;
+    font-weight: 300;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    transition: all 0.3s ease;
+}
+
+.state-label.idle { color: var(--orb-idle); }
+.state-label.listening { color: var(--orb-listening); }
+.state-label.processing { color: var(--orb-processing); }
+.state-label.generating { color: var(--orb-generating); }
+.state-label.speaking { color: var(--orb-speaking); }
+.state-label.locked { color: var(--text-secondary); }
+.state-label.awaiting_permission { color: var(--orb-awaiting); }
+
+/* Orb container and elements - Will be moved to orb.css in Wave 4 */
+.orb-container {
+    position: relative;
+    width: 200px;
+    height: 200px;
+}
+
+.orb {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    transition: all 0.3s ease;
+}
+
+.orb-ring {
+    position: absolute;
+    inset: -10%;
+    border-radius: 50%;
+    border: 2px solid var(--primary-subtle);
+    transition: all 0.3s ease;
+}
+
+/* Orb states - Will be moved to orb.css in Wave 4 */
+.orb.idle {
+    background: radial-gradient(circle at 30% 30%, var(--orb-idle), var(--orb-idle-dark));
+    animation: breathe 4s ease-in-out infinite;
+    box-shadow: 0 0 60px var(--primary-glow);
+}
+
+.orb-ring.idle {
+    animation: ring-breathe 4s ease-in-out infinite;
+    border-color: var(--primary-subtle);
+}
+
+.orb.listening {
+    background: radial-gradient(circle at 30% 30%, var(--orb-listening), var(--orb-listening-dark));
+    animation: listen 0.8s ease-in-out infinite;
+    box-shadow: 0 0 80px rgba(245, 158, 11, 0.4);
+}
+
+.orb-ring.listening {
+    animation: ring-listen 0.8s ease-in-out infinite;
+    border-color: rgba(245, 158, 11, 0.4);
+}
+
+.orb.processing {
+    background: conic-gradient(from 0deg, var(--orb-processing), var(--orb-processing-dark), var(--orb-processing));
+    animation: spin 1.5s linear infinite, pulse-processing 0.8s ease-in-out infinite;
+    box-shadow: 0 0 60px rgba(168, 85, 247, 0.4);
+}
+
+.orb-ring.processing {
+    animation: ring-spin 3s linear infinite reverse;
+    border-color: rgba(168, 85, 247, 0.4);
+    border-width: 3px;
+    border-style: dashed;
+}
+
+.orb.generating {
+    background: radial-gradient(circle at 30% 30%, var(--orb-generating), var(--orb-generating-dark));
+    animation: generate 0.6s ease-in-out infinite;
+    box-shadow: 0 0 80px rgba(56, 189, 248, 0.5);
+}
+
+.orb-ring.generating {
+    animation: ring-generate 0.6s ease-in-out infinite;
+    border-color: rgba(56, 189, 248, 0.5);
+    border-width: 3px;
+}
+
+.orb.speaking {
+    background: radial-gradient(circle at 30% 30%, var(--orb-speaking), var(--orb-speaking-dark));
+    animation: speak 0.25s ease-in-out infinite;
+    box-shadow: 0 0 100px rgba(45, 212, 191, 0.5);
+}
+
+.orb-ring.speaking {
+    animation: ring-speak 0.4s ease-in-out infinite;
+    border-color: rgba(45, 212, 191, 0.5);
+    border-width: 3px;
+}
+
+.orb.locked {
+    background: radial-gradient(circle at 30% 30%, var(--text-muted), var(--bg-elevated));
+    animation: breathe 4s ease-in-out infinite;
+    box-shadow: 0 0 40px rgba(92, 107, 122, 0.3);
+    opacity: 0.6;
+}
+
+.orb-ring.locked {
+    animation: ring-breathe 4s ease-in-out infinite;
+    border-color: rgba(92, 107, 122, 0.3);
+}
+
+.orb.awaiting_permission {
+    background: radial-gradient(circle at 30% 30%, var(--orb-awaiting), var(--orb-awaiting-dark));
+    animation: awaiting-pulse 1.5s ease-in-out infinite;
+    box-shadow: 0 0 80px rgba(251, 191, 36, 0.5);
+}
+
+.orb-ring.awaiting_permission {
+    animation: ring-awaiting 1.5s ease-in-out infinite;
+    border-color: rgba(251, 191, 36, 0.5);
+    border-width: 3px;
+}
+
+/* Orb animations - Will be moved to orb.css in Wave 4 */
+@keyframes breathe {
+    0%, 100% { transform: scale(1); opacity: 0.8; }
+    50% { transform: scale(1.03); opacity: 1; }
+}
+
+@keyframes ring-breathe {
+    0%, 100% { transform: scale(1); opacity: 0.3; }
+    50% { transform: scale(1.05); opacity: 0.5; }
+}
+
+@keyframes listen {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.08); }
+}
+
+@keyframes ring-listen {
+    0%, 100% { transform: scale(1); opacity: 0.4; }
+    50% { transform: scale(1.15); opacity: 0.7; }
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+@keyframes pulse-processing {
+    0%, 100% { opacity: 0.9; }
+    50% { opacity: 1; }
+}
+
+@keyframes ring-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+@keyframes work {
+    0%, 100% { transform: scale(1); opacity: 0.85; }
+    50% { transform: scale(1.04); opacity: 1; }
+}
+
+@keyframes ring-work {
+    0%, 100% { transform: scale(1); opacity: 0.4; }
+    50% { transform: scale(1.08); opacity: 0.6; }
+}
+
+@keyframes generate {
+    0%, 100% { transform: scale(1); opacity: 0.9; }
+    50% { transform: scale(1.06); opacity: 1; }
+}
+
+@keyframes ring-generate {
+    0%, 100% { transform: scale(1); opacity: 0.5; }
+    50% { transform: scale(1.12); opacity: 0.8; }
+}
+
+@keyframes speak {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.12); }
+}
+
+@keyframes ring-speak {
+    0%, 100% { transform: scale(1); opacity: 0.6; }
+    50% { transform: scale(1.2); opacity: 0.9; }
+}
+
+@keyframes awaiting-pulse {
+    0%, 100% { transform: scale(1); opacity: 0.9; }
+    50% { transform: scale(1.05); opacity: 1; }
+}
+
+@keyframes ring-awaiting {
+    0%, 100% { transform: scale(1); opacity: 0.5; }
+    50% { transform: scale(1.1); opacity: 0.8; }
+}
+
+/* ============================================
+   Floating Controls
+   ============================================ */
+
+.floating-controls {
+    position: fixed;
+    bottom: 2rem;
+    left: 1.5rem;
+    right: 1.5rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    pointer-events: none;
+    z-index: 50;
+}
+
+.floating-controls > * {
+    pointer-events: auto;
+}
+
+/* ============================================
+   Text Input (left side)
+   ============================================ */
+
+.text-input-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex: 1;
+    min-width: 0;
+    margin-right: 1rem;
+}
+
+.text-toggle-btn {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: var(--bg-elevated);
+    border: 2px solid var(--border);
+    color: var(--text-secondary);
+    font-size: 1.75rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.text-toggle-btn:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+}
+
+.text-toggle-btn.active {
+    background: var(--primary-subtle);
+    border-color: var(--primary);
+    color: var(--primary);
+}
+
+.text-input-expanded {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 28px;
+    padding: 0.25rem 0.5rem 0.25rem 1rem;
+    flex: 0;
+    min-width: 0;
+    overflow: hidden;
+    opacity: 0;
+    transition: all 0.3s ease;
+}
+
+.text-input-expanded.open {
+    flex: 1;
+    min-width: 0;
+    opacity: 1;
+}
+
+.text-input-expanded input {
+    flex: 1;
+    min-width: 0;
+    padding: 0.5rem 0;
+    background: transparent;
+    border: none;
+    color: var(--text-primary);
+    font-size: 1.25rem;
+}
+
+.text-input-expanded input:focus {
+    outline: none;
+}
+
+.text-input-expanded input::placeholder {
+    color: var(--text-muted);
+}
+
+.send-btn {
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    background: var(--primary);
+    border: none;
+    color: #000;
+    font-size: 1.5rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.send-btn:hover {
+    background: var(--primary-dim);
+    transform: scale(1.05);
+}
+
+.send-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* Attach button in ambient mode */
+.text-input-expanded .attach-btn-ambient {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 1rem;
+    cursor: pointer;
+    padding: 0 0.5rem;
+}
+
+.text-input-expanded .attach-btn-ambient:hover {
+    color: var(--primary);
+}
+
+.text-input-expanded .attach-btn-ambient.has-image {
+    color: var(--primary);
+}
+
+.ambient-image-preview {
+    display: none;
+    width: 32px;
+    height: 32px;
+    border-radius: 4px;
+    object-fit: cover;
+    margin-right: 0.5rem;
+}
+
+.ambient-image-preview.visible {
+    display: block;
+}
+
+/* ============================================
+   Mic Button (right side)
+   ============================================ */
+
+.mic-btn {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s;
+    -webkit-tap-highlight-color: transparent;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+}
+
+.mic-btn.idle {
+    background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+    color: #000;
+    box-shadow: 0 4px 20px var(--primary-glow);
+}
+
+.mic-btn.listening {
+    background: linear-gradient(135deg, var(--orb-listening), var(--orb-listening-dark));
+    color: #000;
+    animation: mic-pulse 0.8s ease-in-out infinite;
+    box-shadow: 0 4px 30px rgba(245, 158, 11, 0.5);
+}
+
+.mic-btn.processing {
+    background: linear-gradient(135deg, var(--orb-processing), var(--orb-processing-dark));
+    color: #fff;
+    cursor: not-allowed;
+    opacity: 0.8;
+}
+
+.mic-btn.generating {
+    background: linear-gradient(135deg, var(--orb-generating), var(--orb-generating-dark));
+    color: #fff;
+    cursor: not-allowed;
+    animation: mic-pulse 0.6s ease-in-out infinite;
+}
+
+.mic-btn.speaking {
+    background: linear-gradient(135deg, var(--orb-speaking), var(--orb-speaking-dark));
+    color: #000;
+}
+
+.mic-btn.locked {
+    background: linear-gradient(135deg, var(--bg-elevated), var(--bg-light));
+    color: var(--text-muted);
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.mic-btn.awaiting_permission {
+    background: linear-gradient(135deg, var(--orb-awaiting), var(--orb-awaiting-dark));
+    color: #000;
+    animation: mic-pulse 1.5s ease-in-out infinite;
+    box-shadow: 0 4px 30px rgba(251, 191, 36, 0.5);
+}
+
+@keyframes mic-pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.08); }
+}
+
+/* ============================================
+   Mic Area & Actions Menu
+   ============================================ */
+
+.mic-area {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+    position: relative;
+}
+
+.actions-btn {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    background: var(--bg-elevated);
+    color: var(--text-muted);
+    font-size: 1.5rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: none; /* Hidden in ambient mode */
+    z-index: 100;
+    position: relative;
+}
+
+.terminal-mode .actions-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.actions-btn:hover {
+    background: var(--bg-light);
+    color: var(--text-primary);
+    border-color: var(--primary);
+}
+
+.actions-btn.active {
+    background: var(--primary);
+    color: #1a1a1a;
+    border-color: var(--primary);
+}
+
+.actions-menu {
+    position: absolute;
+    bottom: 100%;
+    right: 0;
+    margin-bottom: 0.5rem;
+    display: none;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.5rem;
+    z-index: 100;
+    pointer-events: auto;
+}
+
+.actions-menu.open {
+    display: flex;
+}
+
+.action-item {
+    position: relative;
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    border: 1px solid #444;
+    background: #1a1a1a;
+    color: #fff;
+    font-size: 1.5rem;
+    cursor: pointer;
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+}
+
+.action-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.action-item:hover {
+    background: var(--primary);
+    color: #1a1a1a;
+    border-color: var(--primary);
+}
+
+.action-item:hover .action-label {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+.action-label {
+    position: absolute;
+    right: 70px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    white-space: nowrap;
+    opacity: 0;
+    transform: translateX(10px);
+    transition: all 0.15s;
+    pointer-events: none;
+    z-index: 200;
+}
+
+/* ============================================
+   Question Modal (AskUserQuestion)
+   ============================================ */
+
+.question-modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.85);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+}
+
+.question-modal.visible {
+    display: flex;
+}
+
+.question-card {
+    background: var(--bg-elevated);
+    border: 2px solid var(--primary);
+    border-radius: 16px;
+    padding: 1.5rem;
+    max-width: 400px;
+    width: 100%;
+    box-shadow: 0 0 40px var(--primary-glow);
+}
+
+.question-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+}
+
+.question-header .badge {
+    background: var(--primary-subtle);
+    color: var(--primary);
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.question-text {
+    font-size: 1.1rem;
+    color: var(--text-primary);
+    margin-bottom: 1.25rem;
+    line-height: 1.4;
+}
+
+.question-options {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.question-option {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.15s;
+    text-align: left;
+}
+
+.question-option:hover {
+    background: var(--primary-subtle);
+    border-color: var(--primary);
+}
+
+.question-option .num {
+    background: var(--primary);
+    color: var(--bg-primary);
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.85rem;
+    font-weight: 600;
+    flex-shrink: 0;
+}
+
+.question-option .label {
+    color: var(--text-primary);
+    font-size: 0.95rem;
+    line-height: 1.4;
+}
+
+.question-option .desc {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    margin-top: 0.25rem;
+}
+
+.question-custom {
+    margin-top: 0.75rem;
+    display: none;
+}
+
+.question-custom.visible {
+    display: block;
+}
+
+.question-custom input {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text-primary);
+    font-size: 0.95rem;
+}
+
+.question-custom input:focus {
+    outline: none;
+    border-color: var(--primary);
+}
+
+/* Type something option */
+.question-option.type-option {
+    cursor: default;
+}
+
+.question-option.type-option:hover {
+    background: var(--bg-secondary);
+    border-color: var(--border);
+}
+
+.type-input-wrapper {
+    flex: 1;
+    display: flex;
+    gap: 0.5rem;
+}
+
+.type-input {
+    flex: 1;
+    padding: 0.5rem 0.75rem;
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+}
+
+.type-input:focus {
+    outline: none;
+    border-color: var(--primary);
+}
+
+.type-submit {
+    padding: 0.5rem 1rem;
+    background: var(--primary);
+    color: #1a1a1a;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: opacity 0.15s;
+}
+
+.type-submit:hover {
+    opacity: 0.9;
+}
+
+/* ============================================
+   Permission Modal
+   ============================================ */
+
+.permission-modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.85);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+}
+
+.permission-modal.visible {
+    display: flex;
+}
+
+.permission-card {
+    background: var(--bg-elevated);
+    border: 2px solid var(--orb-awaiting);
+    border-radius: 16px;
+    padding: 1.5rem;
+    max-width: 500px;
+    width: 100%;
+    box-shadow: 0 0 40px rgba(251, 191, 36, 0.4);
+}
+
+.permission-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+.permission-header .icon {
+    font-size: 1.5rem;
+}
+
+.permission-header .badge {
+    background: rgba(251, 191, 36, 0.2);
+    color: var(--orb-awaiting);
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.permission-title {
+    font-size: 1.2rem;
+    color: var(--text-primary);
+    margin-bottom: 0.5rem;
+}
+
+.permission-target {
+    font-family: monospace;
+    font-size: 0.9rem;
+    color: var(--primary);
+    background: var(--bg-secondary);
+    padding: 0.5rem 0.75rem;
+    border-radius: 6px;
+    margin-bottom: 1rem;
+    word-break: break-all;
+}
+
+.permission-diff {
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 1rem;
+    max-height: 300px;
+    overflow: auto;
+}
+
+.permission-diff pre {
+    margin: 0;
+    padding: 0.75rem;
+    font-family: monospace;
+    font-size: 0.85rem;
+    line-height: 1.4;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+.permission-diff .line-removed {
+    color: #F87171;
+    background: rgba(248, 113, 113, 0.1);
+}
+
+.permission-diff .line-added {
+    color: #4ADE80;
+    background: rgba(74, 222, 128, 0.1);
+}
+
+.permission-actions {
+    display: flex;
+    gap: 0.75rem;
+    margin-top: 1rem;
+}
+
+.permission-btn {
+    flex: 1;
+    padding: 0.75rem 1rem;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.permission-btn.allow {
+    background: var(--primary);
+    color: #1a1a1a;
+}
+
+.permission-btn.allow:hover {
+    opacity: 0.9;
+}
+
+.permission-btn.deny {
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+}
+
+.permission-btn.deny:hover {
+    background: rgba(248, 113, 113, 0.2);
+    border-color: #F87171;
+    color: #F87171;
+}

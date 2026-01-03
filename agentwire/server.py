@@ -21,10 +21,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import aiohttp_jinja2
+import jinja2
 from aiohttp import web
 
 from .config import Config, load_config
-from .templates import get_template
 from .worktree import ensure_worktree, get_project_type, get_session_path, parse_session_name, remove_worktree
 
 __version__ = "0.1.0"
@@ -79,7 +80,17 @@ class AgentWireServer:
         self.stt = None
         self.agent = None
         self.app = web.Application()
+        self._setup_jinja2()
         self._setup_routes()
+
+    def _setup_jinja2(self):
+        """Configure Jinja2 template environment."""
+        templates_dir = Path(__file__).parent / "templates"
+        aiohttp_jinja2.setup(
+            self.app,
+            loader=jinja2.FileSystemLoader(str(templates_dir)),
+            autoescape=jinja2.select_autoescape(["html", "xml"]),
+        )
 
     def _setup_routes(self):
         """Configure HTTP and WebSocket routes."""
@@ -227,93 +238,19 @@ class AgentWireServer:
                 pass
         return [self.config.tts.default_voice]
 
-    def _render_template(self, name: str, **kwargs) -> str:
-        """Render a template with Jinja2-style variable substitution."""
-        template = get_template(name)
-
-        # Handle {% for %} loops
-        for_pattern = r"\{%\s*for\s+(\w+)\s+in\s+(\w+)\s*%\}(.*?)\{%\s*endfor\s*%\}"
-        while True:
-            match = re.search(for_pattern, template, re.DOTALL)
-            if not match:
-                break
-            var_name = match.group(1)
-            list_name = match.group(2)
-            body = match.group(3)
-            items = kwargs.get(list_name, [])
-            result = ""
-            for item in items:
-                item_body = body
-                # Replace {{ var }}
-                item_body = item_body.replace("{{ " + var_name + " }}", str(item))
-                # Handle {% if var == value %}
-                if_pattern = (
-                    r"\{%\s*if\s+"
-                    + var_name
-                    + r"\s*==\s*(\w+)\s*%\}(.*?)\{%\s*endif\s*%\}"
-                )
-                for if_match in re.finditer(if_pattern, item_body, re.DOTALL):
-                    compare_var = if_match.group(1)
-                    compare_val = kwargs.get(compare_var, compare_var)
-                    if_body = if_match.group(2)
-                    if str(item) == str(compare_val):
-                        item_body = item_body.replace(if_match.group(0), if_body)
-                    else:
-                        item_body = item_body.replace(if_match.group(0), "")
-                result += item_body
-            template = template[: match.start()] + result + template[match.end() :]
-
-        # Handle {% if %} conditionals
-        if_pattern = r"\{%\s*if\s+(.+?)\s*%\}(.*?)\{%\s*endif\s*%\}"
-        while True:
-            match = re.search(if_pattern, template, re.DOTALL)
-            if not match:
-                break
-            condition = match.group(1)
-            body = match.group(2)
-            # Simple condition evaluation
-            try:
-                # Handle config.attr style
-                if "." in condition:
-                    parts = condition.split(".")
-                    obj = kwargs.get(parts[0])
-                    for part in parts[1:]:
-                        obj = getattr(obj, part, None) if obj else None
-                    result = body if obj else ""
-                else:
-                    result = body if kwargs.get(condition) else ""
-            except Exception:
-                result = ""
-            template = template[: match.start()] + result + template[match.end() :]
-
-        # Replace {{ var }} placeholders
-        for key, value in kwargs.items():
-            template = template.replace("{{ " + key + " }}", str(value))
-            # Handle object attributes
-            if hasattr(value, "__dict__"):
-                for attr, attr_val in vars(value).items():
-                    template = template.replace(
-                        "{{ " + key + "." + attr + " }}", str(attr_val or "")
-                    )
-
-        return template
-
     # HTTP Handlers
 
     async def handle_dashboard(self, request: web.Request) -> web.Response:
         """Serve the dashboard page."""
         voices = await self._get_voices()
-        html = self._render_template(
-            "dashboard.html",
-            version=__version__,
-            voices=voices,
-            default_voice=self.config.tts.default_voice,
-        )
-        return web.Response(
-            text=html,
-            content_type="text/html",
-            headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
-        )
+        context = {
+            "version": __version__,
+            "voices": voices,
+            "default_voice": self.config.tts.default_voice,
+        }
+        response = aiohttp_jinja2.render_template("dashboard.html", request, context)
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        return response
 
     # System sessions that get special treatment (restart instead of fork/new/recreate)
     SYSTEM_SESSIONS = {"agentwire", "agentwire-portal", "agentwire-tts"}
@@ -331,21 +268,18 @@ class AgentWireServer:
         voices = await self._get_voices()
         is_system_session = self._is_system_session(name)
 
-        html = self._render_template(
-            "room.html",
-            room_name=name,
-            config=room_config,
-            voices=voices,
-            current_voice=room_config.voice,
-            is_system_session=is_system_session,
-            is_project_session=not is_system_session,
-            is_system_session_js="true" if is_system_session else "false",
-        )
-        return web.Response(
-            text=html,
-            content_type="text/html",
-            headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
-        )
+        context = {
+            "room_name": name,
+            "config": room_config,
+            "voices": voices,
+            "current_voice": room_config.voice,
+            "is_system_session": is_system_session,
+            "is_project_session": not is_system_session,
+            "is_system_session_js": "true" if is_system_session else "false",
+        }
+        response = aiohttp_jinja2.render_template("room.html", request, context)
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        return response
 
     async def handle_websocket(self, request: web.Request) -> web.WebSocketResponse:
         """Handle WebSocket connections for a room."""

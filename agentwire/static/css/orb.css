@@ -1,0 +1,188 @@
+/* Orb Component Styles */
+
+/* Orb state colors - defined in base.css as CSS variables */
+
+/* Orb area - center */
+.orb-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1.5rem;
+}
+
+/* State label */
+.state-label {
+    font-size: 2rem;
+    font-weight: 300;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    transition: all 0.3s ease;
+}
+.state-label.idle { color: var(--orb-idle); }
+.state-label.listening { color: var(--orb-listening); }
+.state-label.processing { color: var(--orb-processing); }
+.state-label.generating { color: var(--orb-generating); }
+.state-label.speaking { color: var(--orb-speaking); }
+.state-label.locked { color: var(--text-secondary); }
+.state-label.awaiting_permission { color: var(--orb-awaiting); }
+
+/* Orb container */
+.orb-container {
+    position: relative;
+    width: 200px;
+    height: 200px;
+}
+
+.orb {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    transition: all 0.3s ease;
+}
+
+.orb-ring {
+    position: absolute;
+    inset: -10%;
+    border-radius: 50%;
+    border: 2px solid var(--primary-subtle);
+    transition: all 0.3s ease;
+}
+
+/* Orb states */
+.orb.idle {
+    background: radial-gradient(circle at 30% 30%, var(--orb-idle), var(--orb-idle-dark));
+    animation: breathe 4s ease-in-out infinite;
+    box-shadow: 0 0 60px var(--primary-glow);
+}
+.orb-ring.idle {
+    animation: ring-breathe 4s ease-in-out infinite;
+    border-color: var(--primary-subtle);
+}
+
+.orb.listening {
+    background: radial-gradient(circle at 30% 30%, var(--orb-listening), var(--orb-listening-dark));
+    animation: listen 0.8s ease-in-out infinite;
+    box-shadow: 0 0 80px rgba(245, 158, 11, 0.4);
+}
+.orb-ring.listening {
+    animation: ring-listen 0.8s ease-in-out infinite;
+    border-color: rgba(245, 158, 11, 0.4);
+}
+
+.orb.processing {
+    background: conic-gradient(from 0deg, var(--orb-processing), var(--orb-processing-dark), var(--orb-processing));
+    animation: spin 1.5s linear infinite, pulse-processing 0.8s ease-in-out infinite;
+    box-shadow: 0 0 60px rgba(168, 85, 247, 0.4);
+}
+.orb-ring.processing {
+    animation: ring-spin 3s linear infinite reverse;
+    border-color: rgba(168, 85, 247, 0.4);
+    border-width: 3px;
+    border-style: dashed;
+}
+
+.orb.generating {
+    background: radial-gradient(circle at 30% 30%, var(--orb-generating), var(--orb-generating-dark));
+    animation: generate 0.6s ease-in-out infinite;
+    box-shadow: 0 0 80px rgba(56, 189, 248, 0.5);
+}
+.orb-ring.generating {
+    animation: ring-generate 0.6s ease-in-out infinite;
+    border-color: rgba(56, 189, 248, 0.5);
+    border-width: 3px;
+}
+
+.orb.speaking {
+    background: radial-gradient(circle at 30% 30%, var(--orb-speaking), var(--orb-speaking-dark));
+    animation: speak 0.25s ease-in-out infinite;
+    box-shadow: 0 0 100px rgba(45, 212, 191, 0.5);
+}
+.orb-ring.speaking {
+    animation: ring-speak 0.4s ease-in-out infinite;
+    border-color: rgba(45, 212, 191, 0.5);
+    border-width: 3px;
+}
+
+.orb.locked {
+    background: radial-gradient(circle at 30% 30%, var(--text-muted), var(--bg-elevated));
+    animation: breathe 4s ease-in-out infinite;
+    box-shadow: 0 0 40px rgba(92, 107, 122, 0.3);
+    opacity: 0.6;
+}
+.orb-ring.locked {
+    animation: ring-breathe 4s ease-in-out infinite;
+    border-color: rgba(92, 107, 122, 0.3);
+}
+
+/* Awaiting permission state - orange/amber */
+.orb.awaiting_permission {
+    background: radial-gradient(circle at 30% 30%, var(--orb-awaiting), var(--orb-awaiting-dark));
+    animation: awaiting-pulse 1.5s ease-in-out infinite;
+    box-shadow: 0 0 80px rgba(251, 191, 36, 0.5);
+}
+.orb-ring.awaiting_permission {
+    animation: ring-awaiting 1.5s ease-in-out infinite;
+    border-color: rgba(251, 191, 36, 0.5);
+    border-width: 3px;
+}
+
+/* Keyframe animations */
+@keyframes awaiting-pulse {
+    0%, 100% { transform: scale(1); opacity: 0.9; }
+    50% { transform: scale(1.05); opacity: 1; }
+}
+@keyframes ring-awaiting {
+    0%, 100% { transform: scale(1); opacity: 0.5; }
+    50% { transform: scale(1.1); opacity: 0.8; }
+}
+
+@keyframes breathe {
+    0%, 100% { transform: scale(1); opacity: 0.8; }
+    50% { transform: scale(1.03); opacity: 1; }
+}
+@keyframes ring-breathe {
+    0%, 100% { transform: scale(1); opacity: 0.3; }
+    50% { transform: scale(1.05); opacity: 0.5; }
+}
+
+@keyframes listen {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.08); }
+}
+@keyframes ring-listen {
+    0%, 100% { transform: scale(1); opacity: 0.4; }
+    50% { transform: scale(1.15); opacity: 0.7; }
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+@keyframes pulse-processing {
+    0%, 100% { opacity: 0.9; }
+    50% { opacity: 1; }
+}
+@keyframes ring-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+@keyframes generate {
+    0%, 100% { transform: scale(1); opacity: 0.9; }
+    50% { transform: scale(1.06); opacity: 1; }
+}
+@keyframes ring-generate {
+    0%, 100% { transform: scale(1); opacity: 0.5; }
+    50% { transform: scale(1.12); opacity: 0.8; }
+}
+
+@keyframes speak {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.12); }
+}
+@keyframes ring-speak {
+    0%, 100% { transform: scale(1); opacity: 0.6; }
+    50% { transform: scale(1.2); opacity: 0.9; }
+}

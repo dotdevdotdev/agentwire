@@ -1,0 +1,15 @@
+{# Ask Modal Component - AskUserQuestion popup #}
+{# Hidden by default, shown via JS when Claude asks a question #}
+
+<div class="question-modal" id="questionModal">
+    <div class="question-card">
+        <div class="question-header">
+            <span class="badge" id="questionBadge">Question</span>
+        </div>
+        <div class="question-text" id="questionText"></div>
+        <div class="question-options" id="questionOptions"></div>
+        <div class="question-custom" id="questionCustom">
+            <input type="text" id="questionCustomInput" placeholder="Type your answer..." autocomplete="off">
+        </div>
+    </div>
+</div>
