@@ -33,6 +33,38 @@ This is the correct way to update the installed binary. **Do NOT use:**
 
 ---
 
+## CRITICAL: Always Use AgentWire CLI
+
+**Never use raw tmux commands when an agentwire CLI alternative exists.**
+
+The agentwire CLI handles complexity that raw tmux commands miss:
+- Worktree creation and management
+- Remote session handling via SSH
+- Session naming conventions (`project/branch@machine`)
+- Room configuration (rooms.json)
+- Proper Claude Code startup with correct flags
+- Clean shutdown sequences
+
+| Instead of... | Use... |
+|---------------|--------|
+| `tmux new-session -d -s name` | `agentwire new -s name` |
+| `tmux send-keys -t name "text" Enter` | `agentwire send -s name "text"` |
+| `tmux capture-pane -t name -p` | `agentwire output -s name` |
+| `tmux kill-session -t name` | `agentwire kill -s name` |
+| `tmux list-sessions` | `agentwire list` |
+| `ssh host "tmux ..."` | `agentwire <cmd> -s name@machine` |
+| `git worktree add ...` | `agentwire new -s project/branch` |
+| `git worktree remove ...` | `agentwire kill -s project/branch` (or `recreate`) |
+
+**Why this matters:**
+- `agentwire new` creates worktrees, sets up rooms.json, starts Claude with correct flags
+- `agentwire send` handles the pause-before-enter timing that tmux send-keys misses
+- `agentwire kill` sends `/exit` first for clean Claude shutdown, then kills session
+- `agentwire list` aggregates sessions from all machines, not just local
+- Remote commands (`@machine`) work transparently without manual SSH
+
+---
+
 ## What Is AgentWire?
 
 A complete voice-enabled orchestration system for AI coding agents:
