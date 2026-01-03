@@ -1532,7 +1532,7 @@
         }
 
         // State machine
-        const STATES = { IDLE: 'idle', LISTENING: 'listening', PROCESSING: 'processing', GENERATING: 'generating', SPEAKING: 'speaking', LOCKED: 'locked' };
+        const STATES = { IDLE: 'idle', LISTENING: 'listening', PROCESSING: 'processing', GENERATING: 'generating', SPEAKING: 'speaking', LOCKED: 'locked', AWAITING_PERMISSION: 'awaiting_permission' };
         let currentState = STATES.IDLE;
         let ws, recognition, currentAudio;
         let isAmbientMode = true;
@@ -1927,6 +1927,10 @@
                     if (currentState === STATES.LOCKED) {
                         setState(STATES.IDLE);
                     }
+                } else if (msg.type === 'permission_request') {
+                    showPermissionModal(msg.tool_name, msg.tool_input, msg.message);
+                } else if (msg.type === 'permission_resolved') {
+                    hidePermissionModal();
                 }
             };
         }
