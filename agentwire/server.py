@@ -21,6 +21,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import aiohttp_jinja2
+import jinja2
 from aiohttp import web
 
 from .config import Config, load_config
@@ -79,7 +81,17 @@ class AgentWireServer:
         self.stt = None
         self.agent = None
         self.app = web.Application()
+        self._setup_jinja2()
         self._setup_routes()
+
+    def _setup_jinja2(self):
+        """Configure Jinja2 template environment."""
+        templates_dir = Path(__file__).parent / "templates"
+        aiohttp_jinja2.setup(
+            self.app,
+            loader=jinja2.FileSystemLoader(str(templates_dir)),
+            autoescape=jinja2.select_autoescape(["html", "xml"]),
+        )
 
     def _setup_routes(self):
         """Configure HTTP and WebSocket routes."""

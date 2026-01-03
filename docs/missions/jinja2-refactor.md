@@ -64,20 +64,20 @@ agentwire/
 
 These tasks have dependencies - run sequentially or coordinate carefully.
 
-- [ ] **2.1 Initialize Jinja2 in server.py** (do first)
+- [x] **2.1 Initialize Jinja2 in server.py** (do first)
   - Import aiohttp_jinja2 and jinja2
   - Setup jinja2 environment with templates directory
   - Configure auto-escaping
   - Keep `_render_template()` temporarily for compatibility
   - Files: `server.py`
 
-- [ ] **2.2 Setup static file serving** (needs 2.1)
+- [x] **2.2 Setup static file serving** (needs 2.1)
   - Create `agentwire/static/` directory structure
   - Add static file route to aiohttp app (`/static/` → `agentwire/static/`)
   - Ensure CSS/JS files are served with correct MIME types
   - Files: `server.py`, `agentwire/static/`
 
-- [ ] **2.3 Create base.html template** (needs 2.1)
+- [x] **2.3 Create base.html template** (needs 2.1)
   - DOCTYPE, html, head with meta tags
   - `{% block title %}` for page titles
   - `{% block styles %}` for page-specific CSS links
@@ -86,7 +86,7 @@ These tasks have dependencies - run sequentially or coordinate carefully.
   - `{% block scripts %}` at end for page-specific JS
   - Files: `templates/base.html`
 
-- [ ] **2.4 Create base.css**
+- [x] **2.4 Create base.css**
   - CSS reset (* { box-sizing, margin, padding })
   - CSS custom properties (colors, spacing, typography)
   - Common body styles
