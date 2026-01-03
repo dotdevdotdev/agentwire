@@ -222,5 +222,6 @@ templates/
 
 - Keep the same visual design - this is a refactor, not a redesign
 - Jinja2 syntax is already compatible with our current `{{ var }}` and `{% for %}` patterns
-- Consider adding Alpine.js for lightweight reactivity (separate decision)
+- **Use vanilla JS** - no Alpine/HTMX for now, keeps it accessible to all devs
 - Static files should be served with cache headers for production
+- JS modules should use clear function names and comments for readability
