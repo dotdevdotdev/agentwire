@@ -53,14 +53,14 @@ Use the `agentwire send` CLI command:
 
 ```bash
 # Local session
-agentwire send <session> "<prompt>"
+agentwire send -s <session> "<prompt>"
 
 # Remote session (via SSH)
-ssh <machine> "agentwire send <session> '<prompt>'"
+ssh <machine> "agentwire send -s <session> '<prompt>'"
 ```
 
 **How it works:**
-- `agentwire send` uses tmux paste-buffer internally for reliable multi-line input
+- `agentwire send` uses tmux send-keys internally
 - Automatically adds Enter to submit the prompt
 - Handles long prompts and special characters properly
 

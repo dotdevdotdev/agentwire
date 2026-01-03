@@ -76,9 +76,9 @@ tmux new-session -d -s <name> -c <path>
 
 # Start Claude Code with role context
 if [ -f "$ROLE_FILE" ]; then
-  agentwire send-keys <name> "claude --context $ROLE_FILE" Enter
+  agentwire send-keys -s <name> "claude --context $ROLE_FILE" Enter
 else
-  agentwire send-keys <name> "claude" Enter
+  agentwire send-keys -s <name> "claude" Enter
 fi
 ```
 
@@ -91,7 +91,7 @@ ssh <host> "tmux has-session -t <name> 2>/dev/null" && echo "Session already exi
 
 # Create session and start Claude with role context
 ssh <host> "tmux new-session -d -s <name> -c <path>"
-ssh <host> "agentwire send-keys <name> 'claude' Enter"
+ssh <host> "agentwire send-keys -s <name> 'claude' Enter"
 ```
 
 ## Examples

@@ -73,12 +73,12 @@ ssh <host> "tmux has-session -t <session> 2>/dev/null" && echo "exists"
 
 ```bash
 # Local - clean shutdown
-agentwire send-keys <session> '/exit' Enter
+agentwire send-keys -s <session> '/exit' Enter
 sleep 3  # Wait for Claude to close
 tmux kill-session -t <session> 2>/dev/null  # Kill if still exists
 
 # Remote - clean shutdown
-ssh <host> "agentwire send-keys <session> '/exit' Enter"
+ssh <host> "agentwire send-keys -s <session> '/exit' Enter"
 sleep 3
 ssh <host> "tmux kill-session -t <session> 2>/dev/null"
 ```

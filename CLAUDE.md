@@ -70,8 +70,8 @@ agentwire session new <name> [path] # Create Claude Code session
 agentwire session new <name> -f     # Replace existing session
 agentwire session output <name>     # Read recent session output
 agentwire session kill <name>       # Clean shutdown (/exit then kill)
-agentwire send <session> "prompt"   # Send prompt + Enter to session
-agentwire send-keys <session> Enter # Send raw keys (no auto-Enter)
+agentwire send -s <session> "prompt"          # Send prompt + Enter
+agentwire send-keys -s <session> "text" Enter # Send keys with pause between
 
 # Machine management
 agentwire machine list                # List machines with status
