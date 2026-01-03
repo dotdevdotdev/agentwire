@@ -238,6 +238,30 @@ class AgentWireServer:
                 pass
         return [self.config.tts.default_voice]
 
+    async def run_agentwire_cmd(self, args: list[str]) -> tuple[bool, dict]:
+        """Run agentwire CLI command, parse JSON output.
+
+        Args:
+            args: Command arguments (e.g., ["new", "-s", "myapp/feature"])
+
+        Returns:
+            Tuple of (success, result_dict). On success, result_dict contains
+            the parsed JSON output. On failure, result_dict contains an "error" key.
+        """
+        proc = await asyncio.create_subprocess_exec(
+            "agentwire", *args, "--json",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        stdout, stderr = await proc.communicate()
+
+        if proc.returncode == 0:
+            try:
+                return True, json.loads(stdout.decode())
+            except json.JSONDecodeError as e:
+                return False, {"error": f"Failed to parse JSON output: {e}"}
+        return False, {"error": stderr.decode().strip() or f"Command failed with exit code {proc.returncode}"}
+
     # HTTP Handlers
 
     async def handle_dashboard(self, request: web.Request) -> web.Response:
