@@ -14,6 +14,18 @@ logger = logging.getLogger(__name__)
 DEFAULT_AGENT_COMMAND = "claude"
 
 
+def tmux_session_exists(name: str) -> bool:
+    """Check if a local tmux session exists (exact match).
+
+    Module-level helper for use outside the TmuxAgent class.
+    """
+    result = subprocess.run(
+        ["tmux", "has-session", "-t", f"={name}"],
+        capture_output=True,
+    )
+    return result.returncode == 0
+
+
 class TmuxAgent(AgentBackend):
     """Agent backend using tmux sessions."""
 

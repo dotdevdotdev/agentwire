@@ -9,6 +9,8 @@ import tempfile
 import time
 from pathlib import Path
 
+from agentwire.agents.tmux import tmux_session_exists
+
 CONFIG_DIR = Path.home() / ".agentwire"
 LOCK_FILE = Path("/tmp/agentwire-listen.lock")
 PID_FILE = Path("/tmp/agentwire-listen.pid")
@@ -81,15 +83,6 @@ def get_audio_device() -> str:
     if device == "default":
         return "default"
     return str(device)
-
-
-def tmux_session_exists(name: str) -> bool:
-    """Check if tmux session exists (exact match)."""
-    result = subprocess.run(
-        ["tmux", "has-session", "-t", f"={name}"],
-        capture_output=True,
-    )
-    return result.returncode == 0
 
 
 def start_recording() -> int:
