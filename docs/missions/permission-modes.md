@@ -265,6 +265,7 @@ Default: `bypass_permissions: true` (current behavior, no breaking change)
 | 3.4 | Allow/Deny buttons that POST to respond endpoint | `templates/room.html` |
 | 3.5 | "AWAITING PERMISSION" orb state (orange/amber) | `templates/room.html` |
 | 3.6 | TTS announcement: "Claude wants to [action] [target]" | `server.py` |
+| 3.7 | Broadcast `permission_resolved` to all clients when any responds | `server.py`, `templates/room.html` |
 
 ## Wave 4: Session Creation UI
 
@@ -312,6 +313,7 @@ Default: `bypass_permissions: true` (current behavior, no breaking change)
 4. **Remote sessions**: Hook POSTs to localhost:8765 which tunnels back to portal
 5. **Hook not installed**: Normal sessions fail gracefully with helpful error
 6. **Browser not open**: Requests queue until user opens room page
+7. **Multiple clients**: When any client responds, broadcast `permission_resolved` to all clients to close their modals
 
 ## Future Enhancements (Not in v1)
 
