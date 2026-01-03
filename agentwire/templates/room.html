@@ -135,25 +135,6 @@
         .header-right { position: relative; }
         .status { font-size: 1rem; color: var(--text-muted); }
         .status.connected { color: var(--primary); }
-        .tts-controls {
-            display: none;
-            height: var(--tts-height);
-            gap: 1rem;
-            padding: 0 1rem;
-            background: #000;
-            border-bottom: 1px solid var(--border);
-            align-items: center;
-            flex-shrink: 0;
-        }
-        .tts-controls.visible { display: flex; }
-        .tts-control {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            font-size: 0.7rem;
-            color: var(--text-muted);
-        }
-        .tts-control input[type="range"] { width: 60px; accent-color: var(--primary); }
 
         /* Terminal mode */
         .output {
@@ -430,9 +411,9 @@
             font-size: 1.2rem;
         }
 
-        /* Floating controls container */
+        /* Floating controls container - works in both modes */
         .floating-controls {
-            position: absolute;
+            position: fixed;
             bottom: 2rem;
             left: 1.5rem;
             right: 1.5rem;
@@ -451,6 +432,8 @@
             display: flex;
             align-items: center;
             gap: 0.5rem;
+            flex: 1;
+            margin-right: 1rem;
         }
         .text-toggle-btn {
             width: 60px;
@@ -483,19 +466,18 @@
             border: 1px solid var(--border);
             border-radius: 28px;
             padding: 0.25rem 0.5rem 0.25rem 1rem;
-            max-width: 0;
+            flex: 0;
             overflow: hidden;
             opacity: 0;
             transition: all 0.3s ease;
         }
         .text-input-expanded.open {
-            max-width: 280px;
+            flex: 1;
             opacity: 1;
         }
         .text-input-expanded input {
             flex: 1;
             min-width: 0;
-            width: 200px;
             padding: 0.5rem 0;
             background: transparent;
             border: none;
@@ -585,161 +567,6 @@
             50% { transform: scale(1.08); }
         }
 
-        /* Terminal mode controls */
-        .controls {
-            height: var(--controls-height);
-            padding: 1rem;
-            background: #000;
-            border-top: 1px solid var(--border);
-            flex-shrink: 0;
-            margin-top: auto;
-        }
-        .controls .transcript {
-            margin-bottom: 0.5rem;
-            padding: 0.5rem 0.75rem;
-            background: var(--bg-light);
-            border-radius: 8px;
-            font-size: 1rem;
-            min-height: 1.5rem;
-            max-height: 3rem;
-            overflow-y: auto;
-            color: var(--text-primary);
-            text-align: center;
-            line-height: 1.3;
-        }
-        .controls .mic-btn-terminal {
-            width: 100%;
-            padding: 1.25rem;
-            font-size: 1.1rem;
-            font-weight: 500;
-            border: none;
-            border-radius: 12px;
-            cursor: pointer;
-            transition: all 0.2s;
-            -webkit-tap-highlight-color: transparent;
-        }
-        .controls .mic-btn-terminal.idle {
-            background: linear-gradient(135deg, rgba(0, 221, 0, 0.15), rgba(0, 153, 0, 0.15));
-            color: var(--primary);
-            border: 2px solid rgba(0, 221, 0, 0.3);
-        }
-        .controls .mic-btn-terminal.listening {
-            background: linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(180, 83, 9, 0.15));
-            color: var(--orb-listening);
-            border: 2px solid rgba(245, 158, 11, 0.4);
-            animation: btn-pulse 0.8s ease-in-out infinite;
-        }
-        .controls .mic-btn-terminal.processing,
-        .controls .mic-btn-terminal.generating {
-            background: linear-gradient(135deg, rgba(168, 85, 247, 0.15), rgba(124, 58, 237, 0.15));
-            color: var(--orb-processing);
-            border: 2px solid rgba(168, 85, 247, 0.3);
-            cursor: not-allowed;
-            opacity: 0.7;
-        }
-        .controls .mic-btn-terminal.speaking {
-            background: linear-gradient(135deg, rgba(74, 222, 128, 0.15), rgba(34, 197, 94, 0.15));
-            color: var(--orb-speaking);
-            border: 2px solid rgba(74, 222, 128, 0.3);
-        }
-        @keyframes btn-pulse {
-            0%, 100% { opacity: 1; transform: scale(1); }
-            50% { opacity: 0.85; transform: scale(0.98); }
-        }
-        .controls .text-input-row {
-            display: flex;
-            gap: 0.5rem;
-            margin-top: 0.5rem;
-        }
-        .controls .text-input {
-            flex: 1;
-            padding: 0.75rem 1rem;
-            background: var(--bg-light);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            color: var(--text-primary);
-            font-size: 0.95rem;
-        }
-        .controls .text-input:focus {
-            outline: none;
-            border-color: var(--primary);
-        }
-        .controls .text-input::placeholder {
-            color: var(--text-muted);
-        }
-        .controls .send-btn-terminal {
-            padding: 0.75rem 1rem;
-            background: var(--primary-subtle);
-            border: 1px solid rgba(0, 221, 0, 0.3);
-            border-radius: 8px;
-            color: var(--primary);
-            font-size: 1.1rem;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        .controls .send-btn-terminal:hover {
-            background: rgba(0, 221, 0, 0.25);
-            border-color: var(--primary);
-        }
-        .controls .send-btn-terminal:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-
-        /* Image attachment */
-        .controls .attach-btn {
-            padding: 0.75rem;
-            background: var(--bg-light);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            color: var(--text-muted);
-            font-size: 1.1rem;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        .controls .attach-btn:hover {
-            border-color: var(--primary);
-            color: var(--primary);
-        }
-        .controls .attach-btn.has-image {
-            background: var(--primary-subtle);
-            border-color: var(--primary);
-            color: var(--primary);
-        }
-        .image-preview {
-            display: none;
-            align-items: center;
-            gap: 0.5rem;
-            padding: 0.5rem;
-            background: var(--bg-light);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            margin-bottom: 0.5rem;
-        }
-        .image-preview.visible { display: flex; }
-        .image-preview img {
-            width: 48px;
-            height: 48px;
-            object-fit: cover;
-            border-radius: 4px;
-        }
-        .image-preview .filename {
-            flex: 1;
-            font-size: 0.85rem;
-            color: var(--text-secondary);
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        .image-preview .remove-btn {
-            background: none;
-            border: none;
-            color: var(--text-muted);
-            font-size: 1.1rem;
-            cursor: pointer;
-            padding: 0.25rem;
-        }
-        .image-preview .remove-btn:hover { color: var(--error); }
 
         /* Ambient mode attach */
         .text-input-expanded .attach-btn-ambient {
@@ -765,7 +592,6 @@
         /* Start in ambient mode by default via CSS */
         .output.ambient-default { display: none; }
         .ambient.ambient-default { display: flex; }
-        .controls.ambient-default { display: none; }
     </style>
 </head>
 <body>
@@ -804,19 +630,15 @@
                         {% endfor %}
                     </select>
                 </div>
+                <div class="settings-group">
+                    <label>Exaggeration</label>
+                    <input type="range" id="exaggeration" min="0" max="1" step="0.1" value="{{ config.exaggeration }}" onchange="updateTTS()" style="width:100%">
+                </div>
+                <div class="settings-group">
+                    <label>CFG Weight</label>
+                    <input type="range" id="cfgWeight" min="0" max="1" step="0.1" value="{{ config.cfg_weight }}" onchange="updateTTS()" style="width:100%">
+                </div>
             </div>
-        </div>
-    </div>
-    <div class="tts-controls" id="ttsControls">
-        <div class="tts-control">
-            <label>Exag</label>
-            <input type="range" id="exaggeration" min="0" max="1" step="0.1" value="{{ config.exaggeration }}" onchange="updateTTS()">
-            <span id="exagVal">{{ config.exaggeration }}</span>
-        </div>
-        <div class="tts-control">
-            <label>CFG</label>
-            <input type="range" id="cfgWeight" min="0" max="1" step="0.1" value="{{ config.cfg_weight }}" onchange="updateTTS()">
-            <span id="cfgVal">{{ config.cfg_weight }}</span>
         </div>
     </div>
 
@@ -844,40 +666,27 @@
             <div class="user-bubble" id="userBubble"></div>
         </div>
 
-        <!-- Floating controls -->
-        <div class="floating-controls">
-            <!-- Text input on left -->
-            <div class="text-input-wrapper">
-                <button class="text-toggle-btn" id="textToggleBtn" onclick="toggleTextInput()">⌨</button>
-                <div class="text-input-expanded" id="textInputExpanded">
-                    <button class="attach-btn-ambient" id="attachBtnAmbient" onclick="triggerFileInput()" title="Attach image">📎</button>
-                    <img class="ambient-image-preview" id="ambientImagePreview" src="" alt="">
-                    <input type="text" id="textInputAmbient" placeholder="Type a message..." autocomplete="off">
-                    <button class="send-btn" id="sendBtnAmbient" onclick="sendTextInputAmbient()">↑</button>
-                </div>
+    </div>
+
+    <!-- Floating controls (both modes) -->
+    <div class="floating-controls" id="floatingControls">
+        <!-- Text input on left -->
+        <div class="text-input-wrapper">
+            <button class="text-toggle-btn" id="textToggleBtn" onclick="toggleTextInput()">⌨</button>
+            <div class="text-input-expanded" id="textInputExpanded">
+                <button class="attach-btn-ambient" id="attachBtnAmbient" onclick="triggerFileInput()" title="Attach image">📎</button>
+                <img class="ambient-image-preview" id="ambientImagePreview" src="" alt="">
+                <input type="text" id="textInputAmbient" placeholder="Type a message..." autocomplete="off">
+                <button class="send-btn" id="sendBtnAmbient" onclick="sendTextInputAmbient()">↑</button>
             </div>
-
-            <!-- Mic button on right -->
-            <button class="mic-btn idle" id="micBtn">🎤</button>
         </div>
+
+        <!-- Mic button on right -->
+        <button class="mic-btn idle" id="micBtn">🎤</button>
     </div>
 
-    <!-- Terminal Mode Controls -->
-    <div class="controls ambient-default" id="terminalControls">
-        <div class="transcript" id="transcript">Tap and hold to speak</div>
-        <button class="mic-btn-terminal idle" id="micBtnTerminal">Hold to Talk</button>
-        <div class="image-preview" id="imagePreview">
-            <img id="imagePreviewImg" src="" alt="Preview">
-            <span class="filename" id="imageFilename"></span>
-            <button class="remove-btn" onclick="removeImage()">✕</button>
-        </div>
-        <div class="text-input-row">
-            <input type="text" class="text-input" id="textInput" placeholder="Type a message..." autocomplete="off">
-            <button class="attach-btn" id="attachBtn" onclick="triggerFileInput()" title="Attach image">📎</button>
-            <button class="send-btn-terminal" id="sendBtn" onclick="sendTextInput()">↵</button>
-        </div>
-        <input type="file" id="fileInput" accept="image/*" style="display:none" onchange="handleFileSelect(event)">
-    </div>
+    <!-- Hidden file input -->
+    <input type="file" id="fileInput" accept="image/*" style="display:none" onchange="handleFileSelect(event)">
 
     <script>
         const ROOM = '{{ room_name }}';
@@ -890,23 +699,17 @@
             stateLabel: document.getElementById('stateLabel'),
             status: document.getElementById('status'),
             micBtn: document.getElementById('micBtn'),
-            micBtnTerminal: document.getElementById('micBtnTerminal'),
-            transcript: document.getElementById('transcript'),
             modeToggle: document.getElementById('modeToggle'),
-            ttsControls: document.getElementById('ttsControls'),
-            terminalControls: document.getElementById('terminalControls'),
             micSelect: document.getElementById('micSelect'),
             speakerSelect: document.getElementById('speakerSelect'),
             settingsDropdown: document.getElementById('settingsDropdown'),
             aiBubble: document.getElementById('aiBubble'),
             userBubble: document.getElementById('userBubble'),
+            aiBubbleContainer: document.querySelector('.ai-bubble-container'),
+            userBubbleContainer: document.querySelector('.user-bubble-container'),
             textToggleBtn: document.getElementById('textToggleBtn'),
             textInputExpanded: document.getElementById('textInputExpanded'),
             textInputAmbient: document.getElementById('textInputAmbient'),
-            imagePreview: document.getElementById('imagePreview'),
-            imagePreviewImg: document.getElementById('imagePreviewImg'),
-            imageFilename: document.getElementById('imageFilename'),
-            attachBtn: document.getElementById('attachBtn'),
             attachBtnAmbient: document.getElementById('attachBtnAmbient'),
             ambientImagePreview: document.getElementById('ambientImagePreview'),
             fileInput: document.getElementById('fileInput')
@@ -961,14 +764,6 @@
 
         function showImagePreview() {
             if (!pendingImage) return;
-
-            // Terminal mode preview
-            elements.imagePreviewImg.src = pendingImage.preview;
-            elements.imageFilename.textContent = pendingImage.filename;
-            elements.imagePreview.classList.add('visible');
-            elements.attachBtn.classList.add('has-image');
-
-            // Ambient mode preview
             elements.ambientImagePreview.src = pendingImage.preview;
             elements.ambientImagePreview.classList.add('visible');
             elements.attachBtnAmbient.classList.add('has-image');
@@ -976,12 +771,6 @@
 
         function removeImage() {
             pendingImage = null;
-
-            // Terminal mode
-            elements.imagePreview.classList.remove('visible');
-            elements.attachBtn.classList.remove('has-image');
-
-            // Ambient mode
             elements.ambientImagePreview.classList.remove('visible');
             elements.attachBtnAmbient.classList.remove('has-image');
         }
@@ -1189,8 +978,6 @@
             elements.stateLabel.textContent = config.label;
 
             elements.micBtn.className = 'mic-btn ' + newState;
-            elements.micBtnTerminal.className = 'mic-btn-terminal ' + newState;
-            elements.micBtnTerminal.textContent = config.btnText;
 
             // Update AI bubble speaking state
             if (newState === STATES.SPEAKING) {
@@ -1212,7 +999,6 @@
             // Only react if we're IDLE - don't interrupt other states
             if (currentState === STATES.IDLE) {
                 setState(STATES.PROCESSING);
-                elements.transcript.textContent = 'Processing...';
             }
 
             // Reset timeout while activity continues (regardless of current state)
@@ -1221,13 +1007,13 @@
                 processingTimeout = setTimeout(() => {
                     if (currentState === STATES.PROCESSING) {
                         setState(STATES.IDLE);
-                        elements.transcript.textContent = 'Tap and hold to speak';
                     }
                 }, 10000);  // 10s of no activity = return to idle
             }
         }
 
         function showUserBubble(text) {
+            if (!isAmbientMode) return;  // No bubbles in terminal mode
             elements.userBubble.textContent = text;
             elements.userBubble.classList.add('visible');
         }
@@ -1242,6 +1028,7 @@
         }
 
         function showAiBubble(text) {
+            if (!isAmbientMode) return;  // No bubbles in terminal mode
             const cleaned = cleanText(text);
             lastAiMessage = cleaned;
             elements.aiBubble.textContent = cleaned;
@@ -1254,20 +1041,32 @@
             // Remove initial CSS classes on first toggle
             elements.output.classList.remove('ambient-default');
             elements.ambient.classList.remove('ambient-default');
-            elements.terminalControls.classList.remove('ambient-default');
 
             // Apply the correct display states
             elements.output.classList.toggle('hidden', isAmbientMode);
             elements.ambient.classList.toggle('active', isAmbientMode);
-            elements.ttsControls.classList.toggle('visible', !isAmbientMode);
-            elements.terminalControls.style.display = isAmbientMode ? 'none' : 'block';
             elements.modeToggle.textContent = isAmbientMode ? 'Switch to Terminal' : 'Switch to Ambient';
             elements.settingsDropdown.classList.remove('open');
 
+            // Terminal mode: hide bubbles, expand text input by default
             if (!isAmbientMode) {
+                // Hide bubbles in terminal mode
+                elements.aiBubbleContainer.style.display = 'none';
+                elements.userBubbleContainer.style.display = 'none';
+
+                // Expand text input by default in terminal mode
+                textInputOpen = true;
+                elements.textToggleBtn.classList.add('active');
+                elements.textInputExpanded.classList.add('open');
+
                 setTimeout(() => {
                     elements.output.scrollTop = elements.output.scrollHeight;
+                    elements.textInputAmbient.focus();
                 }, 50);
+            } else {
+                // Show bubbles in ambient mode
+                elements.aiBubbleContainer.style.display = '';
+                elements.userBubbleContainer.style.display = '';
             }
         }
 
@@ -1282,8 +1081,6 @@
         async function updateTTS() {
             const exag = parseFloat(document.getElementById('exaggeration').value);
             const cfg = parseFloat(document.getElementById('cfgWeight').value);
-            document.getElementById('exagVal').textContent = exag.toFixed(1);
-            document.getElementById('cfgVal').textContent = cfg.toFixed(1);
             await fetch('/api/room/' + ROOM + '/config', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -1333,12 +1130,10 @@
                 } else if (msg.type === 'room_locked') {
                     if (currentState === STATES.IDLE) {
                         setState(STATES.LOCKED);
-                        elements.transcript.textContent = 'Another device is talking...';
                     }
                 } else if (msg.type === 'room_unlocked') {
                     if (currentState === STATES.LOCKED) {
                         setState(STATES.IDLE);
-                        elements.transcript.textContent = 'Tap and hold to speak';
                     }
                 }
             };
@@ -1370,7 +1165,6 @@
             currentAudio.onended = () => {
                 currentAudio = null;
                 setState(STATES.IDLE);
-                elements.transcript.textContent = 'Tap and hold to speak';
             };
 
             currentAudio.play().catch(e => {
@@ -1415,7 +1209,6 @@
                             ? `0 0 ${level/2}px ${level/4}px rgba(245, 158, 11, ${level/100})`
                             : 'none';
                         elements.micBtn.style.boxShadow = shadow;
-                        elements.micBtnTerminal.style.boxShadow = shadow;
                     }
                 }, 50);
             } catch (e) {
@@ -1428,7 +1221,6 @@
             if (mediaStream) mediaStream.getTracks().forEach(t => t.stop());
             if (audioContext) audioContext.close();
             elements.micBtn.style.boxShadow = '';
-            elements.micBtnTerminal.style.boxShadow = 'none';
             audioContext = null;
             mediaStream = null;
         }
@@ -1472,7 +1264,6 @@
 
                     if (audioChunks.length === 0) {
                         setState(STATES.IDLE);
-                        elements.transcript.textContent = 'Tap and hold to speak';
                         hideUserBubble();
                         return;
                     }
@@ -1483,13 +1274,11 @@
 
                 mediaRecorder.start(100);
                 setState(STATES.LISTENING);
-                elements.transcript.textContent = 'Recording...';
                 showUserBubble('Recording...');
                 startAudioMonitor();
 
             } catch (err) {
                 console.error('Mic error:', err);
-                elements.transcript.textContent = 'Microphone error';
                 setState(STATES.IDLE);
             }
         }
@@ -1498,7 +1287,6 @@
             if (currentState !== STATES.LISTENING || !mediaRecorder) return;
 
             stopAudioMonitor();
-            elements.transcript.textContent = 'Transcribing...';
             showUserBubble('Transcribing...');
 
             if (ws && ws.readyState === WebSocket.OPEN) {
@@ -1529,7 +1317,6 @@
                 const data = await resp.json();
 
                 if (data.error) {
-                    elements.transcript.textContent = 'Transcription failed';
                     hideUserBubble();
                     setState(STATES.IDLE);
                     return;
@@ -1537,13 +1324,11 @@
 
                 const text = data.text?.trim();
                 if (!text) {
-                    elements.transcript.textContent = 'No speech detected';
                     hideUserBubble();
                     setState(STATES.IDLE);
                     return;
                 }
 
-                elements.transcript.textContent = text;
                 showUserBubble(text);
 
                 await fetch('/send/' + ROOM, {
@@ -1555,68 +1340,17 @@
                 processingTimeout = setTimeout(() => {
                     if (currentState === STATES.PROCESSING) {
                         setState(STATES.IDLE);
-                        elements.transcript.textContent = 'Tap and hold to speak';
                     }
                 }, 30000);
 
             } catch (err) {
                 console.error('Transcribe error:', err);
-                elements.transcript.textContent = 'Error: ' + err.message;
                 hideUserBubble();
                 setState(STATES.IDLE);
             }
         }
 
-        // Text input handling - Terminal mode
-        async function sendTextInput() {
-            const input = document.getElementById('textInput');
-            const text = input.value.trim();
-            if (!text && !pendingImage) return;
-
-            const sendBtn = document.getElementById('sendBtn');
-            sendBtn.disabled = true;
-            input.disabled = true;
-
-            try {
-                let finalText = text;
-
-                // Upload image if attached
-                if (pendingImage) {
-                    const imagePath = await uploadImage();
-                    if (imagePath) {
-                        finalText = `@${imagePath} ${text}`;
-                    }
-                    removeImage();
-                }
-
-                await fetch('/send/' + ROOM, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ text: '[Remote text - use remote-say] ' + finalText })
-                });
-                input.value = '';
-
-                elements.transcript.textContent = text || '(image)';
-                setState(STATES.PROCESSING);
-
-                if (processingTimeout) clearTimeout(processingTimeout);
-                processingTimeout = setTimeout(() => {
-                    if (currentState === STATES.PROCESSING) {
-                        setState(STATES.IDLE);
-                        elements.transcript.textContent = 'Tap and hold to speak';
-                    }
-                }, 30000);
-
-            } catch (err) {
-                console.error('Send error:', err);
-            } finally {
-                sendBtn.disabled = false;
-                input.disabled = false;
-                input.focus();
-            }
-        }
-
-        // Text input handling - Ambient mode
+        // Text input handling
         async function sendTextInputAmbient() {
             const input = elements.textInputAmbient;
             const text = input.value.trim();
@@ -1649,10 +1383,12 @@
 
                 setState(STATES.PROCESSING);
 
-                // Close text input
-                textInputOpen = false;
-                elements.textToggleBtn.classList.remove('active');
-                elements.textInputExpanded.classList.remove('open');
+                // Close text input in ambient mode only (terminal mode keeps it open)
+                if (isAmbientMode) {
+                    textInputOpen = false;
+                    elements.textToggleBtn.classList.remove('active');
+                    elements.textInputExpanded.classList.remove('open');
+                }
 
                 if (processingTimeout) clearTimeout(processingTimeout);
                 processingTimeout = setTimeout(() => {
@@ -1669,13 +1405,6 @@
             }
         }
 
-        document.getElementById('textInput').addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                sendTextInput();
-            }
-        });
-
         elements.textInputAmbient.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
@@ -1683,19 +1412,12 @@
             }
         });
 
-        // Event listeners - Ambient mode mic
+        // Event listeners - Mic button
         elements.micBtn.addEventListener('mousedown', startListening);
         elements.micBtn.addEventListener('mouseup', stopListening);
         elements.micBtn.addEventListener('mouseleave', stopListening);
         elements.micBtn.addEventListener('touchstart', (e) => { e.preventDefault(); startListening(); });
         elements.micBtn.addEventListener('touchend', (e) => { e.preventDefault(); stopListening(); });
-
-        // Event listeners - Terminal mode mic
-        elements.micBtnTerminal.addEventListener('mousedown', startListening);
-        elements.micBtnTerminal.addEventListener('mouseup', stopListening);
-        elements.micBtnTerminal.addEventListener('mouseleave', stopListening);
-        elements.micBtnTerminal.addEventListener('touchstart', (e) => { e.preventDefault(); startListening(); });
-        elements.micBtnTerminal.addEventListener('touchend', (e) => { e.preventDefault(); stopListening(); });
 
         // Start in ambient mode by default (via CSS classes)
         connect();

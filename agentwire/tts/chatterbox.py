@@ -78,10 +78,13 @@ class ChatterboxTTS(TTSBackend):
             async with session.get(f"{self.url}/voices") as resp:
                 if resp.status == 200:
                     data = await resp.json()
-                    if isinstance(data, list):
-                        return data
+                    voices = data
                     if isinstance(data, dict) and "voices" in data:
-                        return data["voices"]
+                        voices = data["voices"]
+                    # Extract name if voices are objects
+                    if voices and isinstance(voices[0], dict):
+                        return [v.get("name", str(v)) for v in voices]
+                    return voices if isinstance(voices, list) else []
                 return []
         except aiohttp.ClientError:
             return []

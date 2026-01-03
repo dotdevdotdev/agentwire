@@ -9,6 +9,8 @@ Orchestrate multiple Claude Code sessions running in tmux, locally or on remote 
 
 ## Available Commands
 
+### Session Management
+
 | Command | Purpose |
 |---------|---------|
 | `/spawn <name> [--force]` | Smart create - checks if exists, offers options |
@@ -19,6 +21,18 @@ Orchestrate multiple Claude Code sessions running in tmux, locally or on remote 
 | `/kill <session>` | Cleanly destroy a session |
 | `/status` | Check all machines and their sessions |
 | `/jump <session>` | Get instructions to attach manually |
+
+### Machine Management
+
+| Command | Purpose |
+|---------|---------|
+| `/machine-setup [id] [ip]` | Interactive wizard for adding a remote machine |
+| `/machine-remove [id]` | Interactive wizard for removing a machine |
+
+CLI equivalents:
+- `agentwire machine list` - List registered machines
+- `agentwire machine add <id>` - Quick add (no wizard)
+- `agentwire machine remove <id>` - Remove with cleanup
 
 ## Session Naming
 
@@ -87,32 +101,39 @@ Claude: Shows all machines online/offline with their sessions
 
 ## Implementation
 
-All commands use tmux directly:
+Use the `agentwire` CLI commands:
 
 ```bash
 # List sessions
-tmux list-sessions -F "#{session_name}: #{session_windows} windows"
+agentwire session list
+
+# Create session (uses --dangerously-skip-permissions automatically)
+agentwire session new <name> [path]
+agentwire session new dotdev.dev           # Creates dotdev_dev session in ~/projects/dotdev.dev
+agentwire session new api /path/to/api     # Explicit path
+agentwire session new api --force          # Replace existing
 
 # Send prompt
-tmux send-keys -t <session> "<prompt>" Enter
+agentwire send <session> "<prompt>"
 
 # Read output
-tmux capture-pane -t <session> -p -S -50
+agentwire session output <session>
+agentwire session output <session> --lines 100
 
-# Create session
-tmux new-session -d -s <name> -c <path>
-tmux send-keys -t <name> "claude" Enter
-
-# Kill session (clean shutdown - sends /exit first)
-tmux send-keys -t <session> "/exit" Enter
-sleep 3
-tmux kill-session -t <session>
+# Kill session (sends /exit first for clean Claude shutdown)
+agentwire session kill <session>
 ```
+
+**Session Naming:**
+- Dots in names become underscores: `dotdev.dev` → session `dotdev_dev`
+- Path lookup uses original name: `~/projects/dotdev.dev/`
 
 For remote sessions, wrap commands in SSH:
 ```bash
-ssh <host> "tmux list-sessions ..."
+ssh <host> "agentwire session list"
 ```
+
+**Important:** `agentwire session new` automatically starts Claude with `--dangerously-skip-permissions` for autonomous work.
 
 ## Voice Integration
 

@@ -212,7 +212,7 @@
         .archive-item .archive-name { color: var(--text-primary); }
         .archive-item .archive-time { color: var(--text-muted); font-size: 0.75rem; }
         .archive-empty { color: var(--text-muted); font-size: 0.8rem; }
-        .session-close {
+        .session-close, .machine-remove {
             background: none;
             border: none;
             color: var(--text-muted);
@@ -222,9 +222,13 @@
             border-radius: 4px;
             transition: all 0.2s;
         }
-        .session-close:hover {
+        .session-close:hover, .machine-remove:hover {
             color: var(--error);
             background: rgba(248, 113, 113, 0.1);
+        }
+        .machine-remove {
+            font-size: 0.75rem;
+            padding: 0.15rem 0.4rem;
         }
         .config-path {
             padding: 0.5rem;
@@ -597,7 +601,10 @@
                         <span class="machine-id">${m.id}</span>
                         ${m.local ? '<span class="machine-local">(this machine)</span>' : ''}
                     </div>
-                    <span class="machine-host">${m.local ? '' : (m.user ? m.user + '@' : '') + m.host}</span>
+                    <div>
+                        <span class="machine-host">${m.local ? '' : (m.user ? m.user + '@' : '') + m.host}</span>
+                        ${!m.local ? `<button class="machine-remove" onclick="removeMachine('${m.id}')" title="Remove machine">✕</button>` : ''}
+                    </div>
                 </div>
             `).join('');
         }
@@ -636,6 +643,24 @@
                 document.getElementById('machineUser').value = '';
                 document.getElementById('machineProjectsDir').value = '';
                 loadMachines();
+            }
+        }
+
+        async function removeMachine(id) {
+            if (!confirm(`Remove machine "${id}" from AgentWire?\n\nThis only removes it from the portal. The remote machine itself is not affected.`)) return;
+
+            const res = await fetch(`/api/machines/${encodeURIComponent(id)}`, {
+                method: 'DELETE'
+            });
+            const data = await res.json();
+
+            if (data.error) {
+                alert('Failed to remove machine: ' + data.error);
+            } else {
+                loadMachines();
+                if (data.rooms_removed && data.rooms_removed.length > 0) {
+                    console.log('Removed room configs:', data.rooms_removed);
+                }
             }
         }
 

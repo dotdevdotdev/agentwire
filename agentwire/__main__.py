@@ -1,10 +1,13 @@
 """CLI entry point for AgentWire."""
 
 import argparse
+import importlib.resources
 import json
 import os
+import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 from . import __version__
@@ -373,6 +376,379 @@ def _remote_say(text: str, room: str, portal_url: str) -> int:
         return 1
 
 
+# === Session Commands ===
+
+def cmd_send(args) -> int:
+    """Send a prompt to a tmux session."""
+    session = args.session
+    prompt = " ".join(args.prompt) if args.prompt else ""
+
+    if not prompt:
+        print("Usage: agentwire send <session> <prompt>", file=sys.stderr)
+        return 1
+
+    # Check if session exists
+    result = subprocess.run(
+        ["tmux", "has-session", "-t", session],
+        capture_output=True
+    )
+    if result.returncode != 0:
+        print(f"Session '{session}' not found", file=sys.stderr)
+        return 1
+
+    # Send the prompt via tmux send-keys
+    subprocess.run(
+        ["tmux", "send-keys", "-t", session, prompt, "Enter"],
+        check=True
+    )
+
+    # For multi-line text, Claude Code shows "[Pasted text...]" and waits for Enter
+    # Send another Enter after a short delay to confirm the paste
+    if "\n" in prompt or len(prompt) > 200:
+        time.sleep(0.5)
+        subprocess.run(
+            ["tmux", "send-keys", "-t", session, "Enter"],
+            check=True
+        )
+
+    print(f"Sent to {session}")
+    return 0
+
+
+def cmd_session_new(args) -> int:
+    """Create a new Claude Code session in tmux."""
+    name = args.name
+    path = args.path
+
+    # Convert dots to underscores for tmux session name
+    session_name = name.replace(".", "_")
+
+    # Resolve path
+    if path:
+        session_path = Path(path).expanduser().resolve()
+    else:
+        # Default to ~/projects/<name> (using original name with dots)
+        config = load_config()
+        projects_dir = Path(config.get("projects", {}).get("dir", "~/projects")).expanduser()
+        session_path = projects_dir / name
+
+    if not session_path.exists():
+        print(f"Path does not exist: {session_path}", file=sys.stderr)
+        return 1
+
+    # Check if session already exists
+    result = subprocess.run(
+        ["tmux", "has-session", "-t", session_name],
+        capture_output=True
+    )
+    if result.returncode == 0:
+        if args.force:
+            # Kill existing session
+            subprocess.run(["tmux", "send-keys", "-t", session_name, "/exit", "Enter"])
+            time.sleep(2)
+            subprocess.run(["tmux", "kill-session", "-t", session_name], capture_output=True)
+        else:
+            print(f"Session '{session_name}' already exists. Use --force to replace.", file=sys.stderr)
+            return 1
+
+    # Create new tmux session
+    subprocess.run(
+        ["tmux", "new-session", "-d", "-s", session_name, "-c", str(session_path)],
+        check=True
+    )
+
+    # Start Claude with skip-permissions flag
+    subprocess.run(
+        ["tmux", "send-keys", "-t", session_name, "claude --dangerously-skip-permissions", "Enter"],
+        check=True
+    )
+
+    print(f"Created session '{session_name}' in {session_path}")
+    print(f"Attach with: tmux attach -t {session_name}")
+    return 0
+
+
+def cmd_session_list(args) -> int:
+    """List all tmux sessions."""
+    result = subprocess.run(
+        ["tmux", "list-sessions", "-F", "#{session_name}: #{session_windows} windows (#{session_path})"],
+        capture_output=True,
+        text=True
+    )
+    if result.returncode != 0:
+        print("No sessions running")
+        return 0
+
+    print(result.stdout.strip())
+    return 0
+
+
+def cmd_session_output(args) -> int:
+    """Read output from a tmux session."""
+    session = args.session
+    lines = args.lines or 50
+
+    result = subprocess.run(
+        ["tmux", "has-session", "-t", session],
+        capture_output=True
+    )
+    if result.returncode != 0:
+        print(f"Session '{session}' not found", file=sys.stderr)
+        return 1
+
+    result = subprocess.run(
+        ["tmux", "capture-pane", "-t", session, "-p", "-S", f"-{lines}"],
+        capture_output=True,
+        text=True
+    )
+    print(result.stdout)
+    return 0
+
+
+def cmd_session_kill(args) -> int:
+    """Kill a tmux session (with clean Claude exit)."""
+    session = args.session
+
+    result = subprocess.run(
+        ["tmux", "has-session", "-t", session],
+        capture_output=True
+    )
+    if result.returncode != 0:
+        print(f"Session '{session}' not found", file=sys.stderr)
+        return 1
+
+    # Send /exit to Claude first for clean shutdown
+    subprocess.run(["tmux", "send-keys", "-t", session, "/exit", "Enter"])
+    print(f"Sent /exit to {session}, waiting 3s...")
+    time.sleep(3)
+
+    # Kill the session
+    subprocess.run(["tmux", "kill-session", "-t", session])
+    print(f"Killed session '{session}'")
+    return 0
+
+
+# === Machine Commands ===
+
+def cmd_machine_add(args) -> int:
+    """Add a machine to the AgentWire network."""
+    machine_id = args.machine_id
+    host = args.host or machine_id  # Default host to id if not specified
+    user = args.user
+    projects_dir = args.projects_dir
+
+    machines_file = CONFIG_DIR / "machines.json"
+    machines_file.parent.mkdir(parents=True, exist_ok=True)
+
+    # Load existing machines
+    machines = []
+    if machines_file.exists():
+        try:
+            with open(machines_file) as f:
+                machines = json.load(f).get("machines", [])
+        except (json.JSONDecodeError, IOError):
+            pass
+
+    # Check for duplicate ID
+    if any(m.get("id") == machine_id for m in machines):
+        print(f"Machine '{machine_id}' already exists", file=sys.stderr)
+        return 1
+
+    # Build machine entry
+    new_machine = {"id": machine_id, "host": host}
+    if user:
+        new_machine["user"] = user
+    if projects_dir:
+        new_machine["projects_dir"] = projects_dir
+
+    machines.append(new_machine)
+
+    # Save
+    with open(machines_file, "w") as f:
+        json.dump({"machines": machines}, f, indent=2)
+        f.write("\n")
+
+    print(f"Added machine '{machine_id}'")
+    print(f"  Host: {host}")
+    if user:
+        print(f"  User: {user}")
+    if projects_dir:
+        print(f"  Projects: {projects_dir}")
+    print()
+    print("Next steps:")
+    print("  1. Ensure SSH access: ssh", f"{user}@{host}" if user else host)
+    print("  2. Start tunnel: autossh -M 0 -f -N -R 8765:localhost:8765", machine_id)
+    print("  3. Restart portal: agentwire portal stop && agentwire portal start")
+    print()
+    print("For full setup guide, run: /machine-setup in a Claude session")
+
+    return 0
+
+
+def cmd_machine_remove(args) -> int:
+    """Remove a machine from the AgentWire network."""
+    machine_id = args.machine_id
+
+    machines_file = CONFIG_DIR / "machines.json"
+    rooms_file = CONFIG_DIR / "rooms.json"
+
+    # Step 1: Load and check machines.json
+    if not machines_file.exists():
+        print(f"No machines.json found at {machines_file}", file=sys.stderr)
+        return 1
+
+    try:
+        with open(machines_file) as f:
+            machines_data = json.load(f)
+    except json.JSONDecodeError as e:
+        print(f"Invalid machines.json: {e}", file=sys.stderr)
+        return 1
+
+    machines = machines_data.get("machines", [])
+    machine = next((m for m in machines if m.get("id") == machine_id), None)
+
+    if not machine:
+        print(f"Machine '{machine_id}' not found in machines.json", file=sys.stderr)
+        print(f"Available machines: {', '.join(m.get('id', '?') for m in machines)}")
+        return 1
+
+    host = machine.get("host", machine_id)
+
+    print(f"Removing machine '{machine_id}' (host: {host})...")
+    print()
+
+    # Step 2: Kill autossh tunnel
+    print("Stopping tunnel...")
+    result = subprocess.run(
+        ["pkill", "-f", f"autossh.*{machine_id}"],
+        capture_output=True,
+    )
+    if result.returncode == 0:
+        print(f"  ✓ Killed autossh tunnel for {machine_id}")
+    else:
+        # Also try by host if different from id
+        if host != machine_id:
+            result = subprocess.run(
+                ["pkill", "-f", f"autossh.*{host}"],
+                capture_output=True,
+            )
+            if result.returncode == 0:
+                print(f"  ✓ Killed autossh tunnel for {host}")
+            else:
+                print(f"  - No tunnel running (or already stopped)")
+        else:
+            print(f"  - No tunnel running (or already stopped)")
+
+    # Step 3: Remove from machines.json
+    print("Updating machines.json...")
+    machines_data["machines"] = [m for m in machines if m.get("id") != machine_id]
+    with open(machines_file, "w") as f:
+        json.dump(machines_data, f, indent=2)
+        f.write("\n")
+    print(f"  ✓ Removed '{machine_id}' from machines.json")
+
+    # Step 4: Clean rooms.json
+    print("Cleaning rooms.json...")
+    if rooms_file.exists():
+        try:
+            with open(rooms_file) as f:
+                rooms_data = json.load(f)
+
+            # Find rooms matching *@machine_id pattern
+            rooms_to_remove = [
+                room for room in rooms_data.keys()
+                if room.endswith(f"@{machine_id}")
+            ]
+
+            if rooms_to_remove:
+                for room in rooms_to_remove:
+                    del rooms_data[room]
+                with open(rooms_file, "w") as f:
+                    json.dump(rooms_data, f, indent=2)
+                    f.write("\n")
+                print(f"  ✓ Removed {len(rooms_to_remove)} room(s): {', '.join(rooms_to_remove)}")
+            else:
+                print(f"  - No room configs found for @{machine_id}")
+        except json.JSONDecodeError:
+            print(f"  - rooms.json is invalid, skipping")
+    else:
+        print(f"  - No rooms.json found")
+
+    # Step 5: Print manual steps
+    print()
+    print("=" * 50)
+    print("MANUAL STEPS REQUIRED:")
+    print("=" * 50)
+    print()
+    print("1. Remove SSH config entry:")
+    print(f"   Edit ~/.ssh/config and remove the 'Host {machine_id}' block")
+    print()
+    print("2. Remove from tunnel startup script (if using):")
+    print(f"   Edit ~/.local/bin/agentwire-tunnels")
+    print(f"   Remove '{machine_id}' from the MACHINES list")
+    print()
+    print("3. Delete GitHub deploy keys:")
+    print(f"   gh repo deploy-key list --repo <user>/<repo>")
+    print(f"   # Find keys titled '{machine_id}' and delete them:")
+    print(f"   gh repo deploy-key delete <key-id> --repo <user>/<repo>")
+    print()
+    print("4. Destroy remote machine:")
+    print(f"   Option A: Delete user only")
+    print(f"     ssh root@<ip> 'pkill -u agentwire; userdel -r agentwire'")
+    print(f"   Option B: Destroy the VM entirely via provider console")
+    print()
+    print("5. Restart portal to pick up changes:")
+    print("   agentwire portal stop && agentwire portal start")
+    print()
+
+    return 0
+
+
+def cmd_machine_list(args) -> int:
+    """List registered machines."""
+    machines_file = CONFIG_DIR / "machines.json"
+
+    if not machines_file.exists():
+        print("No machines registered.")
+        print(f"  Config: {machines_file}")
+        return 0
+
+    try:
+        with open(machines_file) as f:
+            machines_data = json.load(f)
+    except json.JSONDecodeError as e:
+        print(f"Invalid machines.json: {e}", file=sys.stderr)
+        return 1
+
+    machines = machines_data.get("machines", [])
+
+    if not machines:
+        print("No machines registered.")
+        return 0
+
+    print(f"Registered machines ({len(machines)}):")
+    print()
+    for m in machines:
+        machine_id = m.get("id", "?")
+        host = m.get("host", machine_id)
+        projects_dir = m.get("projects_dir", "~")
+
+        # Check if tunnel is running
+        result = subprocess.run(
+            ["pgrep", "-f", f"autossh.*{machine_id}"],
+            capture_output=True,
+        )
+        tunnel_status = "✓ tunnel" if result.returncode == 0 else "✗ no tunnel"
+
+        print(f"  {machine_id}")
+        print(f"    Host: {host}")
+        print(f"    Projects: {projects_dir}")
+        print(f"    Status: {tunnel_status}")
+        print()
+
+    return 0
+
+
 # === Dev Command ===
 
 def cmd_dev(args) -> int:
@@ -528,6 +904,121 @@ def cmd_voiceclone_delete(args) -> int:
     return delete_voice(args.name)
 
 
+# === Skills Commands ===
+
+CLAUDE_SKILLS_DIR = Path.home() / ".claude" / "skills"
+
+
+def get_skills_source() -> Path:
+    """Get the path to the skills directory in the installed package."""
+    # First try: skills directory inside the agentwire package
+    package_dir = Path(__file__).parent
+    skills_dir = package_dir / "skills"
+    if skills_dir.exists():
+        return skills_dir
+
+    # Fallback: try importlib.resources (for installed packages)
+    try:
+        with importlib.resources.files("agentwire").joinpath("skills") as p:
+            if p.exists():
+                return Path(p)
+    except (TypeError, FileNotFoundError):
+        pass
+
+    raise FileNotFoundError("Could not find skills directory in package")
+
+
+def cmd_skills_install(args) -> int:
+    """Install Claude Code skills for AgentWire integration."""
+    target_dir = CLAUDE_SKILLS_DIR / "agentwire"
+
+    try:
+        source_dir = get_skills_source()
+    except FileNotFoundError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    # Create ~/.claude/skills if it doesn't exist
+    CLAUDE_SKILLS_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Check if already installed
+    if target_dir.exists():
+        if target_dir.is_symlink():
+            current_target = target_dir.resolve()
+            if current_target == source_dir.resolve():
+                print(f"Skills already installed (symlink to {source_dir})")
+                return 0
+            print(f"Existing symlink points to {current_target}")
+        else:
+            print(f"Skills directory already exists at {target_dir}")
+
+        if not args.force:
+            print("Use --force to overwrite")
+            return 1
+
+        # Remove existing
+        if target_dir.is_symlink():
+            target_dir.unlink()
+        else:
+            shutil.rmtree(target_dir)
+
+    # Create symlink (preferred) or copy
+    if args.copy:
+        shutil.copytree(source_dir, target_dir)
+        print(f"Copied skills to {target_dir}")
+    else:
+        target_dir.symlink_to(source_dir)
+        print(f"Linked skills: {target_dir} -> {source_dir}")
+
+    print("\nClaude Code skills installed. Available commands:")
+    print("  /sessions, /send, /output, /spawn, /new, /kill, /status, /jump")
+    return 0
+
+
+def cmd_skills_uninstall(args) -> int:
+    """Uninstall Claude Code skills."""
+    target_dir = CLAUDE_SKILLS_DIR / "agentwire"
+
+    if not target_dir.exists():
+        print("Skills not installed")
+        return 0
+
+    if target_dir.is_symlink():
+        target_dir.unlink()
+        print(f"Removed symlink: {target_dir}")
+    else:
+        shutil.rmtree(target_dir)
+        print(f"Removed directory: {target_dir}")
+
+    return 0
+
+
+def cmd_skills_status(args) -> int:
+    """Check Claude Code skills installation status."""
+    target_dir = CLAUDE_SKILLS_DIR / "agentwire"
+
+    if not target_dir.exists():
+        print("Skills: not installed")
+        print(f"  Run 'agentwire skills install' to set up Claude Code integration")
+        return 1
+
+    if target_dir.is_symlink():
+        source = target_dir.resolve()
+        print(f"Skills: installed (symlink)")
+        print(f"  Location: {target_dir} -> {source}")
+    else:
+        print(f"Skills: installed (copy)")
+        print(f"  Location: {target_dir}")
+
+    # List available skills
+    skill_files = list(target_dir.glob("*.md"))
+    skill_files = [f for f in skill_files if f.name != "SKILL.md"]
+    if skill_files:
+        print(f"  Commands: {', '.join('/' + f.stem for f in sorted(skill_files))}")
+
+    return 0
+
+
 def main() -> int:
     """Main entry point."""
     parser = argparse.ArgumentParser(
@@ -623,6 +1114,40 @@ def main() -> int:
     say_parser.add_argument("--cfg", type=float, help="CFG weight (0-1)")
     say_parser.set_defaults(func=cmd_say)
 
+    # === send command ===
+    send_parser = subparsers.add_parser("send", help="Send prompt to a session")
+    send_parser.add_argument("session", help="Target session name")
+    send_parser.add_argument("prompt", nargs="*", help="Prompt to send")
+    send_parser.set_defaults(func=cmd_send)
+
+    # === session command group ===
+    session_parser = subparsers.add_parser("session", help="Manage tmux sessions")
+    session_subparsers = session_parser.add_subparsers(dest="session_command")
+
+    # session new <name> [path]
+    session_new = session_subparsers.add_parser(
+        "new", help="Create new Claude Code session"
+    )
+    session_new.add_argument("name", help="Session name (dots become underscores)")
+    session_new.add_argument("path", nargs="?", help="Working directory (default: ~/projects/<name>)")
+    session_new.add_argument("--force", "-f", action="store_true", help="Replace existing session")
+    session_new.set_defaults(func=cmd_session_new)
+
+    # session list
+    session_list = session_subparsers.add_parser("list", help="List all sessions")
+    session_list.set_defaults(func=cmd_session_list)
+
+    # session output <session> [lines]
+    session_output = session_subparsers.add_parser("output", help="Read session output")
+    session_output.add_argument("session", help="Session name")
+    session_output.add_argument("--lines", "-n", type=int, default=50, help="Lines to show (default: 50)")
+    session_output.set_defaults(func=cmd_session_output)
+
+    # session kill <session>
+    session_kill = session_subparsers.add_parser("kill", help="Kill a session")
+    session_kill.add_argument("session", help="Session name")
+    session_kill.set_defaults(func=cmd_session_kill)
+
     # === dev command ===
     dev_parser = subparsers.add_parser(
         "dev", help="Start/attach to dev orchestrator session"
@@ -696,6 +1221,61 @@ def main() -> int:
     voiceclone_delete.add_argument("name", help="Name of voice to delete")
     voiceclone_delete.set_defaults(func=cmd_voiceclone_delete)
 
+    # === machine command group ===
+    machine_parser = subparsers.add_parser("machine", help="Manage remote machines")
+    machine_subparsers = machine_parser.add_subparsers(dest="machine_command")
+
+    # machine list
+    machine_list = machine_subparsers.add_parser("list", help="List registered machines")
+    machine_list.set_defaults(func=cmd_machine_list)
+
+    # machine add <id>
+    machine_add = machine_subparsers.add_parser(
+        "add", help="Add a machine to the network"
+    )
+    machine_add.add_argument("machine_id", help="Machine ID (used in session names)")
+    machine_add.add_argument("--host", help="SSH host (defaults to machine_id)")
+    machine_add.add_argument("--user", help="SSH user")
+    machine_add.add_argument("--projects-dir", dest="projects_dir", help="Projects directory on remote")
+    machine_add.set_defaults(func=cmd_machine_add)
+
+    # machine remove <id>
+    machine_remove = machine_subparsers.add_parser(
+        "remove", help="Remove a machine from the network"
+    )
+    machine_remove.add_argument("machine_id", help="Machine ID to remove")
+    machine_remove.set_defaults(func=cmd_machine_remove)
+
+    # === skills command group ===
+    skills_parser = subparsers.add_parser(
+        "skills", help="Manage Claude Code skills integration"
+    )
+    skills_subparsers = skills_parser.add_subparsers(dest="skills_command")
+
+    # skills install
+    skills_install = skills_subparsers.add_parser(
+        "install", help="Install Claude Code skills for AgentWire"
+    )
+    skills_install.add_argument(
+        "--force", "-f", action="store_true", help="Overwrite existing installation"
+    )
+    skills_install.add_argument(
+        "--copy", action="store_true", help="Copy files instead of symlinking"
+    )
+    skills_install.set_defaults(func=cmd_skills_install)
+
+    # skills uninstall
+    skills_uninstall = skills_subparsers.add_parser(
+        "uninstall", help="Remove Claude Code skills"
+    )
+    skills_uninstall.set_defaults(func=cmd_skills_uninstall)
+
+    # skills status
+    skills_status = skills_subparsers.add_parser(
+        "status", help="Check skills installation status"
+    )
+    skills_status.set_defaults(func=cmd_skills_status)
+
     # === generate-certs (top-level shortcut) ===
     certs_parser = subparsers.add_parser(
         "generate-certs", help="Generate SSL certificates"
@@ -714,6 +1294,14 @@ def main() -> int:
 
     if args.command == "tts" and getattr(args, "tts_command", None) is None:
         tts_parser.print_help()
+        return 0
+
+    if args.command == "machine" and getattr(args, "machine_command", None) is None:
+        machine_parser.print_help()
+        return 0
+
+    if args.command == "skills" and getattr(args, "skills_command", None) is None:
+        skills_parser.print_help()
         return 0
 
     if hasattr(args, "func"):

@@ -84,6 +84,7 @@ class AgentWireServer:
         self.app.router.add_get("/api/sessions/archive", self.api_archived_sessions)
         self.app.router.add_get("/api/machines", self.api_machines)
         self.app.router.add_post("/api/machines", self.api_add_machine)
+        self.app.router.add_delete("/api/machines/{machine_id}", self.api_remove_machine)
         self.app.router.add_get("/api/config", self.api_get_config)
         self.app.router.add_post("/api/config", self.api_save_config)
         self.app.router.add_post("/api/config/reload", self.api_reload_config)
@@ -747,6 +748,78 @@ class AgentWireServer:
 
             return web.json_response({"success": True, "machine": new_machine})
         except Exception as e:
+            return web.json_response({"error": str(e)})
+
+    async def api_remove_machine(self, request: web.Request) -> web.Response:
+        """Remove a machine from the registry."""
+        machine_id = request.match_info["machine_id"]
+
+        try:
+            # Can't remove local machine
+            if machine_id == "local":
+                return web.json_response({"error": "Cannot remove local machine"})
+
+            machines_file = self.config.machines.file
+            if not machines_file.exists():
+                return web.json_response({"error": "No machines configured"})
+
+            # Load machines
+            try:
+                with open(machines_file) as f:
+                    data = json.load(f)
+                    machines = data.get("machines", [])
+            except (json.JSONDecodeError, IOError) as e:
+                return web.json_response({"error": f"Failed to read machines file: {e}"})
+
+            # Check if machine exists
+            machine = next((m for m in machines if m.get("id") == machine_id), None)
+            if not machine:
+                return web.json_response({"error": f"Machine '{machine_id}' not found"})
+
+            # Remove from machines list
+            machines = [m for m in machines if m.get("id") != machine_id]
+
+            # Save updated machines file
+            with open(machines_file, "w") as f:
+                json.dump({"machines": machines}, f, indent=2)
+                f.write("\n")
+
+            # Clean up rooms.json entries for this machine
+            rooms_file = self.config.rooms.file
+            rooms_removed = []
+            if rooms_file.exists():
+                try:
+                    with open(rooms_file) as f:
+                        rooms_data = json.load(f)
+
+                    # Find rooms matching *@machine_id pattern
+                    rooms_to_remove = [
+                        room for room in rooms_data.keys()
+                        if room.endswith(f"@{machine_id}")
+                    ]
+
+                    if rooms_to_remove:
+                        for room in rooms_to_remove:
+                            del rooms_data[room]
+                            rooms_removed.append(room)
+                        with open(rooms_file, "w") as f:
+                            json.dump(rooms_data, f, indent=2)
+                            f.write("\n")
+                except (json.JSONDecodeError, IOError):
+                    pass
+
+            # Reload agent backend to pick up changes
+            if self.agent and hasattr(self.agent, '_load_machines'):
+                self.agent._load_machines()
+
+            return web.json_response({
+                "success": True,
+                "machine_id": machine_id,
+                "rooms_removed": rooms_removed,
+            })
+
+        except Exception as e:
+            logger.error(f"Failed to remove machine: {e}")
             return web.json_response({"error": str(e)})
 
     async def api_get_config(self, request: web.Request) -> web.Response:

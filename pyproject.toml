@@ -1,5 +1,5 @@
 [project]
-name = "agentwire"
+name = "agentwire-dev"
 version = "0.1.0"
 description = "Multi-room voice web interface for AI coding agents"
 readme = "README.md"
@@ -58,6 +58,26 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["agentwire"]
+artifacts = ["agentwire/skills/*.md"]
+exclude = [
+    "agentwire/static/*.xcf",
+    "agentwire/static/*-blue.*",
+    "agentwire/static/agentwire-logo-splash.jpeg",
+    "agentwire/static/agentwire-logo-splash-dark.jpeg",
+    "agentwire/static/agentwire-logo-splash-green.jpeg",
+    "agentwire/static/agentwire-logo-splash-green-dark.jpeg",
+]
+
+[tool.hatch.build.targets.sdist]
+exclude = [
+    "agentwire/static/*.xcf",
+    "agentwire/static/*-blue.*",
+    "agentwire/static/agentwire-logo-splash.jpeg",
+    "agentwire/static/agentwire-logo-splash-dark.jpeg",
+    "agentwire/static/agentwire-logo-splash-green.jpeg",
+    "agentwire/static/agentwire-logo-splash-green-dark.jpeg",
+    "dist/",
+]
 
 [tool.ruff]
 line-length = 100

@@ -41,6 +41,24 @@ agentwire tts status       # Check TTS status
 agentwire say "Hello"      # Speak text locally
 agentwire say --room api "Done"  # Send TTS to room
 
+# Session management
+agentwire session list              # List all tmux sessions
+agentwire session new <name> [path] # Create Claude Code session
+agentwire session new <name> -f     # Replace existing session
+agentwire session output <name>     # Read recent session output
+agentwire session kill <name>       # Clean shutdown (/exit then kill)
+agentwire send <session> "prompt"   # Send prompt to session
+
+# Machine management
+agentwire machine list                # List machines with status
+agentwire machine add <id> [options]  # Add a machine to portal
+agentwire machine remove <id>         # Remove with cleanup
+
+# Skills (Claude Code integration)
+agentwire skills install              # Install Claude Code skills
+agentwire skills status               # Check installation status
+agentwire skills uninstall            # Remove skills
+
 # Development
 agentwire dev              # Start orchestrator session (agentwire)
 agentwire generate-certs   # Generate SSL certificates
@@ -106,17 +124,16 @@ Skills in `skills/` provide Claude Code integration:
 
 ### Installing Skills
 
-Copy skills to Claude Code's skills directory:
-
 ```bash
-cp -r ~/projects/agentwire/skills/* ~/.claude/skills/agentwire/
+agentwire skills install
 ```
 
-Or symlink:
+This creates a symlink from `~/.claude/skills/agentwire` to the installed package skills.
 
-```bash
-ln -s ~/projects/agentwire/skills ~/.claude/skills/agentwire
-```
+Other skills commands:
+- `agentwire skills status` - Check installation status
+- `agentwire skills uninstall` - Remove skills
+- `agentwire skills install --copy` - Copy files instead of symlinking
 
 ---
 
@@ -294,308 +311,58 @@ This command-based approach is more reliable than pattern-matching terminal outp
 
 ---
 
-## Remote Machine Setup (Ubuntu/Linux)
+## Remote Machine Management
 
-Complete guide for adding a new remote machine to run Claude Code sessions with voice support.
+### Adding a Machine
 
-### Overview
+Use the `/machine-setup` skill for interactive, guided setup:
 
-| Step | Where | What |
-|------|-------|------|
-| 1-5 | Remote machine | System setup, deps, repos, Claude auth |
-| 6-7 | Portal machine | Register machine, start tunnel |
-| 8-9 | Remote machine | Config, voice commands |
-| 10 | Either | Test |
+```
+/machine-setup do-2 167.99.123.45
+```
 
----
+The wizard walks through: SSH access, dependencies, GitHub keys, Claude auth, portal registration, tunnels, and voice commands.
 
-### Step 1: Create Non-Root User (Remote)
-
-Claude Code refuses to run as root. SSH in as root and create a user:
+**Quick add (portal only, no wizard):**
 
 ```bash
-ssh root@<ip-address>
-
-# Create user with sudo access
-useradd -m -s /bin/bash agentwire
-echo "agentwire ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/agentwire
-
-# Copy SSH authorized_keys
-mkdir -p /home/agentwire/.ssh
-cp /root/.ssh/authorized_keys /home/agentwire/.ssh/
-chown -R agentwire:agentwire /home/agentwire/.ssh
-chmod 700 /home/agentwire/.ssh
-chmod 600 /home/agentwire/.ssh/authorized_keys
-exit
+agentwire machine add <id> --host <host> --user <user> --projects-dir <path>
 ```
 
-**On your LOCAL machine**, add to `~/.ssh/config`:
+Or use the Portal UI: Dashboard → Machines → Add Machine.
+
+### Removing a Machine
+
+Use the `/machine-remove` skill for interactive, guided removal:
+
 ```
-Host do-1
-    HostName <ip-address>
-    User agentwire
-    IdentityFile ~/.ssh/<your-key>
+/machine-remove do-1
 ```
 
-### Step 2: Install Dependencies (Remote)
+The wizard handles cleanup levels:
+1. **Disconnect only** - Just remove from portal
+2. **Full cleanup** - Also remove SSH config + GitHub keys
+3. **Complete destruction** - Also destroy the VM
+
+**Quick remove (portal-side only):**
 
 ```bash
-ssh do-1
-
-# System packages
-sudo apt-get update
-sudo apt-get install -y python3 python3-pip tmux git curl jq
-
-# Node.js 22.x
-curl -fsSL https://deb.nodesource.com/setup_22.x | sudo bash -
-sudo apt-get install -y nodejs
-
-# uv (Python package manager)
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Environment setup
-cat >> ~/.bashrc << 'EOF'
-source ~/.local/bin/env
-export COLORTERM=truecolor
-export PATH="$HOME/.local/share/agentwire-venv/bin:$PATH"
-EOF
-source ~/.bashrc
-
-# Claude Code
-sudo npm install -g @anthropic-ai/claude-code
+agentwire machine remove <id>
 ```
 
-### Step 3: Setup GitHub SSH Keys (Remote)
+This removes from machines.json, kills tunnel, cleans rooms.json, and prints manual step reminders.
 
-Each private repo needs its own deploy key (GitHub limitation):
+Or use Portal UI: Dashboard → Machines → ✕ button.
+
+### Machine CLI Commands
 
 ```bash
-# Generate keys
-ssh-keygen -t ed25519 -f ~/.ssh/github-agentwire -N "" -C "do-1-agentwire"
-ssh-keygen -t ed25519 -f ~/.ssh/github-claude -N "" -C "do-1-claude"
-ssh-keygen -t ed25519 -f ~/.ssh/github-myproject -N "" -C "do-1-myproject"
-
-# SSH config
-cat >> ~/.ssh/config << 'EOF'
-Host github-agentwire
-    HostName github.com
-    User git
-    IdentityFile ~/.ssh/github-agentwire
-
-Host github-claude
-    HostName github.com
-    User git
-    IdentityFile ~/.ssh/github-claude
-
-Host github-myproject
-    HostName github.com
-    User git
-    IdentityFile ~/.ssh/github-myproject
-EOF
-
-chmod 600 ~/.ssh/config
-ssh-keyscan github.com >> ~/.ssh/known_hosts
-
-# Print public keys to add to GitHub
-echo "=== Add these as deploy keys on GitHub ==="
-echo "--- agentwire repo ---"
-cat ~/.ssh/github-agentwire.pub
-echo "--- .claude repo ---"
-cat ~/.ssh/github-claude.pub
-echo "--- myproject repo ---"
-cat ~/.ssh/github-myproject.pub
+agentwire machine list                    # List all machines with status
+agentwire machine add <id> [options]      # Add a machine
+agentwire machine remove <id>             # Remove with cleanup
 ```
 
-**On your LOCAL machine**, add deploy keys:
-```bash
-# Copy each public key and add via gh CLI
-gh repo deploy-key add <(echo "ssh-ed25519 AAAA... do-1-agentwire") --repo youruser/agentwire --title "do-1"
-gh repo deploy-key add <(echo "ssh-ed25519 AAAA... do-1-claude") --repo youruser/.claude --title "do-1"
-gh repo deploy-key add <(echo "ssh-ed25519 AAAA... do-1-myproject") --repo youruser/myproject --title "do-1"
-```
-
-### Step 4: Clone Repos and Install AgentWire (Remote)
-
-```bash
-ssh do-1
-
-# Projects directory
-mkdir -p ~/projects
-cd ~/projects
-
-# Clone agentwire
-git clone git@github-agentwire:youruser/agentwire.git
-cd agentwire
-
-# Install in isolated venv
-uv venv ~/.local/share/agentwire-venv
-source ~/.local/share/agentwire-venv/bin/activate
-uv pip install -e .
-deactivate
-
-# Verify
-agentwire --help
-
-# Clone .claude config
-git clone git@github-claude:youruser/.claude.git ~/.claude
-
-# Clone project repos
-git clone git@github-myproject:youruser/myproject.git ~/projects/myproject
-```
-
-### Step 5: Authenticate Claude Code (Remote)
-
-**Must be done interactively:**
-
-```bash
-ssh do-1
-claude
-# Follow prompts to authenticate
-# Ctrl+C after success
-```
-
-### Step 6: Register Machine (Portal Machine)
-
-Add to `~/.agentwire/machines.json` on your **portal machine**:
-
-```json
-{
-  "machines": [
-    {
-      "id": "do-1",
-      "host": "do-1",
-      "projects_dir": "/home/agentwire/projects"
-    }
-  ]
-}
-```
-
-Restart portal:
-```bash
-agentwire portal stop && agentwire portal start
-```
-
-### Step 7: Start Reverse Tunnel (Portal Machine)
-
-The portal is behind NAT, so tunnel FROM portal TO remote:
-
-```bash
-# Install autossh (one-time)
-brew install autossh  # macOS
-# sudo apt-get install -y autossh  # Linux
-
-# Start persistent tunnel
-autossh -M 0 -f -N -o "ServerAliveInterval=30" -o "ServerAliveCountMax=3" -R 8765:localhost:8765 do-1
-```
-
-**For multiple machines**, add to `~/.local/bin/agentwire-tunnels`:
-```bash
-#!/bin/bash
-MACHINES="do-1 gpu-server"  # space-separated list
-
-for machine in $MACHINES; do
-    if ! pgrep -f "autossh.*$machine" > /dev/null; then
-        echo "Starting tunnel to $machine..."
-        autossh -M 0 -f -N \
-            -o "ServerAliveInterval=30" \
-            -o "ServerAliveCountMax=3" \
-            -R 8765:localhost:8765 \
-            "$machine"
-    fi
-done
-echo "All tunnels running"
-```
-
-Add to crontab for startup:
-```bash
-chmod +x ~/.local/bin/agentwire-tunnels
-(crontab -l 2>/dev/null; echo "@reboot ~/.local/bin/agentwire-tunnels") | crontab -
-```
-
-### Step 8: Configure AgentWire (Remote)
-
-```bash
-ssh do-1
-
-mkdir -p ~/.agentwire
-cat > ~/.agentwire/config.yaml << 'EOF'
-projects:
-  dir: "~/projects"
-
-# IMPORTANT: must match id in portal's machines.json
-machine:
-  id: "do-1"
-
-# Portal accessed via reverse tunnel from portal machine
-portal:
-  url: "https://localhost:8765"
-
-tts:
-  backend: "none"
-
-stt:
-  backend: "none"
-
-agent:
-  command: "claude --dangerously-skip-permissions"
-EOF
-```
-
-### Step 9: Install Voice Commands (Remote)
-
-```bash
-# remote-say script (reads machine.id from config)
-sudo tee /usr/local/bin/remote-say > /dev/null << 'SCRIPT'
-#!/bin/bash
-TEXT="$1"
-SESSION=$(tmux display-message -p '#S' 2>/dev/null || echo "default")
-MACHINE=$(grep -A1 "^machine:" "$HOME/.agentwire/config.yaml" | grep "id:" | sed 's/.*id: *"\([^"]*\)".*/\1/')
-if [ -n "$MACHINE" ]; then
-    ROOM="${SESSION}@${MACHINE}"
-else
-    ROOM="$SESSION"
-fi
-[ -z "$TEXT" ] && echo "Usage: remote-say \"message\"" && exit 1
-exec "$HOME/.local/share/agentwire-venv/bin/agentwire" say --room "$ROOM" "$TEXT"
-SCRIPT
-
-sudo chmod +x /usr/local/bin/remote-say
-sudo ln -sf /usr/local/bin/remote-say /usr/local/bin/say
-```
-
-### Step 10: Test Everything
-
-**From remote machine:**
-```bash
-ssh do-1
-
-# Test portal connectivity (via tunnel)
-curl -sk https://localhost:8765/api/sessions | head -c 100
-
-# Test voice (with browser open to room)
-say "Hello from remote machine"
-```
-
-**Checklist:**
-- [ ] Portal shows machine in dashboard
-- [ ] Can create sessions on remote machine
-- [ ] `say` command produces audio in browser
-
----
-
-### Troubleshooting
-
-| Issue | Solution |
-|-------|----------|
-| Claude won't run | Authenticate first: `ssh machine && claude` |
-| Session not in portal | Restart portal after adding to machines.json |
-| Deploy key "already in use" | Each repo needs a unique key per machine |
-| `say` command not found | Install to /usr/local/bin (Step 9) |
-| `say` no audio | Check browser connected to room, tunnel running |
-| `curl localhost:8765` fails | Tunnel not running - start from portal machine |
-| Wrong room name | Check `machine.id` in config matches machines.json |
-
-### Minimum Specs
+### Minimum Specs (Remote)
 
 | Resource | Minimum | Recommended |
 |----------|---------|-------------|
@@ -609,13 +376,34 @@ The LLM runs on Anthropic's servers - local machine just needs RAM for Node.js a
 
 ## Development
 
-```bash
-# Run from source
-cd ~/projects/agentwire
-uv pip install -e .
-agentwire --help
+AgentWire is installed as a **uv tool**, meaning the CLI runs from `~/.local/share/uv/tools/agentwire/`, not your source directory.
 
-# Test imports
+### After Making Code Changes
+
+**You must reinstall before restarting the portal:**
+
+```bash
+# 1. Reinstall from source (required after ANY code change)
+uv tool install . --force
+
+# 2. Restart the portal
+agentwire portal stop
+agentwire portal start
+```
+
+Simply restarting the portal does NOT pick up source changes - the package must be reinstalled first.
+
+### Initial Setup
+
+```bash
+cd ~/projects/agentwire
+uv tool install .
+agentwire --help
+```
+
+### Test Imports
+
+```bash
 python -c "from agentwire import __version__; print(__version__)"
 ```
 

@@ -1,6 +1,6 @@
 # AgentWire
 
-Multi-room voice web interface for AI coding agents. Push-to-talk voice input from any device to tmux sessions running Claude Code, Aider, or any AI coding assistant.
+Multi-room voice web interface for AI coding agents. Push-to-talk voice input from any device to tmux sessions running Claude Code or any AI coding assistant.
 
 ## Features
 
@@ -10,19 +10,23 @@ Multi-room voice web interface for AI coding agents. Push-to-talk voice input fr
 - **Multi-Device** - Access from phone, tablet, laptop on your network
 - **Room Locking** - One person talks at a time per room
 - **Git Worktrees** - Multiple agents work same project in parallel
-- **Cross-Platform** - macOS, Linux, WSL2
+- **Remote Machines** - Orchestrate agents on remote servers
+- **Claude Code Skills** - Session orchestration via `/sessions`, `/send`, `/spawn`, etc.
 
 ## Quick Start
 
 ```bash
 # Install
-pip install agentwire
+pip install agentwire-dev
 
-# Generate SSL certs (required for mic access)
-agentwire --generate-certs
+# Interactive setup (configures audio devices, creates config)
+agentwire init
 
-# Start server
-agentwire
+# Generate SSL certs (required for mic access in browsers)
+agentwire generate-certs
+
+# Start the portal
+agentwire portal start
 
 # Open in browser
 # https://localhost:8765
@@ -33,7 +37,7 @@ agentwire
 - Python 3.10+
 - tmux
 - ffmpeg (for audio conversion)
-- SSL certificates (for microphone access in browser)
+- Claude Code or other AI agent (optional but recommended)
 
 ### Platform-specific
 
@@ -43,26 +47,64 @@ agentwire
 | Linux | `apt install tmux ffmpeg` |
 | WSL2 | `apt install tmux ffmpeg` |
 
+## CLI Commands
+
+```bash
+# Setup
+agentwire init              # Interactive setup wizard
+agentwire generate-certs    # Generate SSL certificates
+
+# Portal (web server)
+agentwire portal start      # Start in background (tmux)
+agentwire portal stop       # Stop the portal
+agentwire portal status     # Check if running
+
+# TTS Server (on GPU machine)
+agentwire tts start         # Start TTS server in tmux
+agentwire tts stop          # Stop TTS server
+agentwire tts status        # Check if running
+
+# Voice
+agentwire say "Hello"           # Speak locally
+agentwire say --room api "Done" # Send TTS to a room
+
+# Voice Cloning
+agentwire voiceclone start      # Start recording voice sample
+agentwire voiceclone stop name  # Stop and upload as voice clone
+agentwire voiceclone list       # List available voices
+
+# Session Management
+agentwire session list          # List all tmux sessions
+agentwire session new <name>    # Create new Claude session
+agentwire session output <name> # Read session output
+agentwire session kill <name>   # Kill session (clean shutdown)
+agentwire send <session> "prompt"  # Send prompt to session
+
+# Remote Machines
+agentwire machine list          # List registered machines
+agentwire machine add <id>      # Add a machine
+agentwire machine remove <id>   # Remove a machine
+
+# Development
+agentwire dev               # Start orchestrator session
+```
+
 ## Configuration
 
-Create `~/.agentwire/config.yaml`:
+Run `agentwire init` for interactive setup, or create `~/.agentwire/config.yaml`:
 
 ```yaml
 server:
   host: "0.0.0.0"
   port: 8765
-  ssl:
-    cert: "~/.agentwire/cert.pem"
-    key: "~/.agentwire/key.pem"
 
 projects:
   dir: "~/projects"
   worktrees:
     enabled: true
-    suffix: "-worktrees"
 
 tts:
-  backend: "chatterbox"  # chatterbox | elevenlabs | none
+  backend: "chatterbox"  # chatterbox | none
   url: "http://localhost:8100"
   default_voice: "default"
 
@@ -74,6 +116,29 @@ stt:
 agent:
   command: "claude --dangerously-skip-permissions"
 ```
+
+## Claude Code Skills
+
+AgentWire includes skills for session orchestration from within Claude Code:
+
+```bash
+# Install skills
+agentwire skills install
+```
+
+Then use in Claude Code:
+
+| Command | Purpose |
+|---------|---------|
+| `/sessions` | List all tmux sessions |
+| `/send <session> <prompt>` | Send prompt to session |
+| `/output <session>` | Read session output |
+| `/spawn <name>` | Smart session creation |
+| `/new <name> [path]` | Create new session |
+| `/kill <session>` | Destroy session |
+| `/status` | Check all machines |
+| `/machine-setup` | Interactive guide for adding remote machines |
+| `/machine-remove` | Interactive guide for removing machines |
 
 ## Session Types
 
@@ -95,31 +160,29 @@ ml@gpu-server -> SSH to gpu-server, session "ml"
 ```
 Agent running on a remote machine.
 
-## CLI Options
+## TTS Setup
+
+TTS requires a GPU machine running the Chatterbox server:
 
 ```bash
-agentwire                      # Start with defaults
-agentwire --config /path/to   # Custom config file
-agentwire --port 9000          # Override port
-agentwire --no-tts             # Disable text-to-speech
-agentwire --no-stt             # Disable speech-to-text
-agentwire --generate-certs     # Generate SSL certificates
-agentwire --version            # Show version
+# On GPU machine
+pip install agentwire-dev[tts]
+agentwire tts start
 ```
 
-## TTS Backends
+Or run with TTS disabled (text-only):
 
-| Backend | Description | Setup |
-|---------|-------------|-------|
-| `chatterbox` | Self-hosted Chatterbox TTS | Run Chatterbox server |
-| `elevenlabs` | ElevenLabs API | Set `ELEVENLABS_API_KEY` |
-| `none` | Disabled | No audio output |
+```yaml
+# In config.yaml
+tts:
+  backend: "none"
+```
 
 ## STT Backends
 
 | Backend | Platforms | Setup |
 |---------|-----------|-------|
-| `whisperkit` | macOS | Install WhisperKit CLI |
+| `whisperkit` | macOS (Apple Silicon) | Install WhisperKit |
 | `whispercpp` | All | Install whisper.cpp |
 | `openai` | All | Set `OPENAI_API_KEY` |
 | `none` | All | Typing only, no voice |
@@ -127,8 +190,8 @@ agentwire --version            # Show version
 ## Architecture
 
 ```
-Phone/Tablet ──► AgentWire Server ──► tmux session
-   (voice)          (WebSocket)         (Claude/Aider)
+Phone/Tablet ──► AgentWire Portal ──► tmux session
+   (voice)          (WebSocket)         (Claude Code)
      │                   │                    │
      │    push-to-talk   │   transcription    │
      │◄─────────────────►│◄──────────────────►│
@@ -142,18 +205,13 @@ Phone/Tablet ──► AgentWire Server ──► tmux session
 git clone https://github.com/dotdevdotdev/agentwire
 cd agentwire
 
-# Install editable
-pip install -e .
+# Install with uv
+uv venv && uv pip install -e .
 
 # Run
-agentwire
+agentwire portal start
 ```
 
 ## License
 
 MIT License - see [LICENSE](LICENSE)
-
-## Links
-
-- Website: https://agentwire.dev
-- Repository: https://github.com/dotdevdotdev/agentwire
