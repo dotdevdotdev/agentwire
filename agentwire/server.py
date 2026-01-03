@@ -514,6 +514,7 @@ class AgentWireServer:
                         "machine": machine,
                         "voice": config.get("voice", self.config.tts.default_voice),
                         "type": get_project_type(path) if path.exists() else "scratch",
+                        "bypass_permissions": config.get("bypass_permissions", True),
                     }
                 )
 
