@@ -309,13 +309,19 @@ async function loadSessions() {
     }
 
     container.innerHTML = sessions.map(s => {
-        const bypassBadge = s.bypass_permissions !== false
-            ? '<span class="session-badge bypass">Bypass</span>'
-            : '<span class="session-badge prompted">Prompted</span>';
+        // Determine badge: restricted > prompted > bypass
+        let badge;
+        if (s.restricted) {
+            badge = '<span class="session-badge restricted">Restricted</span>';
+        } else if (s.bypass_permissions === false) {
+            badge = '<span class="session-badge prompted">Prompted</span>';
+        } else {
+            badge = '<span class="session-badge bypass">Bypass</span>';
+        }
         return `
         <div class="session-card">
             <a href="/room/${s.name}" style="flex:1;text-decoration:none;color:inherit;">
-                <div class="session-name">${s.name}${s.machine ? '<span style="color:var(--text-muted);font-weight:normal">@' + s.machine + '</span>' : ''}${bypassBadge}</div>
+                <div class="session-name">${s.name}${s.machine ? '<span style="color:var(--text-muted);font-weight:normal">@' + s.machine + '</span>' : ''}${badge}</div>
                 <div class="session-meta">
                     ${s.path || '~/projects/' + s.name}
                     <span class="session-voice">• ${s.voice || DEFAULT_VOICE}</span>
@@ -341,7 +347,7 @@ async function createSession() {
     const machineSelect = document.getElementById('sessionMachine');
     const worktreeCheckbox = document.getElementById('useWorktree');
     const branchInput = document.getElementById('branchName');
-    const bypassRadio = document.querySelector('input[name="bypassPermissions"]:checked');
+    const permissionModeRadio = document.querySelector('input[name="permissionMode"]:checked');
     const gitOptions = document.getElementById('gitOptions');
     const errorEl = document.getElementById('error');
 
@@ -355,7 +361,10 @@ async function createSession() {
     const worktree = gitOptionsVisible && worktreeCheckbox?.checked;
     const branch = worktree ? (branchInput?.value.trim() || '') : '';
 
-    const bypassPermissions = bypassRadio?.value === 'true';
+    // Permission mode: bypass (default), normal (prompted), or restricted
+    const permissionMode = permissionModeRadio?.value || 'bypass';
+    const bypassPermissions = permissionMode === 'bypass';
+    const restricted = permissionMode === 'restricted';
 
     // Validate session name first
     const validation = validateSessionName(name);
@@ -376,7 +385,8 @@ async function createSession() {
             machine: machine !== 'local' ? machine : null,
             worktree,
             branch,
-            bypass_permissions: bypassPermissions
+            bypass_permissions: bypassPermissions,
+            restricted: restricted
         })
     });
 
