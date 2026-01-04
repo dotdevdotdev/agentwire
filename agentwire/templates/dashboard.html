@@ -32,11 +32,35 @@
                         <div class="sub-action-content">
                             <div class="form-row">
                                 <label>Session Name</label>
-                                <input type="text" id="sessionName" placeholder="e.g., assistant">
+                                <div class="session-name-input">
+                                    <input type="text" id="sessionName" placeholder="e.g., assistant">
+                                    <span class="machine-suffix" id="machineSuffix"></span>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <label>Machine</label>
+                                <select id="sessionMachine">
+                                    <option value="local">Local</option>
+                                    <!-- Populated from /api/machines -->
+                                </select>
                             </div>
                             <div class="form-row">
                                 <label>Project Path (optional)</label>
                                 <input type="text" id="projectPath" placeholder="~/projects/name">
+                            </div>
+                            <div class="form-row git-options" id="gitOptions" style="display: none;">
+                                <div class="git-status">
+                                    <span class="git-indicator"></span>
+                                    <span class="git-branch-label">on <span id="gitCurrentBranch" class="git-branch"></span></span>
+                                </div>
+                                <label class="checkbox-option">
+                                    <input type="checkbox" id="useWorktree" checked>
+                                    <span>Create worktree</span>
+                                </label>
+                                <div class="branch-row" id="branchRow">
+                                    <label>Branch Name</label>
+                                    <input type="text" id="branchName" placeholder="e.g., jan-3-work">
+                                </div>
                             </div>
                             <div class="form-row">
                                 <label>Voice</label>

@@ -375,23 +375,23 @@ function restoreLastMachine() {
 
 ## Completion Criteria
 
-- [ ] Machine dropdown shows local + all configured machines
-- [ ] Selecting remote machine shows `@machine` suffix next to session name
-- [ ] Session name blocks `@`, `/`, `\`, spaces, and other problem characters
-- [ ] Validation error shown inline, Create button disabled
-- [ ] `/api/check-path` works for local and remote paths
-- [ ] `/api/check-branches` returns existing branches matching prefix
-- [ ] Path auto-fills from session name (`~/projects/{name}` or remote equivalent)
-- [ ] Path placeholder updates when machine changes
-- [ ] Git repos show worktree checkbox (default checked) and branch input
-- [ ] Branch auto-fills with unique timestamp (`jan-3-2025--1`, `jan-3-2025--2`, etc.)
-- [ ] Unchecking worktree hides branch input entirely
-- [ ] Worktree options hidden for non-git paths
-- [ ] Session created with worktree when checkbox enabled
-- [ ] Remote worktree sessions work correctly
-- [ ] Non-existent paths allowed (creates dir), but no git options shown
-- [ ] Last selected machine remembered in localStorage
-- [ ] CLAUDE.md documents new form options
+- [x] Machine dropdown shows local + all configured machines
+- [x] Selecting remote machine shows `@machine` suffix next to session name
+- [x] Session name blocks `@`, `/`, `\`, spaces, and other problem characters
+- [x] Validation error shown inline, Create button disabled
+- [x] `/api/check-path` works for local and remote paths
+- [x] `/api/check-branches` returns existing branches matching prefix
+- [x] Path auto-fills from session name (`~/projects/{name}` or remote equivalent)
+- [x] Path placeholder updates when machine changes
+- [x] Git repos show worktree checkbox (default checked) and branch input
+- [x] Branch auto-fills with unique timestamp (`jan-3-2025--1`, `jan-3-2025--2`, etc.)
+- [x] Unchecking worktree hides branch input entirely
+- [x] Worktree options hidden for non-git paths
+- [x] Session created with worktree when checkbox enabled
+- [x] Remote worktree sessions work correctly
+- [x] Non-existent paths allowed (creates dir), but no git options shown
+- [x] Last selected machine remembered in localStorage
+- [x] CLAUDE.md documents new form options
 
 ---
 

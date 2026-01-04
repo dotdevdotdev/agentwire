@@ -6,6 +6,257 @@
 // Get default voice from the page (set by Jinja2)
 const DEFAULT_VOICE = window.AGENTWIRE_CONFIG?.defaultVoice || 'bashbunni';
 
+// Path check debounce timeout
+let pathCheckTimeout = null;
+
+// Store machines data for later use
+let machinesData = [];
+
+// =============================================================================
+// Input Validation
+// =============================================================================
+
+// Invalid characters in session names - these cause issues with CLI parsing
+const INVALID_SESSION_CHARS = /[@\/\s\\:*?"<>|]/;
+
+function validateSessionName(name) {
+    if (!name) {
+        return { valid: false, error: 'Session name is required' };
+    }
+    if (INVALID_SESSION_CHARS.test(name)) {
+        return { valid: false, error: 'Name cannot contain @ / \\ : * ? " < > | or spaces' };
+    }
+    if (name.startsWith('.') || name.startsWith('-')) {
+        return { valid: false, error: 'Name cannot start with . or -' };
+    }
+    if (name.length > 50) {
+        return { valid: false, error: 'Name cannot exceed 50 characters' };
+    }
+    return { valid: true, error: null };
+}
+
+function onSessionNameInput() {
+    const nameInput = document.getElementById('sessionName');
+    const errorEl = document.getElementById('error');
+    const createBtn = document.querySelector('#createSessionGroup .action-btn');
+
+    const name = nameInput?.value.trim() || '';
+    const validation = validateSessionName(name);
+
+    if (errorEl) {
+        errorEl.textContent = validation.error || '';
+    }
+
+    // Update button state
+    if (createBtn) {
+        createBtn.disabled = !validation.valid && name.length > 0;
+        createBtn.style.opacity = createBtn.disabled ? '0.5' : '1';
+    }
+
+    // Auto-fill path based on session name
+    onSessionNameChange();
+}
+
+function onSessionNameChange() {
+    const name = document.getElementById('sessionName')?.value.trim() || '';
+    const pathInput = document.getElementById('projectPath');
+    const machine = document.getElementById('sessionMachine')?.value || 'local';
+
+    // Don't auto-fill if user has manually edited
+    if (!pathInput || pathInput.dataset.userEdited === 'true') return;
+
+    if (name) {
+        const projectsDir = machine === 'local'
+            ? '~/projects'
+            : getMachineProjectsDir(machine);
+        pathInput.value = `${projectsDir}/${name}`;
+        onPathChange();  // Trigger git detection
+    } else {
+        pathInput.value = '';
+        hideGitOptions();
+    }
+}
+
+// =============================================================================
+// Git/Worktree Options
+// =============================================================================
+
+function onPathChange() {
+    const path = document.getElementById('projectPath')?.value.trim() || '';
+    const machine = document.getElementById('sessionMachine')?.value || 'local';
+
+    clearTimeout(pathCheckTimeout);
+
+    if (!path) {
+        hideGitOptions();
+        return;
+    }
+
+    pathCheckTimeout = setTimeout(async () => {
+        try {
+            const params = new URLSearchParams({ path, machine });
+            const res = await fetch(`/api/check-path?${params}`);
+            const data = await res.json();
+
+            if (data.is_git) {
+                showGitOptions(data.current_branch);
+            } else {
+                hideGitOptions();
+            }
+        } catch (e) {
+            console.error('Path check failed:', e);
+            hideGitOptions();
+        }
+    }, 300);  // 300ms debounce
+}
+
+function showGitOptions(currentBranch) {
+    const gitOptions = document.getElementById('gitOptions');
+    const branchLabel = document.getElementById('gitCurrentBranch');
+
+    if (gitOptions) {
+        gitOptions.style.display = 'block';
+    }
+    if (branchLabel) {
+        branchLabel.textContent = currentBranch || 'unknown';
+    }
+
+    // Auto-suggest unique branch name
+    suggestBranchName();
+}
+
+async function suggestBranchName() {
+    const path = document.getElementById('projectPath')?.value.trim() || '';
+    const machine = document.getElementById('sessionMachine')?.value || 'local';
+    const branchInput = document.getElementById('branchName');
+
+    if (!branchInput || !path) return;
+
+    // Generate date-based prefix
+    const now = new Date();
+    const month = now.toLocaleString('en', { month: 'short' }).toLowerCase();
+    const day = now.getDate();
+    const year = now.getFullYear();
+    const base = `${month}-${day}-${year}`;
+
+    try {
+        // Check existing branches matching this prefix
+        const params = new URLSearchParams({ path, machine, prefix: base });
+        const res = await fetch(`/api/check-branches?${params}`);
+        const data = await res.json();
+
+        // Find next available increment
+        let increment = 1;
+        const existing = data.existing || [];
+        while (existing.includes(`${base}--${increment}`)) {
+            increment++;
+        }
+
+        branchInput.value = `${base}--${increment}`;  // e.g., "jan-3-2026--1"
+    } catch (e) {
+        console.error('Branch name suggestion failed:', e);
+        // Fallback: just use base with --1
+        branchInput.value = `${base}--1`;
+    }
+}
+
+function hideGitOptions() {
+    const gitOptions = document.getElementById('gitOptions');
+    if (gitOptions) {
+        gitOptions.style.display = 'none';
+    }
+}
+
+function onWorktreeChange() {
+    const useWorktree = document.getElementById('useWorktree')?.checked;
+    const branchRow = document.getElementById('branchRow');
+
+    if (branchRow) {
+        branchRow.style.display = useWorktree ? 'block' : 'none';
+    }
+}
+
+// =============================================================================
+// Machine Selector
+// =============================================================================
+
+function populateMachineDropdown(machines) {
+    const select = document.getElementById('sessionMachine');
+    if (!select) return;
+
+    // Clear existing options except first (Local)
+    while (select.options.length > 1) {
+        select.remove(1);
+    }
+
+    // Add remote machines
+    machines.filter(m => !m.local).forEach(m => {
+        const option = document.createElement('option');
+        option.value = m.id;
+        option.textContent = `${m.id} (${m.host})`;
+        select.appendChild(option);
+    });
+
+    // Restore last selected machine from localStorage
+    restoreLastMachine();
+}
+
+function getMachineProjectsDir(machineId) {
+    const machine = machinesData.find(m => m.id === machineId);
+    return machine?.projects_dir || '~/projects';
+}
+
+function updateMachineSuffix() {
+    const machine = document.getElementById('sessionMachine')?.value;
+    const suffix = document.getElementById('machineSuffix');
+    if (!suffix) return;
+
+    if (machine === 'local') {
+        suffix.textContent = '';
+    } else {
+        suffix.textContent = `@${machine}`;
+    }
+}
+
+function restoreLastMachine() {
+    const last = localStorage.getItem('agentwire-last-machine');
+    if (last) {
+        const select = document.getElementById('sessionMachine');
+        if (select && [...select.options].some(o => o.value === last)) {
+            select.value = last;
+            updateMachineSuffix();
+        }
+    }
+}
+
+function onMachineChange() {
+    const machineSelect = document.getElementById('sessionMachine');
+    if (machineSelect) {
+        updateMachineSuffix();
+        updatePathPlaceholder();
+        // Save to localStorage
+        localStorage.setItem('agentwire-last-machine', machineSelect.value);
+        // Re-check path for git status on different machine
+        onPathChange();
+        // Re-auto-fill path if not user-edited
+        onSessionNameChange();
+    }
+}
+
+function updatePathPlaceholder() {
+    const machine = document.getElementById('sessionMachine')?.value || 'local';
+    const pathInput = document.getElementById('projectPath');
+
+    if (!pathInput) return;
+
+    if (machine === 'local') {
+        pathInput.placeholder = '~/projects/name';
+    } else {
+        const projectsDir = getMachineProjectsDir(machine);
+        pathInput.placeholder = `${projectsDir}/name`;
+    }
+}
+
 // =============================================================================
 // Accordion Toggle
 // =============================================================================
@@ -87,16 +338,29 @@ async function createSession() {
     const nameInput = document.getElementById('sessionName');
     const pathInput = document.getElementById('projectPath');
     const voiceSelect = document.getElementById('sessionVoice');
+    const machineSelect = document.getElementById('sessionMachine');
+    const worktreeCheckbox = document.getElementById('useWorktree');
+    const branchInput = document.getElementById('branchName');
     const bypassRadio = document.querySelector('input[name="bypassPermissions"]:checked');
+    const gitOptions = document.getElementById('gitOptions');
     const errorEl = document.getElementById('error');
 
     const name = nameInput?.value.trim() || '';
     const path = pathInput?.value.trim() || '';
     const voice = voiceSelect?.value || DEFAULT_VOICE;
+    const machine = machineSelect?.value || 'local';
+
+    // Only include worktree/branch if git options are visible
+    const gitOptionsVisible = gitOptions && gitOptions.style.display !== 'none';
+    const worktree = gitOptionsVisible && worktreeCheckbox?.checked;
+    const branch = worktree ? (branchInput?.value.trim() || '') : '';
+
     const bypassPermissions = bypassRadio?.value === 'true';
 
-    if (!name) {
-        if (errorEl) errorEl.textContent = 'Session name is required';
+    // Validate session name first
+    const validation = validateSessionName(name);
+    if (!validation.valid) {
+        if (errorEl) errorEl.textContent = validation.error;
         return;
     }
 
@@ -105,7 +369,15 @@ async function createSession() {
     const res = await fetch('/api/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, path: path || null, voice, bypass_permissions: bypassPermissions })
+        body: JSON.stringify({
+            name,
+            path: path || null,
+            voice,
+            machine: machine !== 'local' ? machine : null,
+            worktree,
+            branch,
+            bypass_permissions: bypassPermissions
+        })
     });
 
     const data = await res.json();
@@ -139,7 +411,11 @@ async function closeSession(name) {
 async function loadMachines() {
     const res = await fetch('/api/machines');
     const machines = await res.json();
+    machinesData = machines;  // Store for later use
     const container = document.getElementById('machinesList');
+
+    // Populate the session machine dropdown
+    populateMachineDropdown(machines);
 
     if (!container) return;
 
@@ -474,12 +750,39 @@ function bindEventListeners() {
         createSessionBtn.addEventListener('click', createSession);
     }
 
-    // Session name enter key
+    // Session name validation and enter key
     const sessionNameInput = document.getElementById('sessionName');
     if (sessionNameInput) {
+        sessionNameInput.addEventListener('input', onSessionNameInput);
         sessionNameInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') createSession();
+            if (e.key === 'Enter') {
+                const validation = validateSessionName(sessionNameInput.value.trim());
+                if (validation.valid) {
+                    createSession();
+                }
+            }
         });
+    }
+
+    // Machine selector change event
+    const machineSelect = document.getElementById('sessionMachine');
+    if (machineSelect) {
+        machineSelect.addEventListener('change', onMachineChange);
+    }
+
+    // Path change detection (for git options)
+    const pathInput = document.getElementById('projectPath');
+    if (pathInput) {
+        pathInput.addEventListener('input', () => {
+            pathInput.dataset.userEdited = 'true';
+            onPathChange();
+        });
+    }
+
+    // Worktree checkbox
+    const worktreeCheckbox = document.getElementById('useWorktree');
+    if (worktreeCheckbox) {
+        worktreeCheckbox.addEventListener('change', onWorktreeChange);
     }
 
     // Add machine button
