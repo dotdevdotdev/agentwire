@@ -1476,18 +1476,21 @@ projects:
                     tmux_session = project.replace(".", "_")
 
                 if _is_allowed_in_restricted_mode(tool_name, tool_input):
-                    # Auto-allow: send "2" keystroke (allow_always)
+                    # Auto-allow
                     logger.info(f"[{name}] Restricted mode: auto-allowing {tool_name}")
-                    try:
-                        if machine:
-                            await self._run_ssh_command(machine, f"tmux send-keys -t {shlex.quote(tmux_session)} 2")
-                        else:
-                            subprocess.run(
-                                ["tmux", "send-keys", "-t", tmux_session, "2"],
-                                check=True, capture_output=True
-                            )
-                    except Exception as e:
-                        logger.error(f"[{name}] Failed to send allow keystroke: {e}")
+                    # Only send keystroke for Bash commands (say/remote-say)
+                    # AskUserQuestion doesn't need permission keystroke
+                    if tool_name == "Bash":
+                        try:
+                            if machine:
+                                await self._run_ssh_command(machine, f"tmux send-keys -t {shlex.quote(tmux_session)} 2")
+                            else:
+                                subprocess.run(
+                                    ["tmux", "send-keys", "-t", tmux_session, "2"],
+                                    check=True, capture_output=True
+                                )
+                        except Exception as e:
+                            logger.error(f"[{name}] Failed to send allow keystroke: {e}")
                     return web.json_response({"decision": "allow_always"})
                 else:
                     # Auto-deny: send "Escape" keystroke (deny silently)
