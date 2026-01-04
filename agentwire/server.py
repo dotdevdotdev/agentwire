@@ -33,11 +33,18 @@ logger = logging.getLogger(__name__)
 
 
 def _is_allowed_in_restricted_mode(tool_name: str, tool_input: dict) -> bool:
-    """Check if command is allowed in restricted mode (say/remote-say only).
+    """Check if command is allowed in restricted mode.
 
-    Only allows: say "message" or remote-say "message"
+    Allows:
+    - AskUserQuestion tool (for interactive prompts)
+    - Bash: say "message" or remote-say "message"
+
     Rejects any shell operators, redirects, or multi-line commands.
     """
+    # Allow AskUserQuestion tool
+    if tool_name == "AskUserQuestion":
+        return True
+
     if tool_name != "Bash":
         return False
 
