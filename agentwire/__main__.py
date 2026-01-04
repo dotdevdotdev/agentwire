@@ -793,9 +793,11 @@ def cmd_new(args) -> int:
         # Restricted mode implies no bypass (needs permission hook for auto-deny logic)
         use_no_bypass = getattr(args, 'no_bypass', False) or getattr(args, 'restricted', False)
         bypass_flag = "" if use_no_bypass else " --dangerously-skip-permissions"
+        # AGENTWIRE_ROOM must include @machine so portal can find room config
+        room_name = f"{session_name}@{machine_id}"
         create_cmd = (
             f"tmux new-session -d -s {shlex.quote(session_name)} -c {shlex.quote(remote_path)} && "
-            f"tmux send-keys -t {shlex.quote(session_name)} 'export AGENTWIRE_ROOM={shlex.quote(session_name)}' Enter && "
+            f"tmux send-keys -t {shlex.quote(session_name)} 'export AGENTWIRE_ROOM={shlex.quote(room_name)}' Enter && "
             f"sleep 0.1 && "
             f"tmux send-keys -t {shlex.quote(session_name)} 'claude{bypass_flag}' Enter"
         )
@@ -1371,10 +1373,12 @@ def cmd_recreate(args) -> int:
         # Step 5: Create new session
         bypass_flag = "" if getattr(args, 'no_bypass', False) else " --dangerously-skip-permissions"
         session_path = worktree_path if branch else project_path
+        # AGENTWIRE_ROOM must include @machine so portal can find room config
+        room_name = f"{session_name}@{machine_id}"
 
         create_cmd = (
             f"tmux new-session -d -s {shlex.quote(session_name)} -c {shlex.quote(session_path)} && "
-            f"tmux send-keys -t {shlex.quote(session_name)} 'export AGENTWIRE_ROOM={shlex.quote(session_name)}' Enter && "
+            f"tmux send-keys -t {shlex.quote(session_name)} 'export AGENTWIRE_ROOM={shlex.quote(room_name)}' Enter && "
             f"sleep 0.1 && "
             f"tmux send-keys -t {shlex.quote(session_name)} 'claude{bypass_flag}' Enter"
         )
@@ -1386,7 +1390,7 @@ def cmd_recreate(args) -> int:
         if json_mode:
             _output_json({
                 "success": True,
-                "session": f"{session_name}@{machine_id}",
+                "session": room_name,
                 "path": session_path,
                 "branch": new_branch if branch else None,
                 "machine": machine_id,
@@ -1580,9 +1584,11 @@ def cmd_fork(args) -> int:
 
         # Create new session
         bypass_flag = "" if getattr(args, 'no_bypass', False) else " --dangerously-skip-permissions"
+        # AGENTWIRE_ROOM must include @machine so portal can find room config
+        room_name = f"{target_session}@{machine_id}"
         create_session_cmd = (
             f"tmux new-session -d -s {shlex.quote(target_session)} -c {shlex.quote(target_path)} && "
-            f"tmux send-keys -t {shlex.quote(target_session)} 'export AGENTWIRE_ROOM={shlex.quote(target_session)}' Enter && "
+            f"tmux send-keys -t {shlex.quote(target_session)} 'export AGENTWIRE_ROOM={shlex.quote(room_name)}' Enter && "
             f"sleep 0.1 && "
             f"tmux send-keys -t {shlex.quote(target_session)} 'claude{bypass_flag}' Enter"
         )
@@ -1603,7 +1609,7 @@ def cmd_fork(args) -> int:
             except Exception:
                 pass
 
-        room_key = f"{target_session}@{machine_id}"
+        room_key = room_name
         bypass_permissions = not getattr(args, 'no_bypass', False)
         configs[room_key] = {"bypass_permissions": bypass_permissions}
 
