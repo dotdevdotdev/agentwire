@@ -17,14 +17,14 @@ let machinesData = [];
 // =============================================================================
 
 // Invalid characters in session names - these cause issues with CLI parsing
-const INVALID_SESSION_CHARS = /[@\/\s\\:*?"<>|]/;
+const INVALID_SESSION_CHARS = /[@\/\s\\:*?"<>|.]/;
 
 function validateSessionName(name) {
     if (!name) {
         return { valid: false, error: 'Session name is required' };
     }
     if (INVALID_SESSION_CHARS.test(name)) {
-        return { valid: false, error: 'Name cannot contain @ / \\ : * ? " < > | or spaces' };
+        return { valid: false, error: 'Name cannot contain @ / \\ : * ? " < > | . or spaces' };
     }
     if (name.startsWith('.') || name.startsWith('-')) {
         return { valid: false, error: 'Name cannot start with . or -' };
@@ -394,7 +394,8 @@ async function createSession() {
     if (data.error) {
         if (errorEl) errorEl.textContent = data.error;
     } else {
-        window.location.href = '/room/' + name;
+        // Use the session name returned by server (includes branch@machine if applicable)
+        window.location.href = '/room/' + encodeURIComponent(data.name);
     }
 }
 

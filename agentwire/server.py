@@ -773,8 +773,8 @@ class AgentWireServer:
 
             # Build CLI args
             args = ["new", "-s", cli_session]
-            # Don't pass -p when using worktree (CLI derives path from convention)
-            if not worktree and custom_path:
+            # Pass -p when provided (CLI uses it to locate repo for worktree creation)
+            if custom_path:
                 args.extend(["-p", custom_path])
             # Restricted mode implies --no-bypass (needs permission hook to work)
             if restricted:
@@ -839,10 +839,11 @@ class AgentWireServer:
             else:
                 path = self.config.projects.dir / project
 
-            # Kill the tmux session
-            success = self.agent.kill_session(name)
+            # Kill the tmux session via CLI (handles local and remote)
+            success, result = await self.run_agentwire_cmd(["kill", "-s", name])
             if not success:
-                return web.json_response({"error": "Failed to close session"})
+                error_msg = result.get("error", "Failed to close session")
+                return web.json_response({"error": error_msg})
 
             # Archive the session
             import time
