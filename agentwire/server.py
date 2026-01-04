@@ -32,6 +32,33 @@ __version__ = "0.1.0"
 logger = logging.getLogger(__name__)
 
 
+def _is_allowed_in_restricted_mode(tool_name: str, tool_input: dict) -> bool:
+    """Check if command is allowed in restricted mode (say/remote-say only).
+
+    Only allows: say "message" or remote-say "message"
+    Rejects any shell operators, redirects, or multi-line commands.
+    """
+    if tool_name != "Bash":
+        return False
+
+    command = tool_input.get("command", "").strip()
+
+    # Reject multi-line commands immediately
+    if '\n' in command:
+        return False
+
+    # Match: (say|remote-say) followed by quoted string and nothing else
+    # Allows: say "hello world"
+    #         say 'hello world'
+    #         remote-say "done"
+    # Rejects: say "hi" && rm -rf /
+    #          say "hi" > /tmp/log
+    #          say $(cat /etc/passwd)
+    pattern = r'^(say|remote-say)\s+(["\']).*\2\s*$'
+
+    return bool(re.match(pattern, command))
+
+
 @dataclass
 class RoomConfig:
     """Runtime configuration for a room."""
@@ -43,6 +70,7 @@ class RoomConfig:
     path: str | None = None
     claude_session_id: str | None = None  # Claude Code session UUID for forking
     bypass_permissions: bool = True  # Default True for backwards compat with existing sessions
+    restricted: bool = False  # Restricted mode: only say/remote-say allowed
 
 
 @dataclass
@@ -227,6 +255,7 @@ class AgentWireServer:
                 path=cfg.get("path"),
                 claude_session_id=cfg.get("claude_session_id"),
                 bypass_permissions=cfg.get("bypass_permissions", True),  # Default True
+                restricted=cfg.get("restricted", False),  # Default False
             )
         return RoomConfig(voice=self.config.tts.default_voice)
 
@@ -580,6 +609,7 @@ class AgentWireServer:
                         "voice": config.get("voice", self.config.tts.default_voice),
                         "type": get_project_type(path) if path.exists() else "scratch",
                         "bypass_permissions": config.get("bypass_permissions", True),
+                        "restricted": config.get("restricted", False),
                     }
                 )
 
@@ -703,6 +733,7 @@ class AgentWireServer:
             path: Custom project path (optional, ignored if worktree=true)
             voice: TTS voice for this room
             bypass_permissions: Whether to skip permission prompts
+            restricted: Whether to use restricted mode (only say/remote-say allowed)
             machine: Machine ID ('local' or remote machine ID)
             worktree: Whether to create a worktree session
             branch: Branch name for worktree sessions
@@ -718,6 +749,7 @@ class AgentWireServer:
             custom_path = data.get("path")
             voice = data.get("voice", self.config.tts.default_voice)
             bypass_permissions = data.get("bypass_permissions", True)  # Default True
+            restricted = data.get("restricted", False)  # Default False
             machine = data.get("machine", "local")
             worktree = data.get("worktree", False)
             branch = data.get("branch", "").strip()
@@ -744,7 +776,10 @@ class AgentWireServer:
             # Don't pass -p when using worktree (CLI derives path from convention)
             if not worktree and custom_path:
                 args.extend(["-p", custom_path])
-            if not bypass_permissions:
+            # Restricted mode implies --no-bypass (needs permission hook to work)
+            if restricted:
+                args.append("--restricted")
+            elif not bypass_permissions:
                 args.append("--no-bypass")
 
             # Call CLI
@@ -754,7 +789,7 @@ class AgentWireServer:
                 error_msg = result.get("error", "Failed to create session")
                 return web.json_response({"error": error_msg})
 
-            # CLI updates rooms.json with bypass_permissions, but we need to add voice
+            # CLI updates rooms.json with bypass_permissions/restricted, but we need to add voice
             session_name = result.get("session", cli_session)
             configs = self._load_room_configs()
             if session_name not in configs:
@@ -1404,6 +1439,9 @@ projects:
         This endpoint is called by the permission hook script when Claude Code
         needs permission for an action. It broadcasts the request to connected
         clients and waits for a response.
+
+        In restricted mode, only say/remote-say commands are auto-allowed,
+        everything else is auto-denied silently.
         """
         name = request.match_info["name"]
         try:
@@ -1420,7 +1458,37 @@ projects:
 
             room = self.rooms[name]
 
-            # Create pending permission request
+            # Check restricted mode - auto-handle without user interaction
+            if room.config.restricted:
+                session_name = name.split("@")[0]
+
+                if _is_allowed_in_restricted_mode(tool_name, tool_input):
+                    # Auto-allow: send "2" keystroke (allow_always)
+                    logger.info(f"[{name}] Restricted mode: auto-allowing {tool_name}")
+                    try:
+                        subprocess.run(
+                            ["tmux", "send-keys", "-t", session_name, "2"],
+                            check=True, capture_output=True
+                        )
+                    except Exception as e:
+                        logger.error(f"[{name}] Failed to send allow keystroke: {e}")
+                    return web.json_response({"decision": "allow_always"})
+                else:
+                    # Auto-deny: send "Escape" keystroke (deny silently)
+                    logger.info(f"[{name}] Restricted mode: auto-denying {tool_name}")
+                    try:
+                        subprocess.run(
+                            ["tmux", "send-keys", "-t", session_name, "Escape"],
+                            check=True, capture_output=True
+                        )
+                    except Exception as e:
+                        logger.error(f"[{name}] Failed to send deny keystroke: {e}")
+                    return web.json_response({
+                        "decision": "deny",
+                        "message": "Restricted mode: only say/remote-say commands are allowed"
+                    })
+
+            # Create pending permission request (normal/prompted mode)
             room.pending_permission = PendingPermission(request=data)
 
             # Broadcast permission request to all clients (Task 3.1)

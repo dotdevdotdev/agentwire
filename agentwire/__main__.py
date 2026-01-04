@@ -767,7 +767,9 @@ def cmd_new(args) -> int:
                 return _output_result(False, json_mode, f"Session '{session_name}' already exists on {machine_id}. Use -f to replace.")
 
         # Create remote tmux session
-        bypass_flag = "" if getattr(args, 'no_bypass', False) else " --dangerously-skip-permissions"
+        # Restricted mode implies no bypass (needs permission hook for auto-deny logic)
+        use_no_bypass = getattr(args, 'no_bypass', False) or getattr(args, 'restricted', False)
+        bypass_flag = "" if use_no_bypass else " --dangerously-skip-permissions"
         create_cmd = (
             f"tmux new-session -d -s {shlex.quote(session_name)} -c {shlex.quote(remote_path)} && "
             f"tmux send-keys -t {shlex.quote(session_name)} 'export AGENTWIRE_ROOM={shlex.quote(session_name)}' Enter && "
@@ -792,8 +794,9 @@ def cmd_new(args) -> int:
                 pass
 
         room_key = f"{session_name}@{machine_id}"
-        bypass_permissions = not getattr(args, 'no_bypass', False)
-        configs[room_key] = {"bypass_permissions": bypass_permissions}
+        restricted = getattr(args, 'restricted', False)
+        bypass_permissions = not use_no_bypass
+        configs[room_key] = {"bypass_permissions": bypass_permissions, "restricted": restricted}
 
         with open(rooms_file, "w") as f:
             json.dump(configs, f, indent=2)
@@ -887,7 +890,9 @@ def cmd_new(args) -> int:
     time.sleep(0.1)
 
     # Start Claude (with or without skip-permissions flag)
-    if getattr(args, 'no_bypass', False):
+    # Restricted mode implies no bypass (needs permission hook for auto-deny logic)
+    use_no_bypass = getattr(args, 'no_bypass', False) or getattr(args, 'restricted', False)
+    if use_no_bypass:
         claude_cmd = "claude"
     else:
         claude_cmd = "claude --dangerously-skip-permissions"
@@ -897,7 +902,7 @@ def cmd_new(args) -> int:
         check=True
     )
 
-    # Save room config with bypass_permissions flag
+    # Save room config with bypass_permissions and restricted flags
     rooms_file = Path.home() / ".agentwire" / "rooms.json"
     rooms_file.parent.mkdir(parents=True, exist_ok=True)
 
@@ -909,8 +914,9 @@ def cmd_new(args) -> int:
         except Exception:
             pass
 
-    bypass_permissions = not getattr(args, 'no_bypass', False)
-    configs[session_name] = {"bypass_permissions": bypass_permissions}
+    restricted = getattr(args, 'restricted', False)
+    bypass_permissions = not use_no_bypass
+    configs[session_name] = {"bypass_permissions": bypass_permissions, "restricted": restricted}
 
     with open(rooms_file, "w") as f:
         json.dump(configs, f, indent=2)
@@ -2494,6 +2500,7 @@ def main() -> int:
     new_parser.add_argument("-p", "--path", help="Working directory (default: ~/projects/<name>)")
     new_parser.add_argument("-f", "--force", action="store_true", help="Replace existing session")
     new_parser.add_argument("--no-bypass", action="store_true", help="Don't use --dangerously-skip-permissions (normal mode)")
+    new_parser.add_argument("--restricted", action="store_true", help="Restricted mode: only allow say/remote-say commands (implies --no-bypass)")
     new_parser.add_argument("--json", action="store_true", help="Output as JSON")
     new_parser.set_defaults(func=cmd_new)
 
