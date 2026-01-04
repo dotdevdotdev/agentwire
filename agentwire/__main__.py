@@ -1390,6 +1390,27 @@ def cmd_recreate(args) -> int:
         if result.returncode != 0:
             return _output_result(False, json_mode, f"Failed to create session: {result.stderr}")
 
+        # Update local rooms.json with new config
+        rooms_file = Path.home() / ".agentwire" / "rooms.json"
+        rooms_file.parent.mkdir(parents=True, exist_ok=True)
+
+        configs = {}
+        if rooms_file.exists():
+            try:
+                with open(rooms_file) as f:
+                    configs = json.load(f)
+            except Exception:
+                pass
+
+        bypass_permissions = not (restricted or no_bypass)
+        room_config = {"bypass_permissions": bypass_permissions}
+        if restricted:
+            room_config["restricted"] = True
+        configs[room_name] = room_config
+
+        with open(rooms_file, "w") as f:
+            json.dump(configs, f, indent=2)
+
         if json_mode:
             _output_json({
                 "success": True,
