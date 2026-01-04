@@ -426,12 +426,47 @@ In terminal mode, a ⋯ button appears above the mic button. Hover over action b
 |--------|------|-------------|
 | Restart Service | 🔄 | Properly restarts the service (portal schedules delayed restart, TTS stops/starts, orchestrator restarts Claude) |
 
+### Create Session Form
+
+The dashboard's Create Session form supports machine selection, input validation, git detection, and worktree creation:
+
+| Field | Description |
+|-------|-------------|
+| Session Name | Project name (blocks `@ / \ : * ? " < > |` and spaces) |
+| Machine | Dropdown: Local or any configured remote machine |
+| Project Path | Auto-fills to `{projectsDir}/{sessionName}` (editable) |
+| Voice | TTS voice for the room |
+| Permission Mode | Bypass (recommended) or Normal (prompted) |
+
+**Git Repository Detection:**
+When the project path points to a git repo, additional options appear:
+- Current branch indicator (e.g., "on main")
+- **Create worktree** checkbox (checked by default)
+- **Branch Name** input with auto-suggested unique name (e.g., `jan-3-2026--1`)
+
+**Smart Defaults:**
+- Session name auto-fills path: typing `api` → `~/projects/api`
+- Machine selection updates path placeholder to remote's `projects_dir`
+- Branch names auto-increment to avoid conflicts
+- Last selected machine is remembered in localStorage
+
+**Session Name Derivation:**
+
+| Machine | Worktree | CLI Session Name |
+|---------|----------|------------------|
+| local | no | `myapp` |
+| local | yes | `myapp/jan-3-2026--1` |
+| gpu-server | no | `myapp@gpu-server` |
+| gpu-server | yes | `myapp/jan-3-2026--1@gpu-server` |
+
 ### Portal API
 
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
 | `/api/sessions` | GET | List all tmux sessions |
-| `/api/create` | POST | Create new session |
+| `/api/create` | POST | Create new session (accepts machine, worktree, branch) |
+| `/api/check-path` | GET | Check if path exists and is git repo |
+| `/api/check-branches` | GET | Get existing branches matching prefix |
 | `/api/room/{name}/config` | POST | Update room config (voice, etc.) |
 | `/api/room/{name}/recreate` | POST | Destroy and recreate session with fresh worktree |
 | `/api/room/{name}/spawn-sibling` | POST | Create parallel session in new worktree |
