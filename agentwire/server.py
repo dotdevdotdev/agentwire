@@ -9,8 +9,10 @@ import base64
 import json
 import logging
 import re
+import shlex
 import ssl
 import struct
+import subprocess
 import tempfile
 import time
 import uuid
@@ -95,6 +97,8 @@ class AgentWireServer:
         self.app.router.add_get("/room/{name:.+}", self.handle_room)
         self.app.router.add_get("/ws/{name:.+}", self.handle_websocket)
         self.app.router.add_get("/api/sessions", self.api_sessions)
+        self.app.router.add_get("/api/check-path", self.api_check_path)
+        self.app.router.add_get("/api/check-branches", self.api_check_branches)
         self.app.router.add_post("/api/create", self.api_create_session)
         self.app.router.add_post("/api/room/{name:.+}/config", self.api_room_config)
         self.app.router.add_post("/transcribe", self.handle_transcribe)
@@ -258,6 +262,46 @@ class AgentWireServer:
             except json.JSONDecodeError as e:
                 return False, {"error": f"Failed to parse JSON output: {e}"}
         return False, {"error": stderr.decode().strip() or f"Command failed with exit code {proc.returncode}"}
+
+    async def _run_ssh_command(self, machine_id: str, command: str) -> str:
+        """Run command on remote machine via SSH.
+
+        Args:
+            machine_id: The machine ID from machines.json
+            command: Shell command to run remotely
+
+        Returns:
+            stdout output if successful, empty string on failure
+        """
+        machines_file = self.config.machines.file
+        if not machines_file.exists():
+            return ""
+
+        try:
+            with open(machines_file) as f:
+                data = json.load(f)
+        except (json.JSONDecodeError, IOError):
+            return ""
+
+        machine = next((m for m in data.get("machines", []) if m.get("id") == machine_id), None)
+        if not machine:
+            return ""
+
+        host = machine.get("host", "")
+        user = machine.get("user", "")
+        ssh_target = f"{user}@{host}" if user else host
+
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "ssh", "-o", "ConnectTimeout=5", "-o", "BatchMode=yes",
+                ssh_target, command,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, _ = await proc.communicate()
+            return stdout.decode() if proc.returncode == 0 else ""
+        except Exception:
+            return ""
 
     # HTTP Handlers
 
@@ -544,21 +588,161 @@ class AgentWireServer:
             logger.error(f"Failed to list sessions: {e}")
             return web.json_response([])
 
+    async def api_check_path(self, request: web.Request) -> web.Response:
+        """Check if a path exists and is a git repo.
+
+        Query params:
+            path: The path to check
+            machine: Machine ID ('local' or remote machine ID)
+
+        Returns:
+            {exists: bool, is_git: bool, current_branch: str|null}
+        """
+        path = request.query.get("path", "")
+        machine = request.query.get("machine", "local")
+
+        if not path:
+            return web.json_response({
+                "exists": False,
+                "is_git": False,
+                "current_branch": None
+            })
+
+        if machine and machine != "local":
+            # Remote path check via SSH
+            result = await self._run_ssh_command(
+                machine,
+                f"test -d {shlex.quote(path)} && echo exists"
+            )
+            exists = "exists" in result
+            is_git = False
+            current_branch = None
+
+            if exists:
+                result = await self._run_ssh_command(
+                    machine,
+                    f"test -d {shlex.quote(path)}/.git && echo git"
+                )
+                is_git = "git" in result
+
+                if is_git:
+                    result = await self._run_ssh_command(
+                        machine,
+                        f"cd {shlex.quote(path)} && git rev-parse --abbrev-ref HEAD"
+                    )
+                    current_branch = result.strip() if result else None
+        else:
+            # Local path check
+            expanded = Path(path).expanduser().resolve()
+            exists = expanded.exists() and expanded.is_dir()
+            is_git = exists and (expanded / ".git").exists()
+            current_branch = None
+
+            if is_git:
+                result = subprocess.run(
+                    ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                    cwd=expanded,
+                    capture_output=True,
+                    text=True
+                )
+                current_branch = result.stdout.strip() if result.returncode == 0 else None
+
+        return web.json_response({
+            "exists": exists,
+            "is_git": is_git,
+            "current_branch": current_branch
+        })
+
+    async def api_check_branches(self, request: web.Request) -> web.Response:
+        """Get existing branch names matching a prefix.
+
+        Query params:
+            path: The git repo path
+            machine: Machine ID ('local' or remote machine ID)
+            prefix: Branch name prefix to filter by
+
+        Returns:
+            {existing: [branch names]}
+        """
+        path = request.query.get("path", "")
+        machine = request.query.get("machine", "local")
+        prefix = request.query.get("prefix", "")
+
+        if not path:
+            return web.json_response({"existing": []})
+
+        if machine and machine != "local":
+            # Remote branch check via SSH
+            cmd = f"cd {shlex.quote(path)} && git branch --list {shlex.quote(prefix + '*')} --format='%(refname:short)'"
+            result = await self._run_ssh_command(machine, cmd)
+            branches = result.strip().split('\n') if result else []
+        else:
+            # Local branch check
+            expanded = Path(path).expanduser().resolve()
+            if not expanded.exists():
+                return web.json_response({"existing": []})
+
+            result = subprocess.run(
+                ["git", "branch", "--list", f"{prefix}*", "--format=%(refname:short)"],
+                cwd=expanded,
+                capture_output=True,
+                text=True
+            )
+            branches = result.stdout.strip().split('\n') if result.returncode == 0 else []
+
+        # Filter out empty strings
+        branches = [b for b in branches if b]
+
+        return web.json_response({"existing": branches})
+
     async def api_create_session(self, request: web.Request) -> web.Response:
-        """Create a new agent session via CLI."""
+        """Create a new agent session via CLI.
+
+        Request body:
+            name: Base session/project name (required)
+            path: Custom project path (optional, ignored if worktree=true)
+            voice: TTS voice for this room
+            bypass_permissions: Whether to skip permission prompts
+            machine: Machine ID ('local' or remote machine ID)
+            worktree: Whether to create a worktree session
+            branch: Branch name for worktree sessions
+
+        Session naming:
+            - worktree + branch: project/branch (or project/branch@machine)
+            - just machine: name@machine
+            - neither: just name
+        """
         try:
             data = await request.json()
             name = data.get("name", "").strip()
             custom_path = data.get("path")
             voice = data.get("voice", self.config.tts.default_voice)
             bypass_permissions = data.get("bypass_permissions", True)  # Default True
+            machine = data.get("machine", "local")
+            worktree = data.get("worktree", False)
+            branch = data.get("branch", "").strip()
 
             if not name:
                 return web.json_response({"error": "Session name is required"})
 
+            # Build session name for CLI based on parameters
+            if machine and machine != "local":
+                # Remote session
+                if worktree and branch:
+                    cli_session = f"{name}/{branch}@{machine}"
+                else:
+                    cli_session = f"{name}@{machine}"
+            else:
+                # Local session
+                if worktree and branch:
+                    cli_session = f"{name}/{branch}"
+                else:
+                    cli_session = name
+
             # Build CLI args
-            args = ["new", "-s", name]
-            if custom_path:
+            args = ["new", "-s", cli_session]
+            # Don't pass -p when using worktree (CLI derives path from convention)
+            if not worktree and custom_path:
                 args.extend(["-p", custom_path])
             if not bypass_permissions:
                 args.append("--no-bypass")
@@ -571,7 +755,7 @@ class AgentWireServer:
                 return web.json_response({"error": error_msg})
 
             # CLI updates rooms.json with bypass_permissions, but we need to add voice
-            session_name = result.get("session", name)
+            session_name = result.get("session", cli_session)
             configs = self._load_room_configs()
             if session_name not in configs:
                 configs[session_name] = {}
