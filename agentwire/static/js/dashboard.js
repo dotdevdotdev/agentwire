@@ -318,10 +318,19 @@ async function loadSessions() {
         } else {
             badge = '<span class="session-badge bypass">Bypass</span>';
         }
+        // Strip @machine from display name if present (avoid doubling)
+        let displayName = s.name;
+        let machineSuffix = '';
+        if (s.machine && s.name.endsWith('@' + s.machine)) {
+            displayName = s.name.slice(0, -('@' + s.machine).length);
+            machineSuffix = `<span style="color:var(--text-muted);font-weight:normal">@${s.machine}</span>`;
+        } else if (s.machine) {
+            machineSuffix = `<span style="color:var(--text-muted);font-weight:normal">@${s.machine}</span>`;
+        }
         return `
         <div class="session-card">
-            <a href="/room/${s.name}" style="flex:1;text-decoration:none;color:inherit;">
-                <div class="session-name">${s.name}${s.machine ? '<span style="color:var(--text-muted);font-weight:normal">@' + s.machine + '</span>' : ''}${badge}</div>
+            <a href="/room/${encodeURIComponent(s.name)}" style="flex:1;text-decoration:none;color:inherit;">
+                <div class="session-name">${displayName}${machineSuffix}${badge}</div>
                 <div class="session-meta">
                     ${s.path || '~/projects/' + s.name}
                     <span class="session-voice">• ${s.voice || DEFAULT_VOICE}</span>
