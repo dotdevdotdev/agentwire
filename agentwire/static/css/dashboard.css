@@ -419,6 +419,11 @@
     color: var(--error);
 }
 
+.session-badge.restricted {
+    background: rgba(251, 146, 60, 0.15);
+    color: #fb923c;  /* Orange/amber */
+}
+
 .no-sessions {
     color: var(--text-muted);
     padding: var(--space-md) 0;
