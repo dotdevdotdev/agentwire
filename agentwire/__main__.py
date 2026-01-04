@@ -696,9 +696,9 @@ def cmd_new(args) -> int:
     # Parse session name: project, branch, machine
     project, branch, machine_id = parse_session_name(name)
 
-    # Build the tmux session name (convert dots/slashes to underscores)
+    # Build the tmux session name (convert dots to underscores, preserve slashes)
     if branch:
-        session_name = f"{project}_{branch}".replace(".", "_").replace("/", "_")
+        session_name = f"{project}/{branch}".replace(".", "_")
     else:
         session_name = project.replace(".", "_")
 
@@ -1296,9 +1296,9 @@ def cmd_recreate(args) -> int:
     worktrees_config = config.get("projects", {}).get("worktrees", {})
     worktree_suffix = worktrees_config.get("suffix", "-worktrees")
 
-    # Build session name for tmux
+    # Build session name for tmux (preserve slashes, convert dots to underscores)
     if branch:
-        session_name = f"{project}_{branch}".replace(".", "_").replace("/", "_")
+        session_name = f"{project}/{branch}".replace(".", "_")
     else:
         session_name = project.replace(".", "_")
 
@@ -1514,13 +1514,13 @@ def cmd_fork(args) -> int:
     worktrees_config = config.get("projects", {}).get("worktrees", {})
     worktree_suffix = worktrees_config.get("suffix", "-worktrees")
 
-    # Build session names
+    # Build session names (preserve slashes, convert dots to underscores)
     if source_branch:
-        source_session = f"{source_project}_{source_branch}".replace(".", "_").replace("/", "_")
+        source_session = f"{source_project}/{source_branch}".replace(".", "_")
     else:
         source_session = source_project.replace(".", "_")
 
-    target_session = f"{target_project}_{target_branch}".replace(".", "_").replace("/", "_")
+    target_session = f"{target_project}/{target_branch}".replace(".", "_")
 
     if machine_id:
         # Remote fork
@@ -2538,7 +2538,7 @@ def main() -> int:
     session_new = session_subparsers.add_parser(
         "new", help="Create new Claude Code session"
     )
-    session_new.add_argument("name", help="Session name (dots become underscores)")
+    session_new.add_argument("name", help="Session name (project/branch format supported)")
     session_new.add_argument("path", nargs="?", help="Working directory (default: ~/projects/<name>)")
     session_new.add_argument("--force", "-f", action="store_true", help="Replace existing session")
     session_new.set_defaults(func=cmd_session_new)
