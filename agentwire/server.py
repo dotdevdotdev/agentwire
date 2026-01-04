@@ -1664,10 +1664,13 @@ projects:
             configs = self._load_room_configs()
             old_config = configs.get(name, {})
             bypass_permissions = old_config.get("bypass_permissions", True)
+            restricted = old_config.get("restricted", False)
 
             # Build CLI args
             args = ["recreate", "-s", name]
-            if not bypass_permissions:
+            if restricted:
+                args.append("--restricted")
+            elif not bypass_permissions:
                 args.append("--no-bypass")
 
             # Call CLI - handles kill, worktree removal, git pull, new worktree, new session
@@ -1717,6 +1720,7 @@ projects:
             configs = self._load_room_configs()
             old_config = configs.get(name, {})
             bypass_permissions = old_config.get("bypass_permissions", True)
+            restricted = old_config.get("restricted", False)
 
             # Build new session name: project/session-<timestamp>[@machine]
             new_branch = f"session-{int(time.time())}"
@@ -1726,7 +1730,9 @@ projects:
 
             # Build CLI args - use `agentwire new` with the sibling session name
             args = ["new", "-s", new_session_name]
-            if not bypass_permissions:
+            if restricted:
+                args.append("--restricted")
+            elif not bypass_permissions:
                 args.append("--no-bypass")
 
             # Call CLI - handles worktree creation and session setup
@@ -1786,7 +1792,9 @@ projects:
 
             # Build CLI args
             args = ["fork", "-s", name, "-t", target_session]
-            if not room_config.bypass_permissions:
+            if room_config.restricted:
+                args.append("--restricted")
+            elif not room_config.bypass_permissions:
                 args.append("--no-bypass")
 
             # Call CLI - handles worktree creation and session setup
