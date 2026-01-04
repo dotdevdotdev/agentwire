@@ -239,7 +239,7 @@ Sessions run in one of three permission modes:
 |------|---------|----------------|----------|
 | **Bypass** | `bypass_permissions: true` | `claude --dangerously-skip-permissions` | No prompts, full trust, fast |
 | **Normal** | `bypass_permissions: false` | `claude` | Permission prompts via portal |
-| **Restricted** | `restricted: true` | `claude` | Only say/remote-say allowed, all else auto-denied |
+| **Restricted** | `restricted: true` | `claude` | Only say/remote-say/AskUserQuestion allowed, all else auto-denied |
 
 **Default:** Bypass mode (existing behavior, recommended for trusted projects)
 
@@ -258,10 +258,11 @@ Sessions run in one of three permission modes:
 **Restricted sessions** auto-handle permissions without user interaction:
 1. Claude triggers a permission-requiring action
 2. Hook POSTs to `/api/permission/{room}`
-3. Portal checks if command is `say "..."` or `remote-say "..."`
-4. If allowed: sends "2" keystroke (allow_always), returns immediately
-5. If denied: sends "Escape" keystroke (deny silently), returns deny response
-6. No UI popup, no user interaction required
+3. Portal checks if tool is allowed:
+   - `AskUserQuestion` - allowed (no keystroke needed)
+   - `Bash` with `say "..."` or `remote-say "..."` - allowed (sends "2" keystroke)
+   - Everything else - denied (sends "Escape" keystroke)
+4. Returns immediately, no UI popup, no user interaction required
 
 ### Permission Modal
 
@@ -282,9 +283,15 @@ Normal and Restricted sessions require the AgentWire permission hook:
 
 The hook:
 - Reads permission request JSON from stdin
-- POSTs to `https://localhost:8765/api/permission/{room}`
+- Gets portal URL from: `AGENTWIRE_URL` env var → `~/.agentwire/portal_url` file → `https://localhost:8765`
+- POSTs to `{portal_url}/api/permission/{room}`
 - Waits indefinitely for user decision (Normal) or returns immediately (Restricted)
 - Returns `{decision: "allow"}` or `{decision: "deny"}` to Claude
+
+**Remote machines:** Must configure `~/.agentwire/portal_url` with the portal host's URL:
+```bash
+echo "https://192.168.1.100:8765" > ~/.agentwire/portal_url
+```
 
 ### Room Configuration
 
@@ -404,11 +411,21 @@ uploads:
 Claude (or users) can trigger TTS by running actual shell commands:
 
 ```bash
-say "Hello world"           # Runs agentwire say → POSTs to /api/say/{room}
-remote-say "Task complete"  # Same, but determines room from machine config
+say "Hello world"           # Local: plays via system audio
+remote-say "Task complete"  # Remote: POSTs to portal, streams to browser
 ```
 
-**How it works:** These are real executables (not pattern matching on terminal output). When Claude runs `say "message"`, it executes the `agentwire say` command which POSTs to the portal API, which broadcasts TTS audio to connected browser clients.
+**How it works:** These are real executables (not pattern matching on terminal output).
+
+- `say` - Uses `agentwire say` to generate TTS locally and play via system speakers
+- `remote-say` - POSTs to portal API, broadcasts TTS audio to connected browser clients
+
+**Room detection for remote-say:**
+1. Uses `AGENTWIRE_ROOM` env var (set automatically when session is created)
+2. Falls back to tmux session name if not set
+3. For remote sessions, `AGENTWIRE_ROOM` includes `@machine` suffix (e.g., `myproject@dotdev-pc`)
+
+**Portal URL for remote machines:** `remote-say` reads the portal URL from `~/.agentwire/portal_url`.
 
 This command-based approach is more reliable than parsing terminal output, which is noisy (typing echoes, ANSI codes, mixed input/output).
 

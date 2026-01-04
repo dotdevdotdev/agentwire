@@ -105,17 +105,24 @@ Note: Silent deny chosen over custom message ("3" + text) to keep response fast 
 
 ## Technical Notes
 
-### Allowed Commands in Restricted Mode
+### Allowed Tools in Restricted Mode
 
 ```python
 import re
 
 def _is_allowed_in_restricted_mode(tool_name: str, tool_input: dict) -> bool:
-    """Check if command is allowed in restricted mode (say/remote-say only).
+    """Check if command is allowed in restricted mode.
 
-    Only allows: say "message" or remote-say "message"
+    Allows:
+    - AskUserQuestion tool (for interactive prompts)
+    - Bash: say "message" or remote-say "message"
+
     Rejects any shell operators, redirects, or multi-line commands.
     """
+    # Allow AskUserQuestion tool
+    if tool_name == "AskUserQuestion":
+        return True
+
     if tool_name != "Bash":
         return False
 
@@ -126,23 +133,25 @@ def _is_allowed_in_restricted_mode(tool_name: str, tool_input: dict) -> bool:
         return False
 
     # Match: (say|remote-say) followed by quoted string and nothing else
-    # Allows: say "hello world"
-    #         say 'hello world'
-    #         remote-say "done"
-    # Rejects: say "hi" && rm -rf /
-    #          say "hi" > /tmp/log
-    #          say $(cat /etc/passwd)
     pattern = r'^(say|remote-say)\s+(["\']).*\2\s*$'
 
     return bool(re.match(pattern, command))
 ```
 
-This approach is stricter: only allows `say "message"` or `say 'message'` with nothing after the closing quote. Any shell operators, redirects, or extra content will fail the regex match.
-
 **Design decisions:**
-- Uses "allow_always" (keystroke "2") for auto-approved commands
-- Silent deny for blocked commands (no TTS announcement)
+- `AskUserQuestion` allowed without keystroke (not a permission prompt)
+- `say`/`remote-say` approved with keystroke "2" (allow_always)
+- Everything else denied with "Escape" keystroke (silent deny)
 - Strict regex: only accepts `say "text"` or `say 'text'` with nothing after closing quote
+
+### Remote Session Support
+
+For restricted mode to work on remote machines:
+
+1. **Hook registration:** `agentwire skills install` registers hook in `~/.claude/settings.json`
+2. **Portal URL:** Remote machines need `~/.agentwire/portal_url` pointing to portal host
+3. **Room name:** `AGENTWIRE_ROOM` env var includes `@machine` suffix (set automatically)
+4. **remote-say script:** Must use `AGENTWIRE_ROOM` and read portal URL from config
 
 ### Badge Colors
 
