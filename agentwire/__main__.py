@@ -1015,10 +1015,10 @@ def cmd_kill(args) -> int:
     Supports remote sessions with session@machine format.
     """
     session_full = args.session
+    json_mode = getattr(args, 'json', False)
 
     if not session_full:
-        print("Usage: agentwire kill -s <session>", file=sys.stderr)
-        return 1
+        return _output_result(False, json_mode, "Usage: agentwire kill -s <session>")
 
     # Parse session@machine format
     session, machine_id = _parse_session_target(session_full)
@@ -1027,26 +1027,26 @@ def cmd_kill(args) -> int:
         # Remote: SSH and run tmux commands
         machine = _get_machine_config(machine_id)
         if machine is None:
-            print(f"Machine '{machine_id}' not found in machines.json", file=sys.stderr)
-            return 1
+            return _output_result(False, json_mode, f"Machine '{machine_id}' not found in machines.json")
 
         # Check if session exists
         check_cmd = f"tmux has-session -t {shlex.quote(session)} 2>/dev/null"
         result = _run_remote(machine_id, check_cmd)
         if result.returncode != 0:
-            print(f"Session '{session}' not found on {machine_id}", file=sys.stderr)
-            return 1
+            return _output_result(False, json_mode, f"Session '{session}' not found on {machine_id}")
 
         # Send /exit to Claude first for clean shutdown
         exit_cmd = f"tmux send-keys -t {shlex.quote(session)} /exit Enter"
         _run_remote(machine_id, exit_cmd)
-        print(f"Sent /exit to {session_full}, waiting 3s...")
+        if not json_mode:
+            print(f"Sent /exit to {session_full}, waiting 3s...")
         time.sleep(3)
 
         # Kill the session
         kill_cmd = f"tmux kill-session -t {shlex.quote(session)}"
         _run_remote(machine_id, kill_cmd)
-        print(f"Killed session '{session_full}'")
+        if not json_mode:
+            print(f"Killed session '{session_full}'")
 
         # Clean up rooms.json
         rooms_file = Path.home() / ".agentwire" / "rooms.json"
@@ -1063,6 +1063,8 @@ def cmd_kill(args) -> int:
             except Exception:
                 pass
 
+        if json_mode:
+            _output_json({"success": True, "session": session_full})
         return 0
 
     # Local: existing logic
@@ -1071,17 +1073,18 @@ def cmd_kill(args) -> int:
         capture_output=True
     )
     if result.returncode != 0:
-        print(f"Session '{session}' not found", file=sys.stderr)
-        return 1
+        return _output_result(False, json_mode, f"Session '{session}' not found")
 
     # Send /exit to Claude first for clean shutdown
     subprocess.run(["tmux", "send-keys", "-t", session, "/exit", "Enter"])
-    print(f"Sent /exit to {session}, waiting 3s...")
+    if not json_mode:
+        print(f"Sent /exit to {session}, waiting 3s...")
     time.sleep(3)
 
     # Kill the session
     subprocess.run(["tmux", "kill-session", "-t", session])
-    print(f"Killed session '{session}'")
+    if not json_mode:
+        print(f"Killed session '{session}'")
 
     # Clean up rooms.json
     rooms_file = Path.home() / ".agentwire" / "rooms.json"
@@ -1097,6 +1100,8 @@ def cmd_kill(args) -> int:
         except Exception:
             pass
 
+    if json_mode:
+        _output_json({"success": True, "session": session_full})
     return 0
 
 
@@ -2536,6 +2541,7 @@ def main() -> int:
     # === kill command (top-level) ===
     kill_parser = subparsers.add_parser("kill", help="Kill a session (clean shutdown)")
     kill_parser.add_argument("-s", "--session", required=True, help="Session name (supports session@machine)")
+    kill_parser.add_argument("--json", action="store_true", help="Output as JSON")
     kill_parser.set_defaults(func=cmd_kill)
 
     # === recreate command (top-level) ===
