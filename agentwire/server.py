@@ -1461,16 +1461,24 @@ projects:
 
             # Check restricted mode - auto-handle without user interaction
             if room.config.restricted:
-                session_name = name.split("@")[0]
+                # Parse session name to handle local vs remote
+                project, branch, machine = parse_session_name(name)
+                if branch:
+                    tmux_session = f"{project}/{branch}".replace(".", "_")
+                else:
+                    tmux_session = project.replace(".", "_")
 
                 if _is_allowed_in_restricted_mode(tool_name, tool_input):
                     # Auto-allow: send "2" keystroke (allow_always)
                     logger.info(f"[{name}] Restricted mode: auto-allowing {tool_name}")
                     try:
-                        subprocess.run(
-                            ["tmux", "send-keys", "-t", session_name, "2"],
-                            check=True, capture_output=True
-                        )
+                        if machine:
+                            await self._run_ssh_command(machine, f"tmux send-keys -t {shlex.quote(tmux_session)} 2")
+                        else:
+                            subprocess.run(
+                                ["tmux", "send-keys", "-t", tmux_session, "2"],
+                                check=True, capture_output=True
+                            )
                     except Exception as e:
                         logger.error(f"[{name}] Failed to send allow keystroke: {e}")
                     return web.json_response({"decision": "allow_always"})
@@ -1478,10 +1486,13 @@ projects:
                     # Auto-deny: send "Escape" keystroke (deny silently)
                     logger.info(f"[{name}] Restricted mode: auto-denying {tool_name}")
                     try:
-                        subprocess.run(
-                            ["tmux", "send-keys", "-t", session_name, "Escape"],
-                            check=True, capture_output=True
-                        )
+                        if machine:
+                            await self._run_ssh_command(machine, f"tmux send-keys -t {shlex.quote(tmux_session)} Escape")
+                        else:
+                            subprocess.run(
+                                ["tmux", "send-keys", "-t", tmux_session, "Escape"],
+                                check=True, capture_output=True
+                            )
                     except Exception as e:
                         logger.error(f"[{name}] Failed to send deny keystroke: {e}")
                     return web.json_response({
