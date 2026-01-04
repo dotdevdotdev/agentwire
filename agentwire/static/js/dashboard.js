@@ -9,6 +9,9 @@ const DEFAULT_VOICE = window.AGENTWIRE_CONFIG?.defaultVoice || 'bashbunni';
 // Path check debounce timeout
 let pathCheckTimeout = null;
 
+// Store machines data for later use
+let machinesData = [];
+
 // =============================================================================
 // Input Validation
 // =============================================================================
@@ -48,6 +51,131 @@ function onSessionNameInput() {
     if (createBtn) {
         createBtn.disabled = !validation.valid && name.length > 0;
         createBtn.style.opacity = createBtn.disabled ? '0.5' : '1';
+    }
+}
+
+// =============================================================================
+// Git/Worktree Options
+// =============================================================================
+
+function onPathChange() {
+    const path = document.getElementById('projectPath')?.value.trim() || '';
+    const machine = document.getElementById('sessionMachine')?.value || 'local';
+
+    clearTimeout(pathCheckTimeout);
+
+    if (!path) {
+        hideGitOptions();
+        return;
+    }
+
+    pathCheckTimeout = setTimeout(async () => {
+        try {
+            const params = new URLSearchParams({ path, machine });
+            const res = await fetch(`/api/check-path?${params}`);
+            const data = await res.json();
+
+            if (data.is_git) {
+                showGitOptions(data.current_branch);
+            } else {
+                hideGitOptions();
+            }
+        } catch (e) {
+            console.error('Path check failed:', e);
+            hideGitOptions();
+        }
+    }, 300);  // 300ms debounce
+}
+
+function showGitOptions(currentBranch) {
+    const gitOptions = document.getElementById('gitOptions');
+    const branchLabel = document.getElementById('gitCurrentBranch');
+
+    if (gitOptions) {
+        gitOptions.style.display = 'block';
+    }
+    if (branchLabel) {
+        branchLabel.textContent = currentBranch || 'unknown';
+    }
+}
+
+function hideGitOptions() {
+    const gitOptions = document.getElementById('gitOptions');
+    if (gitOptions) {
+        gitOptions.style.display = 'none';
+    }
+}
+
+function onWorktreeChange() {
+    const useWorktree = document.getElementById('useWorktree')?.checked;
+    const branchRow = document.getElementById('branchRow');
+
+    if (branchRow) {
+        branchRow.style.display = useWorktree ? 'block' : 'none';
+    }
+}
+
+// =============================================================================
+// Machine Selector
+// =============================================================================
+
+function populateMachineDropdown(machines) {
+    const select = document.getElementById('sessionMachine');
+    if (!select) return;
+
+    // Clear existing options except first (Local)
+    while (select.options.length > 1) {
+        select.remove(1);
+    }
+
+    // Add remote machines
+    machines.filter(m => !m.local).forEach(m => {
+        const option = document.createElement('option');
+        option.value = m.id;
+        option.textContent = `${m.id} (${m.host})`;
+        select.appendChild(option);
+    });
+
+    // Restore last selected machine from localStorage
+    restoreLastMachine();
+}
+
+function getMachineProjectsDir(machineId) {
+    const machine = machinesData.find(m => m.id === machineId);
+    return machine?.projects_dir || '~/projects';
+}
+
+function updateMachineSuffix() {
+    const machine = document.getElementById('sessionMachine')?.value;
+    const suffix = document.getElementById('machineSuffix');
+    if (!suffix) return;
+
+    if (machine === 'local') {
+        suffix.textContent = '';
+    } else {
+        suffix.textContent = `@${machine}`;
+    }
+}
+
+function restoreLastMachine() {
+    const last = localStorage.getItem('agentwire-last-machine');
+    if (last) {
+        const select = document.getElementById('sessionMachine');
+        if (select && [...select.options].some(o => o.value === last)) {
+            select.value = last;
+            updateMachineSuffix();
+        }
+    }
+}
+
+function onMachineChange() {
+    const machineSelect = document.getElementById('sessionMachine');
+    if (machineSelect) {
+        updateMachineSuffix();
+        // Save to localStorage
+        localStorage.setItem('agentwire-last-machine', machineSelect.value);
+        // Re-check path for git status on different machine
+        onPathChange();
     }
 }
 
@@ -132,12 +260,14 @@ async function createSession() {
     const nameInput = document.getElementById('sessionName');
     const pathInput = document.getElementById('projectPath');
     const voiceSelect = document.getElementById('sessionVoice');
+    const machineSelect = document.getElementById('sessionMachine');
     const bypassRadio = document.querySelector('input[name="bypassPermissions"]:checked');
     const errorEl = document.getElementById('error');
 
     const name = nameInput?.value.trim() || '';
     const path = pathInput?.value.trim() || '';
     const voice = voiceSelect?.value || DEFAULT_VOICE;
+    const machine = machineSelect?.value || 'local';
     const bypassPermissions = bypassRadio?.value === 'true';
 
     // Validate session name first
@@ -152,7 +282,13 @@ async function createSession() {
     const res = await fetch('/api/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, path: path || null, voice, bypass_permissions: bypassPermissions })
+        body: JSON.stringify({
+            name,
+            path: path || null,
+            voice,
+            machine: machine !== 'local' ? machine : null,
+            bypass_permissions: bypassPermissions
+        })
     });
 
     const data = await res.json();
@@ -186,7 +322,11 @@ async function closeSession(name) {
 async function loadMachines() {
     const res = await fetch('/api/machines');
     const machines = await res.json();
+    machinesData = machines;  // Store for later use
     const container = document.getElementById('machinesList');
+
+    // Populate the session machine dropdown
+    populateMachineDropdown(machines);
 
     if (!container) return;
 
@@ -533,6 +673,12 @@ function bindEventListeners() {
                 }
             }
         });
+    }
+
+    // Machine selector change event
+    const machineSelect = document.getElementById('sessionMachine');
+    if (machineSelect) {
+        machineSelect.addEventListener('change', onMachineChange);
     }
 
     // Add machine button
