@@ -316,8 +316,31 @@ def cmd_tts_start(args) -> int:
     port = args.port or tts_config.get("port", 8100)
     host = args.host or tts_config.get("host", "0.0.0.0")
 
-    # Build the serve command
-    tts_cmd = f"agentwire tts serve --host {host} --port {port}"
+    # Check if uvicorn is available in current environment
+    try:
+        import uvicorn  # noqa: F401
+        tts_cmd = f"agentwire tts serve --host {host} --port {port}"
+    except ImportError:
+        # TTS deps not in current env, try to find project venv
+        # Look for agentwire project in common locations
+        possible_paths = [
+            Path.home() / "projects" / "agentwire",
+            Path("/home/dotdev/projects/agentwire"),
+            Path.cwd(),
+        ]
+        venv_path = None
+        for p in possible_paths:
+            venv = p / ".venv" / "bin" / "activate"
+            if venv.exists():
+                venv_path = p
+                break
+
+        if venv_path:
+            tts_cmd = f"cd {venv_path} && source .venv/bin/activate && python -m agentwire tts serve --host {host} --port {port}"
+        else:
+            print("Error: TTS dependencies (uvicorn) not found.", file=sys.stderr)
+            print("Install with: uv pip install -e '.[tts]'", file=sys.stderr)
+            return 1
 
     print(f"Starting TTS server on {host}:{port}...")
     subprocess.run([
