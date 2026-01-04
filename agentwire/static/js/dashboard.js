@@ -52,6 +52,29 @@ function onSessionNameInput() {
         createBtn.disabled = !validation.valid && name.length > 0;
         createBtn.style.opacity = createBtn.disabled ? '0.5' : '1';
     }
+
+    // Auto-fill path based on session name
+    onSessionNameChange();
+}
+
+function onSessionNameChange() {
+    const name = document.getElementById('sessionName')?.value.trim() || '';
+    const pathInput = document.getElementById('projectPath');
+    const machine = document.getElementById('sessionMachine')?.value || 'local';
+
+    // Don't auto-fill if user has manually edited
+    if (!pathInput || pathInput.dataset.userEdited === 'true') return;
+
+    if (name) {
+        const projectsDir = machine === 'local'
+            ? '~/projects'
+            : getMachineProjectsDir(machine);
+        pathInput.value = `${projectsDir}/${name}`;
+        onPathChange();  // Trigger git detection
+    } else {
+        pathInput.value = '';
+        hideGitOptions();
+    }
 }
 
 // =============================================================================
@@ -96,6 +119,44 @@ function showGitOptions(currentBranch) {
     }
     if (branchLabel) {
         branchLabel.textContent = currentBranch || 'unknown';
+    }
+
+    // Auto-suggest unique branch name
+    suggestBranchName();
+}
+
+async function suggestBranchName() {
+    const path = document.getElementById('projectPath')?.value.trim() || '';
+    const machine = document.getElementById('sessionMachine')?.value || 'local';
+    const branchInput = document.getElementById('branchName');
+
+    if (!branchInput || !path) return;
+
+    // Generate date-based prefix
+    const now = new Date();
+    const month = now.toLocaleString('en', { month: 'short' }).toLowerCase();
+    const day = now.getDate();
+    const year = now.getFullYear();
+    const base = `${month}-${day}-${year}`;
+
+    try {
+        // Check existing branches matching this prefix
+        const params = new URLSearchParams({ path, machine, prefix: base });
+        const res = await fetch(`/api/check-branches?${params}`);
+        const data = await res.json();
+
+        // Find next available increment
+        let increment = 1;
+        const existing = data.existing || [];
+        while (existing.includes(`${base}--${increment}`)) {
+            increment++;
+        }
+
+        branchInput.value = `${base}--${increment}`;  // e.g., "jan-3-2026--1"
+    } catch (e) {
+        console.error('Branch name suggestion failed:', e);
+        // Fallback: just use base with --1
+        branchInput.value = `${base}--1`;
     }
 }
 
@@ -172,10 +233,27 @@ function onMachineChange() {
     const machineSelect = document.getElementById('sessionMachine');
     if (machineSelect) {
         updateMachineSuffix();
+        updatePathPlaceholder();
         // Save to localStorage
         localStorage.setItem('agentwire-last-machine', machineSelect.value);
         // Re-check path for git status on different machine
         onPathChange();
+        // Re-auto-fill path if not user-edited
+        onSessionNameChange();
+    }
+}
+
+function updatePathPlaceholder() {
+    const machine = document.getElementById('sessionMachine')?.value || 'local';
+    const pathInput = document.getElementById('projectPath');
+
+    if (!pathInput) return;
+
+    if (machine === 'local') {
+        pathInput.placeholder = '~/projects/name';
+    } else {
+        const projectsDir = getMachineProjectsDir(machine);
+        pathInput.placeholder = `${projectsDir}/name`;
     }
 }
 
@@ -695,7 +773,10 @@ function bindEventListeners() {
     // Path change detection (for git options)
     const pathInput = document.getElementById('projectPath');
     if (pathInput) {
-        pathInput.addEventListener('input', onPathChange);
+        pathInput.addEventListener('input', () => {
+            pathInput.dataset.userEdited = 'true';
+            onPathChange();
+        });
     }
 
     // Worktree checkbox
