@@ -2233,9 +2233,24 @@ def register_hook_in_settings() -> bool:
     """Register the permission hook in Claude's settings.json.
 
     Returns True if settings were updated, False if already configured.
+
+    Claude Code hook format:
+    {
+      "hooks": {
+        "PermissionRequest": [
+          {
+            "matcher": ".*",
+            "hooks": [
+              {"type": "command", "command": "~/.claude/hooks/agentwire-permission.sh"}
+            ]
+          }
+        ]
+      }
+    }
     """
     settings_file = Path.home() / ".claude" / "settings.json"
-    hook_path = str(CLAUDE_HOOKS_DIR / "agentwire-permission.sh")
+    # Use ~ for portability
+    hook_command = "~/.claude/hooks/agentwire-permission.sh"
 
     # Load existing settings or create new
     if settings_file.exists():
@@ -2252,17 +2267,20 @@ def register_hook_in_settings() -> bool:
     if "PermissionRequest" not in settings["hooks"]:
         settings["hooks"]["PermissionRequest"] = []
 
-    # Check if already registered
+    # Check if already registered (check nested hooks array)
+    for entry in settings["hooks"]["PermissionRequest"]:
+        if "hooks" in entry:
+            for h in entry["hooks"]:
+                if h.get("command") == hook_command:
+                    return False  # Already registered
+
+    # Add hook with correct Claude Code format
     hook_entry = {
-        "command": hook_path,
-        "timeout": 300000  # 5 minutes
+        "matcher": ".*",
+        "hooks": [
+            {"type": "command", "command": hook_command}
+        ]
     }
-
-    for existing in settings["hooks"]["PermissionRequest"]:
-        if existing.get("command") == hook_path:
-            return False  # Already registered
-
-    # Add hook
     settings["hooks"]["PermissionRequest"].append(hook_entry)
 
     # Write back
@@ -2393,7 +2411,7 @@ def unregister_hook_from_settings() -> bool:
     Returns True if settings were updated, False if not found.
     """
     settings_file = Path.home() / ".claude" / "settings.json"
-    hook_path = str(CLAUDE_HOOKS_DIR / "agentwire-permission.sh")
+    hook_command = "~/.claude/hooks/agentwire-permission.sh"
 
     if not settings_file.exists():
         return False
@@ -2406,12 +2424,19 @@ def unregister_hook_from_settings() -> bool:
     if "hooks" not in settings or "PermissionRequest" not in settings["hooks"]:
         return False
 
-    # Filter out our hook
+    # Filter out entries containing our hook
     original_len = len(settings["hooks"]["PermissionRequest"])
-    settings["hooks"]["PermissionRequest"] = [
-        h for h in settings["hooks"]["PermissionRequest"]
-        if h.get("command") != hook_path
-    ]
+    new_entries = []
+    for entry in settings["hooks"]["PermissionRequest"]:
+        if "hooks" in entry:
+            # Check if any hook in this entry matches ours
+            has_our_hook = any(h.get("command") == hook_command for h in entry["hooks"])
+            if not has_our_hook:
+                new_entries.append(entry)
+        else:
+            new_entries.append(entry)
+
+    settings["hooks"]["PermissionRequest"] = new_entries
 
     if len(settings["hooks"]["PermissionRequest"]) == original_len:
         return False  # Hook wasn't registered
@@ -2430,7 +2455,7 @@ def unregister_hook_from_settings() -> bool:
 def is_hook_registered() -> bool:
     """Check if the permission hook is registered in Claude's settings.json."""
     settings_file = Path.home() / ".claude" / "settings.json"
-    hook_path = str(CLAUDE_HOOKS_DIR / "agentwire-permission.sh")
+    hook_command = "~/.claude/hooks/agentwire-permission.sh"
 
     if not settings_file.exists():
         return False
@@ -2443,7 +2468,13 @@ def is_hook_registered() -> bool:
     if "hooks" not in settings or "PermissionRequest" not in settings["hooks"]:
         return False
 
-    return any(h.get("command") == hook_path for h in settings["hooks"]["PermissionRequest"])
+    # Check nested hooks array for our command
+    for entry in settings["hooks"]["PermissionRequest"]:
+        if "hooks" in entry:
+            for h in entry["hooks"]:
+                if h.get("command") == hook_command:
+                    return True
+    return False
 
 
 def cmd_skills_uninstall(args) -> int:
