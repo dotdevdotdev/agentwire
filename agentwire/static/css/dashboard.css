@@ -170,6 +170,38 @@
     border-color: var(--primary);
 }
 
+/* Session name with machine suffix preview */
+.session-name-input {
+    display: flex;
+    align-items: center;
+    background: var(--bg-light);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+}
+
+.session-name-input input {
+    flex: 1;
+    border: none;
+    background: transparent;
+    padding: var(--space-sm);
+}
+
+.session-name-input input:focus {
+    outline: none;
+}
+
+.session-name-input:focus-within {
+    border-color: var(--primary);
+}
+
+.machine-suffix {
+    padding-right: var(--space-sm);
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    white-space: nowrap;
+}
+
 /* Radio button groups (permission mode) */
 .radio-group {
     display: flex;
