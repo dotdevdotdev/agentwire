@@ -814,7 +814,25 @@ def cmd_new(args) -> int:
 
     # Local session
     # Resolve path
-    if path:
+    if path and branch and worktrees_enabled:
+        # Path + branch: use provided path as main repo, create worktree from it
+        project_path = Path(path).expanduser().resolve()
+        session_path = project_path.parent / f"{project_path.name}{worktree_suffix}" / branch
+
+        # Ensure worktree exists
+        if not session_path.exists():
+            if not project_path.exists():
+                return _output_result(False, json_mode, f"Project path does not exist: {project_path}")
+
+            success = ensure_worktree(
+                project_path,
+                branch,
+                session_path,
+                auto_create_branch=auto_create_branch,
+            )
+            if not success:
+                return _output_result(False, json_mode, f"Failed to create worktree for branch '{branch}' in {project_path}")
+    elif path:
         session_path = Path(path).expanduser().resolve()
     elif branch and worktrees_enabled:
         # Worktree session: ~/projects/project-worktrees/branch/
