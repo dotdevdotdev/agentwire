@@ -242,6 +242,16 @@
     border-color: var(--primary);
 }
 
+.action-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+.action-btn:disabled:hover {
+    background: var(--primary-subtle);
+    border-color: rgba(0, 221, 0, 0.3);
+}
+
 .action-btn.secondary {
     background: var(--bg-light);
     border-color: var(--border);
@@ -595,4 +605,83 @@
 .modal-buttons {
     display: flex;
     gap: var(--space-sm);
+}
+
+/* =============================================================================
+   Git Options Section
+   ============================================================================= */
+
+.git-options {
+    padding: var(--space-sm);
+    background: rgba(0, 221, 0, 0.05);
+    border: 1px solid rgba(0, 221, 0, 0.2);
+    border-radius: var(--radius-sm);
+    margin-bottom: 0.75rem;
+}
+
+.git-status {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    margin-bottom: var(--space-sm);
+    font-size: 0.85rem;
+}
+
+.git-indicator {
+    width: 8px;
+    height: 8px;
+    background: var(--primary);
+    border-radius: 50%;
+}
+
+.git-branch-label {
+    color: var(--text-muted);
+}
+
+.git-branch {
+    color: var(--primary);
+    font-family: var(--font-mono);
+}
+
+/* Checkbox option */
+.checkbox-option {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    cursor: pointer;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    margin-bottom: var(--space-sm);
+}
+
+.checkbox-option input[type="checkbox"] {
+    width: auto;
+    accent-color: var(--primary);
+}
+
+/* Branch row */
+.branch-row {
+    margin-top: var(--space-sm);
+}
+
+.branch-row label {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-bottom: var(--space-xs);
+}
+
+.branch-row input {
+    width: 100%;
+    padding: var(--space-sm);
+    background: var(--bg-light);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-size: 0.9rem;
+}
+
+.branch-row input:focus {
+    outline: none;
+    border-color: var(--primary);
 }

@@ -6,6 +6,51 @@
 // Get default voice from the page (set by Jinja2)
 const DEFAULT_VOICE = window.AGENTWIRE_CONFIG?.defaultVoice || 'bashbunni';
 
+// Path check debounce timeout
+let pathCheckTimeout = null;
+
+// =============================================================================
+// Input Validation
+// =============================================================================
+
+// Invalid characters in session names - these cause issues with CLI parsing
+const INVALID_SESSION_CHARS = /[@\/\s\\:*?"<>|]/;
+
+function validateSessionName(name) {
+    if (!name) {
+        return { valid: false, error: 'Session name is required' };
+    }
+    if (INVALID_SESSION_CHARS.test(name)) {
+        return { valid: false, error: 'Name cannot contain @ / \\ : * ? " < > | or spaces' };
+    }
+    if (name.startsWith('.') || name.startsWith('-')) {
+        return { valid: false, error: 'Name cannot start with . or -' };
+    }
+    if (name.length > 50) {
+        return { valid: false, error: 'Name cannot exceed 50 characters' };
+    }
+    return { valid: true, error: null };
+}
+
+function onSessionNameInput() {
+    const nameInput = document.getElementById('sessionName');
+    const errorEl = document.getElementById('error');
+    const createBtn = document.querySelector('#createSessionGroup .action-btn');
+
+    const name = nameInput?.value.trim() || '';
+    const validation = validateSessionName(name);
+
+    if (errorEl) {
+        errorEl.textContent = validation.error || '';
+    }
+
+    // Update button state
+    if (createBtn) {
+        createBtn.disabled = !validation.valid && name.length > 0;
+        createBtn.style.opacity = createBtn.disabled ? '0.5' : '1';
+    }
+}
+
 // =============================================================================
 // Accordion Toggle
 // =============================================================================
@@ -95,8 +140,10 @@ async function createSession() {
     const voice = voiceSelect?.value || DEFAULT_VOICE;
     const bypassPermissions = bypassRadio?.value === 'true';
 
-    if (!name) {
-        if (errorEl) errorEl.textContent = 'Session name is required';
+    // Validate session name first
+    const validation = validateSessionName(name);
+    if (!validation.valid) {
+        if (errorEl) errorEl.textContent = validation.error;
         return;
     }
 
@@ -474,11 +521,17 @@ function bindEventListeners() {
         createSessionBtn.addEventListener('click', createSession);
     }
 
-    // Session name enter key
+    // Session name validation and enter key
     const sessionNameInput = document.getElementById('sessionName');
     if (sessionNameInput) {
+        sessionNameInput.addEventListener('input', onSessionNameInput);
         sessionNameInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') createSession();
+            if (e.key === 'Enter') {
+                const validation = validateSessionName(sessionNameInput.value.trim());
+                if (validation.valid) {
+                    createSession();
+                }
+            }
         });
     }
 
