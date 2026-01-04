@@ -261,13 +261,22 @@ async function createSession() {
     const pathInput = document.getElementById('projectPath');
     const voiceSelect = document.getElementById('sessionVoice');
     const machineSelect = document.getElementById('sessionMachine');
+    const worktreeCheckbox = document.getElementById('useWorktree');
+    const branchInput = document.getElementById('branchName');
     const bypassRadio = document.querySelector('input[name="bypassPermissions"]:checked');
+    const gitOptions = document.getElementById('gitOptions');
     const errorEl = document.getElementById('error');
 
     const name = nameInput?.value.trim() || '';
     const path = pathInput?.value.trim() || '';
     const voice = voiceSelect?.value || DEFAULT_VOICE;
     const machine = machineSelect?.value || 'local';
+
+    // Only include worktree/branch if git options are visible
+    const gitOptionsVisible = gitOptions && gitOptions.style.display !== 'none';
+    const worktree = gitOptionsVisible && worktreeCheckbox?.checked;
+    const branch = worktree ? (branchInput?.value.trim() || '') : '';
+
     const bypassPermissions = bypassRadio?.value === 'true';
 
     // Validate session name first
@@ -287,6 +296,8 @@ async function createSession() {
             path: path || null,
             voice,
             machine: machine !== 'local' ? machine : null,
+            worktree,
+            branch,
             bypass_permissions: bypassPermissions
         })
     });
@@ -679,6 +690,18 @@ function bindEventListeners() {
     const machineSelect = document.getElementById('sessionMachine');
     if (machineSelect) {
         machineSelect.addEventListener('change', onMachineChange);
+    }
+
+    // Path change detection (for git options)
+    const pathInput = document.getElementById('projectPath');
+    if (pathInput) {
+        pathInput.addEventListener('input', onPathChange);
+    }
+
+    // Worktree checkbox
+    const worktreeCheckbox = document.getElementById('useWorktree');
+    if (worktreeCheckbox) {
+        worktreeCheckbox.addEventListener('change', onWorktreeChange);
     }
 
     // Add machine button
