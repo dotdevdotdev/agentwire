@@ -1371,7 +1371,10 @@ def cmd_recreate(args) -> int:
                 return _output_result(False, json_mode, f"Failed to create worktree: {result.stderr}")
 
         # Step 5: Create new session
-        bypass_flag = "" if getattr(args, 'no_bypass', False) else " --dangerously-skip-permissions"
+        restricted = getattr(args, 'restricted', False)
+        no_bypass = getattr(args, 'no_bypass', False)
+        # Restricted mode implies no bypass (uses hook for permission handling)
+        bypass_flag = "" if (restricted or no_bypass) else " --dangerously-skip-permissions"
         session_path = worktree_path if branch else project_path
         # AGENTWIRE_ROOM must include @machine so portal can find room config
         room_name = f"{session_name}@{machine_id}"
@@ -1464,7 +1467,10 @@ def cmd_recreate(args) -> int:
     )
     time.sleep(0.1)
 
-    if getattr(args, 'no_bypass', False):
+    restricted = getattr(args, 'restricted', False)
+    no_bypass = getattr(args, 'no_bypass', False)
+    # Restricted mode implies no bypass (uses hook for permission handling)
+    if restricted or no_bypass:
         claude_cmd = "claude"
     else:
         claude_cmd = "claude --dangerously-skip-permissions"
@@ -1486,8 +1492,11 @@ def cmd_recreate(args) -> int:
         except Exception:
             pass
 
-    bypass_permissions = not getattr(args, 'no_bypass', False)
-    configs[session_name] = {"bypass_permissions": bypass_permissions}
+    bypass_permissions = not (restricted or no_bypass)
+    room_config = {"bypass_permissions": bypass_permissions}
+    if restricted:
+        room_config["restricted"] = True
+    configs[session_name] = room_config
 
     with open(rooms_file, "w") as f:
         json.dump(configs, f, indent=2)
@@ -1583,7 +1592,10 @@ def cmd_fork(args) -> int:
             return _output_result(False, json_mode, f"Failed to create worktree: {result.stderr}")
 
         # Create new session
-        bypass_flag = "" if getattr(args, 'no_bypass', False) else " --dangerously-skip-permissions"
+        restricted = getattr(args, 'restricted', False)
+        no_bypass = getattr(args, 'no_bypass', False)
+        # Restricted mode implies no bypass (uses hook for permission handling)
+        bypass_flag = "" if (restricted or no_bypass) else " --dangerously-skip-permissions"
         # AGENTWIRE_ROOM must include @machine so portal can find room config
         room_name = f"{target_session}@{machine_id}"
         create_session_cmd = (
@@ -1610,8 +1622,11 @@ def cmd_fork(args) -> int:
                 pass
 
         room_key = room_name
-        bypass_permissions = not getattr(args, 'no_bypass', False)
-        configs[room_key] = {"bypass_permissions": bypass_permissions}
+        bypass_permissions = not (restricted or no_bypass)
+        room_config = {"bypass_permissions": bypass_permissions}
+        if restricted:
+            room_config["restricted"] = True
+        configs[room_key] = room_config
 
         with open(rooms_file, "w") as f:
             json.dump(configs, f, indent=2)
@@ -1680,7 +1695,10 @@ def cmd_fork(args) -> int:
     )
     time.sleep(0.1)
 
-    if getattr(args, 'no_bypass', False):
+    restricted = getattr(args, 'restricted', False)
+    no_bypass = getattr(args, 'no_bypass', False)
+    # Restricted mode implies no bypass (uses hook for permission handling)
+    if restricted or no_bypass:
         claude_cmd = "claude"
     else:
         claude_cmd = "claude --dangerously-skip-permissions"
@@ -1702,8 +1720,11 @@ def cmd_fork(args) -> int:
         except Exception:
             pass
 
-    bypass_permissions = not getattr(args, 'no_bypass', False)
-    configs[target_session] = {"bypass_permissions": bypass_permissions}
+    bypass_permissions = not (restricted or no_bypass)
+    room_config = {"bypass_permissions": bypass_permissions}
+    if restricted:
+        room_config["restricted"] = True
+    configs[target_session] = room_config
 
     with open(rooms_file, "w") as f:
         json.dump(configs, f, indent=2)
@@ -2705,6 +2726,7 @@ def main() -> int:
     recreate_parser = subparsers.add_parser("recreate", help="Destroy and recreate session with fresh worktree")
     recreate_parser.add_argument("-s", "--session", required=True, help="Session name (project/branch or project/branch@machine)")
     recreate_parser.add_argument("--no-bypass", action="store_true", help="Don't use --dangerously-skip-permissions")
+    recreate_parser.add_argument("--restricted", action="store_true", help="Restricted mode: only allow say/remote-say commands (implies --no-bypass)")
     recreate_parser.add_argument("--json", action="store_true", help="Output as JSON")
     recreate_parser.set_defaults(func=cmd_recreate)
 
@@ -2713,6 +2735,7 @@ def main() -> int:
     fork_parser.add_argument("-s", "--source", required=True, help="Source session (project or project/branch)")
     fork_parser.add_argument("-t", "--target", required=True, help="Target session (must include branch: project/new-branch)")
     fork_parser.add_argument("--no-bypass", action="store_true", help="Don't use --dangerously-skip-permissions")
+    fork_parser.add_argument("--restricted", action="store_true", help="Restricted mode: only allow say/remote-say commands (implies --no-bypass)")
     fork_parser.add_argument("--json", action="store_true", help="Output as JSON")
     fork_parser.set_defaults(func=cmd_fork)
 
