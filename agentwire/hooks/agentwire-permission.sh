@@ -21,8 +21,15 @@ if [ -z "$room" ]; then
     exit 1
 fi
 
-# Get portal URL (default to localhost with HTTPS)
-base_url="${AGENTWIRE_URL:-https://localhost:8765}"
+# Get portal URL
+# Priority: 1. AGENTWIRE_URL env var, 2. ~/.agentwire/portal_url file, 3. localhost
+if [ -n "${AGENTWIRE_URL:-}" ]; then
+    base_url="$AGENTWIRE_URL"
+elif [ -f "$HOME/.agentwire/portal_url" ]; then
+    base_url=$(cat "$HOME/.agentwire/portal_url" | tr -d '\n')
+else
+    base_url="https://localhost:8765"
+fi
 
 # POST to portal and wait for response (5 minute timeout)
 response=$(curl -s -X POST "${base_url}/api/permission/${room}" \

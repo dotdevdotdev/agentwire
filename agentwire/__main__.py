@@ -2229,6 +2229,49 @@ def get_hooks_source() -> Path:
     raise FileNotFoundError("Could not find hooks directory in package")
 
 
+def register_hook_in_settings() -> bool:
+    """Register the permission hook in Claude's settings.json.
+
+    Returns True if settings were updated, False if already configured.
+    """
+    settings_file = Path.home() / ".claude" / "settings.json"
+    hook_path = str(CLAUDE_HOOKS_DIR / "agentwire-permission.sh")
+
+    # Load existing settings or create new
+    if settings_file.exists():
+        try:
+            settings = json.loads(settings_file.read_text())
+        except json.JSONDecodeError:
+            settings = {}
+    else:
+        settings = {}
+
+    # Ensure hooks structure exists
+    if "hooks" not in settings:
+        settings["hooks"] = {}
+    if "PermissionRequest" not in settings["hooks"]:
+        settings["hooks"]["PermissionRequest"] = []
+
+    # Check if already registered
+    hook_entry = {
+        "command": hook_path,
+        "timeout": 300000  # 5 minutes
+    }
+
+    for existing in settings["hooks"]["PermissionRequest"]:
+        if existing.get("command") == hook_path:
+            return False  # Already registered
+
+    # Add hook
+    settings["hooks"]["PermissionRequest"].append(hook_entry)
+
+    # Write back
+    settings_file.parent.mkdir(parents=True, exist_ok=True)
+    settings_file.write_text(json.dumps(settings, indent=2))
+
+    return True
+
+
 def install_permission_hook(force: bool = False, copy: bool = False) -> bool:
     """Install the permission hook for Claude Code integration.
 
@@ -2253,28 +2296,37 @@ def install_permission_hook(force: bool = False, copy: bool = False) -> bool:
     target_hook = CLAUDE_HOOKS_DIR / hook_name
 
     # Check if already installed
+    file_updated = False
     if target_hook.exists():
         if target_hook.is_symlink():
             current_target = target_hook.resolve()
             if current_target == source_hook.resolve() and not force:
-                return False  # Already correctly installed
-        if not force:
+                file_updated = False  # File already correctly installed
+            else:
+                target_hook.unlink()
+                file_updated = True
+        elif not force:
             print(f"  Hook already exists at {target_hook}")
-            return False
-
-        # Remove existing
-        target_hook.unlink()
-
-    # Create symlink (preferred) or copy
-    if copy:
-        shutil.copy2(source_hook, target_hook)
+            file_updated = False
+        else:
+            target_hook.unlink()
+            file_updated = True
     else:
-        target_hook.symlink_to(source_hook)
+        file_updated = True
 
-    # Make executable
-    target_hook.chmod(0o755)
+    # Create symlink (preferred) or copy if needed
+    if file_updated or not target_hook.exists():
+        if copy:
+            shutil.copy2(source_hook, target_hook)
+        else:
+            target_hook.symlink_to(source_hook)
+        # Make executable
+        target_hook.chmod(0o755)
 
-    return True
+    # Register in settings.json
+    settings_updated = register_hook_in_settings()
+
+    return file_updated or settings_updated
 
 
 def cmd_skills_install(args) -> int:
@@ -2335,6 +2387,65 @@ def cmd_skills_install(args) -> int:
     return 0
 
 
+def unregister_hook_from_settings() -> bool:
+    """Remove the permission hook from Claude's settings.json.
+
+    Returns True if settings were updated, False if not found.
+    """
+    settings_file = Path.home() / ".claude" / "settings.json"
+    hook_path = str(CLAUDE_HOOKS_DIR / "agentwire-permission.sh")
+
+    if not settings_file.exists():
+        return False
+
+    try:
+        settings = json.loads(settings_file.read_text())
+    except json.JSONDecodeError:
+        return False
+
+    if "hooks" not in settings or "PermissionRequest" not in settings["hooks"]:
+        return False
+
+    # Filter out our hook
+    original_len = len(settings["hooks"]["PermissionRequest"])
+    settings["hooks"]["PermissionRequest"] = [
+        h for h in settings["hooks"]["PermissionRequest"]
+        if h.get("command") != hook_path
+    ]
+
+    if len(settings["hooks"]["PermissionRequest"]) == original_len:
+        return False  # Hook wasn't registered
+
+    # Clean up empty structures
+    if not settings["hooks"]["PermissionRequest"]:
+        del settings["hooks"]["PermissionRequest"]
+    if not settings["hooks"]:
+        del settings["hooks"]
+
+    # Write back
+    settings_file.write_text(json.dumps(settings, indent=2))
+    return True
+
+
+def is_hook_registered() -> bool:
+    """Check if the permission hook is registered in Claude's settings.json."""
+    settings_file = Path.home() / ".claude" / "settings.json"
+    hook_path = str(CLAUDE_HOOKS_DIR / "agentwire-permission.sh")
+
+    if not settings_file.exists():
+        return False
+
+    try:
+        settings = json.loads(settings_file.read_text())
+    except json.JSONDecodeError:
+        return False
+
+    if "hooks" not in settings or "PermissionRequest" not in settings["hooks"]:
+        return False
+
+    return any(h.get("command") == hook_path for h in settings["hooks"]["PermissionRequest"])
+
+
 def cmd_skills_uninstall(args) -> int:
     """Uninstall Claude Code skills."""
     target_dir = CLAUDE_SKILLS_DIR / "agentwire"
@@ -2356,6 +2467,10 @@ def cmd_skills_uninstall(args) -> int:
         hook_file.unlink()
         print(f"Removed hook: {hook_file}")
         hook_removed = True
+
+    # Also unregister from settings.json
+    if unregister_hook_from_settings():
+        print("Unregistered hook from Claude settings.json")
 
     if not skills_removed and not hook_removed:
         print("Skills and hooks not installed")
@@ -2390,6 +2505,7 @@ def cmd_skills_status(args) -> int:
             print(f"  Commands: {', '.join('/' + f.stem for f in sorted(skill_files))}")
 
     print()
+    hook_registered = is_hook_registered()
     if hook_installed:
         if hook_file.is_symlink():
             source = hook_file.resolve()
@@ -2398,6 +2514,10 @@ def cmd_skills_status(args) -> int:
         else:
             print(f"Permission hook: installed (copy)")
             print(f"  Location: {hook_file}")
+        if hook_registered:
+            print(f"  Registered: yes (in ~/.claude/settings.json)")
+        else:
+            print(f"  Registered: NO - run 'agentwire skills install --force' to fix")
     else:
         print("Permission hook: not installed")
         print("  (Required for normal session permission prompts)")
