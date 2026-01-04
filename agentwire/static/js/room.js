@@ -129,7 +129,7 @@ function handleSessionActivity() {
             if (currentState === STATES.PROCESSING) {
                 setState(STATES.IDLE);
             }
-        }, 10000);
+        }, 5000);
     }
 }
 
