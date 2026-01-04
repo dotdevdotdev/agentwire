@@ -93,13 +93,13 @@ Note: Silent deny chosen over custom message ("3" + text) to keep response fast 
 
 ## Completion Criteria
 
-- [ ] `agentwire new -s test --restricted` creates a restricted session
-- [ ] In restricted session, `say "hello"` works without prompts
-- [ ] In restricted session, file edits/writes are auto-denied with message
-- [ ] Dashboard shows "Restricted" badge for restricted sessions
-- [ ] Create Session form has Restricted option
-- [ ] CLAUDE.md documents the three session modes
-- [ ] `chatbot_mode` references removed from code
+- [x] `agentwire new -s test --restricted` creates a restricted session
+- [x] In restricted session, `say "hello"` works without prompts
+- [x] In restricted session, file edits/writes are auto-denied with message
+- [x] Dashboard shows "Restricted" badge for restricted sessions
+- [x] Create Session form has Restricted option
+- [x] CLAUDE.md documents the three session modes
+- [x] `chatbot_mode` references removed from code (none found in codebase)
 
 ---
 

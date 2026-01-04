@@ -74,17 +74,24 @@
                                 <label>Permission Mode</label>
                                 <div class="radio-group">
                                     <label class="radio-option selected">
-                                        <input type="radio" name="bypassPermissions" value="true" checked>
+                                        <input type="radio" name="permissionMode" value="bypass" checked>
                                         <div class="radio-option-content">
                                             <div class="radio-option-label">Bypass Permissions (Recommended)</div>
                                             <div class="radio-option-desc">Claude auto-accepts all prompts for faster workflow</div>
                                         </div>
                                     </label>
                                     <label class="radio-option">
-                                        <input type="radio" name="bypassPermissions" value="false">
+                                        <input type="radio" name="permissionMode" value="normal">
                                         <div class="radio-option-content">
                                             <div class="radio-option-label">Normal Session</div>
                                             <div class="radio-option-desc">Permission prompts appear in portal for approval</div>
+                                        </div>
+                                    </label>
+                                    <label class="radio-option">
+                                        <input type="radio" name="permissionMode" value="restricted">
+                                        <div class="radio-option-content">
+                                            <div class="radio-option-label">Restricted Mode</div>
+                                            <div class="radio-option-desc">Only say/remote-say commands allowed, all else denied</div>
                                         </div>
                                     </label>
                                 </div>

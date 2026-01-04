@@ -101,6 +101,7 @@ agentwire say --room api "Done"  # Send TTS to room
 # Session management
 agentwire list                              # List sessions from ALL machines
 agentwire new -s <name> [-p path] [-f]      # Create Claude Code session
+agentwire new -s <name> --restricted        # Create restricted mode session
 agentwire output -s <session> [-n lines]    # Read recent session output
 agentwire kill -s <session>                 # Clean shutdown (/exit then kill)
 agentwire send -s <session> "prompt"        # Send prompt + Enter
@@ -232,12 +233,13 @@ projects:
 
 ## Permission Modes
 
-Sessions run in one of two permission modes:
+Sessions run in one of three permission modes:
 
 | Mode | Setting | Claude Command | Behavior |
 |------|---------|----------------|----------|
 | **Bypass** | `bypass_permissions: true` | `claude --dangerously-skip-permissions` | No prompts, full trust, fast |
 | **Normal** | `bypass_permissions: false` | `claude` | Permission prompts via portal |
+| **Restricted** | `restricted: true` | `claude` | Only say/remote-say allowed, all else auto-denied |
 
 **Default:** Bypass mode (existing behavior, recommended for trusted projects)
 
@@ -253,6 +255,14 @@ Sessions run in one of two permission modes:
 5. User clicks Allow or Deny
 6. Decision returns to hook, Claude proceeds or aborts
 
+**Restricted sessions** auto-handle permissions without user interaction:
+1. Claude triggers a permission-requiring action
+2. Hook POSTs to `/api/permission/{room}`
+3. Portal checks if command is `say "..."` or `remote-say "..."`
+4. If allowed: sends "2" keystroke (allow_always), returns immediately
+5. If denied: sends "Escape" keystroke (deny silently), returns deny response
+6. No UI popup, no user interaction required
+
 ### Permission Modal
 
 When a normal session requires permission, the portal shows:
@@ -265,7 +275,7 @@ The orb state changes to orange/amber (AWAITING PERMISSION).
 
 ### Hook System
 
-Normal sessions require the AgentWire permission hook:
+Normal and Restricted sessions require the AgentWire permission hook:
 
 **Hook script:** `~/.claude/hooks/agentwire-permission.sh`
 **Installed via:** `agentwire skills install`
@@ -273,7 +283,7 @@ Normal sessions require the AgentWire permission hook:
 The hook:
 - Reads permission request JSON from stdin
 - POSTs to `https://localhost:8765/api/permission/{room}`
-- Waits indefinitely for user decision
+- Waits indefinitely for user decision (Normal) or returns immediately (Restricted)
 - Returns `{decision: "allow"}` or `{decision: "deny"}` to Claude
 
 ### Room Configuration
@@ -289,11 +299,15 @@ Set per-session in `~/.agentwire/rooms.json`:
   "untrusted-lib": {
     "voice": "bashbunni",
     "bypass_permissions": false
+  },
+  "voice-only-agent": {
+    "voice": "bashbunni",
+    "restricted": true
   }
 }
 ```
 
-**Migration:** Sessions without `bypass_permissions` default to `true` (bypass).
+**Migration:** Sessions without `bypass_permissions` default to `true` (bypass). Sessions without `restricted` default to `false`.
 
 ### When to Use Each Mode
 
@@ -304,6 +318,9 @@ Set per-session in `~/.agentwire/rooms.json`:
 | Reviewing unfamiliar code | Normal |
 | Running untrusted prompts | Normal |
 | Learning/educational use | Normal |
+| Voice-only agent (no code changes) | Restricted |
+| Public demo or kiosk | Restricted |
+| Sandboxed experimentation | Restricted |
 
 ---
 
