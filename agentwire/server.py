@@ -155,6 +155,11 @@ class AgentWireServer:
         self.app.router.add_get("/api/config", self.api_get_config)
         self.app.router.add_post("/api/config", self.api_save_config)
         self.app.router.add_post("/api/config/reload", self.api_reload_config)
+        # Template management
+        self.app.router.add_get("/api/templates", self.api_list_templates)
+        self.app.router.add_get("/api/templates/{name}", self.api_get_template)
+        self.app.router.add_post("/api/templates", self.api_create_template)
+        self.app.router.add_delete("/api/templates/{name}", self.api_delete_template)
         # Permission request handling (from Claude Code hook)
         # Note: respond route must come first as aiohttp matches in order
         self.app.router.add_post("/api/permission/{name:.+}/respond", self.api_permission_respond)
@@ -751,6 +756,7 @@ class AgentWireServer:
             machine: Machine ID ('local' or remote machine ID)
             worktree: Whether to create a worktree session
             branch: Branch name for worktree sessions
+            template: Template name to apply (optional)
 
         Session naming:
             - worktree + branch: project/branch (or project/branch@machine)
@@ -767,6 +773,7 @@ class AgentWireServer:
             machine = data.get("machine", "local")
             worktree = data.get("worktree", False)
             branch = data.get("branch", "").strip()
+            template_name = data.get("template")
 
             if not name:
                 return web.json_response({"error": "Session name is required"})
@@ -790,6 +797,9 @@ class AgentWireServer:
             # Pass -p when provided (CLI uses it to locate repo for worktree creation)
             if custom_path:
                 args.extend(["-p", custom_path])
+            # Pass template if provided
+            if template_name:
+                args.extend(["-t", template_name])
             # Restricted mode implies --no-bypass (needs permission hook to work)
             if restricted:
                 args.append("--restricted")
@@ -803,15 +813,18 @@ class AgentWireServer:
                 error_msg = result.get("error", "Failed to create session")
                 return web.json_response({"error": error_msg})
 
-            # CLI updates rooms.json with bypass_permissions/restricted, but we need to add voice
+            # CLI updates rooms.json with bypass_permissions/restricted and template voice
+            # We may still need to set voice if user selected one explicitly (overrides template)
             session_name = result.get("session", cli_session)
             configs = self._load_room_configs()
             if session_name not in configs:
                 configs[session_name] = {}
-            configs[session_name]["voice"] = voice
+            # Only set voice if explicitly provided (not using template default)
+            if voice != self.config.tts.default_voice or not template_name:
+                configs[session_name]["voice"] = voice
             self._save_room_configs(configs)
 
-            return web.json_response({"success": True, "name": session_name})
+            return web.json_response({"success": True, "name": session_name, "template": template_name})
 
         except Exception as e:
             logger.error(f"Failed to create session: {e}")
@@ -1167,6 +1180,71 @@ projects:
             return web.json_response({"success": True})
         except Exception as e:
             return web.json_response({"error": str(e)})
+
+    async def api_list_templates(self, request: web.Request) -> web.Response:
+        """List available session templates."""
+        from .config import load_templates
+
+        templates = load_templates()
+        return web.json_response([t.to_dict() for t in templates])
+
+    async def api_get_template(self, request: web.Request) -> web.Response:
+        """Get details of a specific template."""
+        from .config import load_template
+
+        name = request.match_info["name"]
+        template = load_template(name)
+
+        if template is None:
+            return web.json_response({"error": f"Template '{name}' not found"}, status=404)
+
+        return web.json_response(template.to_dict())
+
+    async def api_create_template(self, request: web.Request) -> web.Response:
+        """Create or update a session template."""
+        from .config import Template, save_template, load_template
+
+        try:
+            data = await request.json()
+            name = data.get("name", "").strip()
+
+            if not name:
+                return web.json_response({"error": "Template name is required"})
+
+            # Check if it already exists and overwrite not specified
+            if load_template(name) and not data.get("overwrite", False):
+                return web.json_response({"error": f"Template '{name}' already exists. Set overwrite=true to replace."})
+
+            template = Template(
+                name=name,
+                description=data.get("description", ""),
+                role=data.get("role"),
+                voice=data.get("voice"),
+                project=data.get("project"),
+                initial_prompt=data.get("initial_prompt", ""),
+                bypass_permissions=data.get("bypass_permissions", True),
+                restricted=data.get("restricted", False),
+            )
+
+            if save_template(template):
+                return web.json_response({"success": True, "template": template.to_dict()})
+            else:
+                return web.json_response({"error": "Failed to save template"})
+
+        except Exception as e:
+            logger.error(f"Failed to create template: {e}")
+            return web.json_response({"error": str(e)})
+
+    async def api_delete_template(self, request: web.Request) -> web.Response:
+        """Delete a session template."""
+        from .config import delete_template
+
+        name = request.match_info["name"]
+
+        if delete_template(name):
+            return web.json_response({"success": True})
+        else:
+            return web.json_response({"error": f"Template '{name}' not found or failed to delete"}, status=404)
 
     async def handle_transcribe(self, request: web.Request) -> web.Response:
         """Transcribe audio to text."""

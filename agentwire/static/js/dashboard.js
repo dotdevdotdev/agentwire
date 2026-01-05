@@ -12,6 +12,9 @@ let pathCheckTimeout = null;
 // Store machines data for later use
 let machinesData = [];
 
+// Store templates data for later use
+let templatesData = [];
+
 // =============================================================================
 // Input Validation
 // =============================================================================
@@ -356,6 +359,7 @@ async function createSession() {
     const machineSelect = document.getElementById('sessionMachine');
     const worktreeCheckbox = document.getElementById('useWorktree');
     const branchInput = document.getElementById('branchName');
+    const templateSelect = document.getElementById('sessionTemplate');
     const permissionModeRadio = document.querySelector('input[name="permissionMode"]:checked');
     const gitOptions = document.getElementById('gitOptions');
     const errorEl = document.getElementById('error');
@@ -364,6 +368,7 @@ async function createSession() {
     const path = pathInput?.value.trim() || '';
     const voice = voiceSelect?.value || DEFAULT_VOICE;
     const machine = machineSelect?.value || 'local';
+    const template = templateSelect?.value || null;
 
     // Only include worktree/branch if git options are visible
     const gitOptionsVisible = gitOptions && gitOptions.style.display !== 'none';
@@ -395,7 +400,8 @@ async function createSession() {
             worktree,
             branch,
             bypass_permissions: bypassPermissions,
-            restricted: restricted
+            restricted: restricted,
+            template: template || null
         })
     });
 
@@ -525,6 +531,113 @@ async function removeMachine(id) {
             console.log('Removed room configs:', data.rooms_removed);
         }
     }
+}
+
+// =============================================================================
+// Templates
+// =============================================================================
+
+async function loadTemplates() {
+    try {
+        const res = await fetch('/api/templates');
+        templatesData = await res.json();
+        populateTemplateDropdown(templatesData);
+    } catch (err) {
+        console.error('Failed to load templates:', err);
+        templatesData = [];
+    }
+}
+
+function populateTemplateDropdown(templates) {
+    const select = document.getElementById('sessionTemplate');
+    if (!select) return;
+
+    // Keep the first option (None - Start fresh)
+    const firstOption = select.querySelector('option');
+    select.innerHTML = '';
+    if (firstOption) select.appendChild(firstOption);
+
+    // Add template options
+    templates.forEach(t => {
+        const opt = document.createElement('option');
+        opt.value = t.name;
+        opt.textContent = t.name + (t.description ? ` - ${t.description}` : '');
+        select.appendChild(opt);
+    });
+}
+
+function onTemplateChange() {
+    const select = document.getElementById('sessionTemplate');
+    const preview = document.getElementById('templatePreview');
+    const descEl = document.getElementById('templateDescription');
+    const promptEl = document.getElementById('templatePrompt');
+    const voiceSelect = document.getElementById('sessionVoice');
+
+    if (!select || !preview) return;
+
+    const templateName = select.value;
+
+    if (!templateName) {
+        preview.style.display = 'none';
+        return;
+    }
+
+    // Find the template
+    const template = templatesData.find(t => t.name === templateName);
+    if (!template) {
+        preview.style.display = 'none';
+        return;
+    }
+
+    // Show preview
+    preview.style.display = 'block';
+    if (descEl) {
+        descEl.textContent = template.description || 'No description';
+    }
+    if (promptEl) {
+        const promptText = template.initial_prompt || '(No initial prompt)';
+        // Truncate long prompts
+        promptEl.textContent = promptText.length > 300
+            ? promptText.substring(0, 300) + '...'
+            : promptText;
+    }
+
+    // Set voice from template if specified
+    if (template.voice && voiceSelect) {
+        const voiceOption = Array.from(voiceSelect.options).find(opt => opt.value === template.voice);
+        if (voiceOption) {
+            voiceSelect.value = template.voice;
+        }
+    }
+
+    // Set permission mode from template
+    const bypassRadio = document.querySelector('input[name="permissionMode"][value="bypass"]');
+    const normalRadio = document.querySelector('input[name="permissionMode"][value="normal"]');
+    const restrictedRadio = document.querySelector('input[name="permissionMode"][value="restricted"]');
+
+    if (template.restricted && restrictedRadio) {
+        restrictedRadio.checked = true;
+        updateRadioSelection(restrictedRadio);
+    } else if (!template.bypass_permissions && normalRadio) {
+        normalRadio.checked = true;
+        updateRadioSelection(normalRadio);
+    } else if (template.bypass_permissions && bypassRadio) {
+        bypassRadio.checked = true;
+        updateRadioSelection(bypassRadio);
+    }
+}
+
+function updateRadioSelection(radio) {
+    // Update the radio group UI to reflect selection
+    const radioOptions = document.querySelectorAll('.radio-option');
+    radioOptions.forEach(opt => {
+        const input = opt.querySelector('input[type="radio"]');
+        if (input === radio) {
+            opt.classList.add('selected');
+        } else {
+            opt.classList.remove('selected');
+        }
+    });
 }
 
 // =============================================================================
@@ -805,6 +918,12 @@ function bindEventListeners() {
         worktreeCheckbox.addEventListener('change', onWorktreeChange);
     }
 
+    // Template selector
+    const templateSelect = document.getElementById('sessionTemplate');
+    if (templateSelect) {
+        templateSelect.addEventListener('change', onTemplateChange);
+    }
+
     // Add machine button
     const addMachineBtn = document.querySelector('#addMachineGroup .action-btn');
     if (addMachineBtn) {
@@ -860,6 +979,7 @@ export function init() {
     bindEventListeners();
     loadSessions();
     loadMachines();
+    loadTemplates();
     loadConfig();
     loadArchive();
 

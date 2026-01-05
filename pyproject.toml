@@ -60,7 +60,7 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["agentwire"]
-artifacts = ["agentwire/skills/*.md"]
+artifacts = ["agentwire/skills/*.md", "agentwire/sample_templates/*.yaml"]
 exclude = [
     "agentwire/static/*.xcf",
     "agentwire/static/*-blue.*",

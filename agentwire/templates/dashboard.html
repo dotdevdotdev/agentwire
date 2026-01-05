@@ -63,6 +63,17 @@
                                 </div>
                             </div>
                             <div class="form-row">
+                                <label>Template (optional)</label>
+                                <select id="sessionTemplate">
+                                    <option value="">None - Start fresh</option>
+                                    <!-- Populated from /api/templates -->
+                                </select>
+                                <div id="templatePreview" class="template-preview" style="display: none;">
+                                    <div class="template-description" id="templateDescription"></div>
+                                    <div class="template-prompt" id="templatePrompt"></div>
+                                </div>
+                            </div>
+                            <div class="form-row">
                                 <label>Voice</label>
                                 <select id="sessionVoice">
                                     {% for voice in voices %}

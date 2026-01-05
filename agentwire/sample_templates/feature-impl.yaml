@@ -1,0 +1,13 @@
+name: feature-impl
+description: Implement a feature with planning and tests
+initial_prompt: |
+  I'm working on {{project_name}}{{branch}}.
+
+  Before implementing anything:
+  1. Read relevant docs and code
+  2. Understand existing patterns
+  3. Create a todo list to track progress
+
+  Ask me what feature to implement.
+bypass_permissions: true
+restricted: false
