@@ -112,6 +112,7 @@ class AgentWireServer:
     def __init__(self, config: Config):
         self.config = config
         self.rooms: dict[str, Room] = {}
+        self.session_activity: dict[str, dict] = {}  # Global activity tracking for all sessions
         self.tts = None
         self.stt = None
         self.agent = None
@@ -388,6 +389,25 @@ class AgentWireServer:
 
         return "active" if time_since_last_output <= threshold else "idle"
 
+    def _get_global_session_activity(self, session_name: str) -> str:
+        """Get session activity from global tracking dict.
+
+        Returns:
+            "active" if session has recent output, "idle" otherwise
+        """
+        activity_info = self.session_activity.get(session_name)
+        if not activity_info:
+            return "idle"
+
+        last_timestamp = activity_info.get("last_output_timestamp", 0.0)
+        if last_timestamp == 0.0:
+            return "idle"
+
+        time_since_last_output = time.time() - last_timestamp
+        threshold = self.config.server.activity_threshold_seconds
+
+        return "active" if time_since_last_output <= threshold else "idle"
+
     async def handle_room(self, request: web.Request) -> web.Response:
         """Serve a room page."""
         name = request.match_info["name"]
@@ -537,7 +557,15 @@ class AgentWireServer:
                 if output != room.last_output:
                     old_output = room.last_output
                     room.last_output = output
-                    room.last_output_timestamp = time.time()  # Update activity timestamp
+                    timestamp = time.time()
+                    room.last_output_timestamp = timestamp  # Update activity timestamp
+
+                    # Also update global activity tracking (persists across room create/destroy)
+                    self.session_activity[room.name] = {
+                        "last_output_timestamp": timestamp,
+                        "last_output": output,
+                    }
+
                     await self._broadcast(room, {"type": "output", "data": output})
 
                     # Notify clients that agent is actively working
@@ -667,10 +695,8 @@ class AgentWireServer:
                 # Use path from room config if available (set during creation)
                 path = config.get("path", str(self.config.projects.dir / project))
 
-                # Calculate activity status if room exists
-                activity_status = "idle"
-                if name in self.rooms:
-                    activity_status = self._get_session_activity_status(self.rooms[name])
+                # Calculate activity status from global tracking (works even without active room)
+                activity_status = self._get_global_session_activity(name)
 
                 result.append(
                     {

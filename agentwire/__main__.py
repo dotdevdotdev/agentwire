@@ -1357,7 +1357,11 @@ def cmd_new(args) -> int:
         session_path = projects_dir / project
 
     if not session_path.exists():
-        return _output_result(False, json_mode, f"Path does not exist: {session_path}")
+        if args.force:
+            # Auto-create directory with -f flag
+            session_path.mkdir(parents=True, exist_ok=True)
+        else:
+            return _output_result(False, json_mode, f"Path does not exist: {session_path}")
 
     # Check if session already exists
     result = subprocess.run(
@@ -2063,13 +2067,16 @@ def cmd_fork(args) -> int:
     source_project, source_branch, source_machine = parse_session_name(source_full)
     target_project, target_branch, target_machine = parse_session_name(target_full)
 
-    # Validate: source and target should be same project
-    if source_project != target_project:
-        return _output_result(False, json_mode, f"Source and target must be same project (got {source_project} vs {target_project})")
+    # Non-worktree fork: both have no branch (same directory, fork Claude context)
+    # Worktree fork: at least one has a branch (create new worktree)
+    is_non_worktree_fork = not source_branch and not target_branch
 
-    # Validate: target must have a branch
-    if not target_branch:
-        return _output_result(False, json_mode, "Target must include a branch name (e.g., project/new-branch)")
+    # For worktree forks, validate project names match and target has a branch
+    if not is_non_worktree_fork:
+        if source_project != target_project:
+            return _output_result(False, json_mode, f"For worktree forks, source and target must be same project (got {source_project} vs {target_project})")
+        if not target_branch:
+            return _output_result(False, json_mode, "For worktree forks, target must include a branch name (e.g., project/new-branch)")
 
     # Machines must match
     if source_machine != target_machine:
@@ -2089,7 +2096,11 @@ def cmd_fork(args) -> int:
     else:
         source_session = source_project.replace(".", "_")
 
-    target_session = f"{target_project}/{target_branch}".replace(".", "_")
+    if target_branch:
+        target_session = f"{target_project}/{target_branch}".replace(".", "_")
+    else:
+        # Non-worktree fork: use target project name directly
+        target_session = target_project.replace(".", "_")
 
     if machine_id:
         # Remote fork
@@ -2177,6 +2188,104 @@ def cmd_fork(args) -> int:
     # Local fork
     # Build paths
     project_path = projects_dir / source_project
+
+    # Handle non-worktree fork (same directory, different Claude session)
+    if is_non_worktree_fork:
+        # For non-worktree forks, both use the project directory
+        fork_path = project_path
+
+        if not fork_path.exists():
+            return _output_result(False, json_mode, f"Source path does not exist: {fork_path}")
+
+        # Check if source session exists
+        check_source = subprocess.run(
+            ["tmux", "has-session", "-t", source_session],
+            capture_output=True
+        )
+        if check_source.returncode != 0:
+            return _output_result(False, json_mode, f"Source session '{source_session}' does not exist")
+
+        # Check if target session already exists
+        check_target = subprocess.run(
+            ["tmux", "has-session", "-t", target_session],
+            capture_output=True
+        )
+        if check_target.returncode == 0:
+            return _output_result(False, json_mode, f"Target session '{target_session}' already exists")
+
+        # Create new tmux session in same directory
+        subprocess.run(
+            ["tmux", "new-session", "-d", "-s", target_session, "-c", str(fork_path)],
+            check=True
+        )
+
+        subprocess.run(
+            ["tmux", "send-keys", "-t", target_session, f"export AGENTWIRE_ROOM={target_session}", "Enter"],
+            check=True
+        )
+        time.sleep(0.1)
+
+        # Load source session config to preserve settings
+        rooms_file = Path.home() / ".agentwire" / "rooms.json"
+        source_config = {}
+        if rooms_file.exists():
+            try:
+                with open(rooms_file) as f:
+                    configs = json.load(f)
+                    source_config = configs.get(source_session, {})
+            except Exception:
+                pass
+
+        restricted = source_config.get("restricted", False)
+        bypass_permissions = source_config.get("bypass_permissions", True)
+
+        # Build Claude command
+        if restricted or not bypass_permissions:
+            claude_cmd = "claude"
+        else:
+            claude_cmd = "claude --dangerously-skip-permissions"
+
+        subprocess.run(
+            ["tmux", "send-keys", "-t", target_session, claude_cmd, "Enter"],
+            check=True
+        )
+
+        # Update rooms.json for target
+        configs = {}
+        if rooms_file.exists():
+            try:
+                with open(rooms_file) as f:
+                    configs = json.load(f)
+            except Exception:
+                pass
+
+        configs[target_session] = {
+            "bypass_permissions": bypass_permissions,
+            "path": str(fork_path),
+        }
+        if restricted:
+            configs[target_session]["restricted"] = True
+
+        rooms_file.parent.mkdir(parents=True, exist_ok=True)
+        with open(rooms_file, "w") as f:
+            json.dump(configs, f, indent=2)
+
+        if json_mode:
+            _output_json({
+                "success": True,
+                "session": target_session,
+                "path": str(fork_path),
+                "branch": None,
+                "machine": None,
+                "forked_from": source_full,
+            })
+        else:
+            print(f"Forked '{source_full}' to '{target_session}' (same directory)")
+            print(f"  Path: {fork_path}")
+
+        return 0
+
+    # Worktree fork logic
     if source_branch:
         source_path = projects_dir / f"{source_project}{worktree_suffix}" / source_branch
     else:
