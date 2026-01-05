@@ -128,6 +128,7 @@ class AgentWireServer:
 
     def _setup_routes(self):
         """Configure HTTP and WebSocket routes."""
+        self.app.router.add_get("/health", self.handle_health)
         self.app.router.add_get("/", self.handle_dashboard)
         self.app.router.add_get("/room/{name:.+}", self.handle_room)
         self.app.router.add_get("/ws/{name:.+}", self.handle_websocket)
@@ -340,6 +341,10 @@ class AgentWireServer:
             return ""
 
     # HTTP Handlers
+
+    async def handle_health(self, request: web.Request) -> web.Response:
+        """Health check endpoint for network diagnostics."""
+        return web.json_response({"status": "ok", "version": __version__})
 
     async def handle_dashboard(self, request: web.Request) -> web.Response:
         """Serve the dashboard page."""
