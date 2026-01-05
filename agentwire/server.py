@@ -463,12 +463,14 @@ class AgentWireServer:
 
     # Pattern to detect AskUserQuestion UI blocks
     # Format: ☐ Header\n\nQuestion?\n\n❯ 1. Label\n     Description\n  2. Label...
+    # Multi-tab format: ←  ☐ Tab1  ☐ Tab2  ✔ Submit  →\n\nQuestion?...
     ASK_PATTERN = re.compile(
-        r'\s*☐\s+(.+?)\s*\n\s*\n'  # ☐ Header
-        r'(.+?\?)\s*\n'            # Question text ending with ?
-        r'\s*\n'                   # Blank line
+        r'☐\s+(\S+)'              # ☐ followed by first word only (active tab name)
+        r'.*?\n\s*\n'             # Rest of header line + blank line
+        r'(.+?\?)\s*\n'           # Question text ending with ?
+        r'\s*\n'                  # Blank line
         r'((?:[❯\s]+\d+\.\s+.+\n(?:\s{3,}.+\n)?)+)',  # Options block
-        re.MULTILINE
+        re.MULTILINE | re.DOTALL
     )
 
     def _parse_ask_options(self, options_block: str) -> list[dict]:
