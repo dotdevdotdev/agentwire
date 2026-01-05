@@ -42,38 +42,38 @@ Integrate the Claude Code Damage Control security hooks system into AgentWire to
 
 **Tasks**:
 
-- [ ] **1.1**: Create `.agentwire/hooks/damage-control/` directory structure
+- [x] **1.1**: Create `.agentwire/hooks/damage-control/` directory structure
   - Files: `~/.agentwire/hooks/damage-control/` (global scope)
   - Copy base structure from claude-code-damage-control
 
-- [ ] **1.2**: Port `patterns.yaml` to AgentWire
+- [x] **1.2**: Port `patterns.yaml` to AgentWire
   - Source: `.claude/skills/damage-control/patterns.yaml`
   - Target: `~/.agentwire/hooks/damage-control/patterns.yaml`
   - Keep all 300+ patterns intact initially
 
-- [ ] **1.3**: Adapt `bash-tool-damage-control.py` for AgentWire
+- [x] **1.3**: Adapt `bash-tool-damage-control.py` for AgentWire
   - Source: `hooks/damage-control-python/bash-tool-damage-control.py`
   - Target: `~/.agentwire/hooks/damage-control/bash-tool-damage-control.py`
   - Update config path resolution for AgentWire (`$AGENTWIRE_DIR` instead of `$CLAUDE_PROJECT_DIR`)
   - Keep all pattern matching logic identical
 
-- [ ] **1.4**: Adapt `edit-tool-damage-control.py` for AgentWire
+- [x] **1.4**: Adapt `edit-tool-damage-control.py` for AgentWire
   - Source: `hooks/damage-control-python/edit-tool-damage-control.py`
   - Target: `~/.agentwire/hooks/damage-control/edit-tool-damage-control.py`
   - Update config path resolution
   - Ensure glob pattern matching works
 
-- [ ] **1.5**: Adapt `write-tool-damage-control.py` for AgentWire
+- [x] **1.5**: Adapt `write-tool-damage-control.py` for AgentWire
   - Source: `hooks/damage-control-python/write-tool-damage-control.py`
   - Target: `~/.agentwire/hooks/damage-control/write-tool-damage-control.py`
   - Update config path resolution
 
-- [ ] **1.6**: Create AgentWire hook registration in settings
+- [x] **1.6**: Create AgentWire hook registration in settings
   - File: `~/.agentwire/settings.json` (create if doesn't exist)
   - Add PreToolUse hooks for Bash, Edit, Write tools
   - Use UV runtime: `uv run ~/.agentwire/hooks/damage-control/bash-tool-damage-control.py`
 
-- [ ] **1.7**: Write basic integration tests
+- [x] **1.7**: Write basic integration tests
   - File: `tests/hooks/test_damage_control_basic.py`
   - Test: Bash hook blocks `rm -rf /`
   - Test: Edit hook blocks `~/.ssh/id_rsa`
