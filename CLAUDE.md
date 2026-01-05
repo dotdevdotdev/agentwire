@@ -101,6 +101,7 @@ agentwire say --room api "Done"  # Send TTS to room
 # Session management
 agentwire list                              # List sessions from ALL machines
 agentwire new -s <name> [-p path] [-f]      # Create Claude Code session
+agentwire new -s <name> -t <template>       # Create session with template
 agentwire new -s <name> --restricted        # Create restricted mode session
 agentwire output -s <session> [-n lines]    # Read recent session output
 agentwire kill -s <session>                 # Clean shutdown (/exit then kill)
@@ -113,6 +114,13 @@ agentwire fork -s <source> -t <target>      # Fork session (preserves conversati
 agentwire machine list                # List machines with status
 agentwire machine add <id> [options]  # Add a machine to portal
 agentwire machine remove <id>         # Remove with cleanup
+
+# Session templates
+agentwire template list               # List available templates
+agentwire template show <name>        # Show template details
+agentwire template create <name>      # Create new template interactively
+agentwire template delete <name>      # Delete a template
+agentwire template install-samples    # Install sample templates
 
 # Skills (Claude Code integration)
 agentwire skills install              # Install Claude Code skills
@@ -209,6 +217,7 @@ All config lives in `~/.agentwire/`:
 | `config.yaml` | Main configuration |
 | `machines.json` | Remote machine registry |
 | `rooms.json` | Per-session settings (voice, role, model) |
+| `templates/*.yaml` | Session templates (voice, initial prompt, settings) |
 | `roles/*.md` | Role context files for Claude sessions |
 | `cert.pem`, `key.pem` | SSL certificates |
 
@@ -238,6 +247,86 @@ projects:
   worktrees:
     enabled: true
 ```
+
+---
+
+## Session Templates
+
+Session templates provide pre-configured settings for common use cases: initial prompts, voice, permission modes, and more.
+
+### Template CLI Commands
+
+```bash
+# List available templates
+agentwire template list
+
+# Show template details
+agentwire template show <name>
+
+# Create a new template (interactive)
+agentwire template create <name>
+
+# Install sample templates
+agentwire template install-samples
+
+# Delete a template
+agentwire template delete <name>
+```
+
+### Using Templates
+
+```bash
+# Create session with a template
+agentwire new -s my-project -t code-review
+
+# Template settings apply:
+# - Voice
+# - Permission mode (bypass/normal/restricted)
+# - Initial prompt (sent after Claude is ready)
+```
+
+### Template File Format
+
+Templates are YAML files in `~/.agentwire/templates/`:
+
+```yaml
+name: code-review
+description: Review code and find bugs
+voice: bashbunni
+initial_prompt: |
+  Review the codebase and provide:
+  1. Code quality issues
+  2. Potential bugs
+  3. Performance improvements
+
+  Start by exploring the project structure.
+bypass_permissions: true
+restricted: false
+```
+
+### Template Variables
+
+Use these in `initial_prompt` - they're expanded when the session starts:
+
+| Variable | Description |
+|----------|-------------|
+| `{{project_name}}` | Project name from session |
+| `{{branch}}` | Git branch (if worktree session) |
+| `{{machine}}` | Machine ID (if remote) |
+
+### Sample Templates
+
+Install sample templates with:
+
+```bash
+agentwire template install-samples
+```
+
+Included samples:
+- `code-review` - Review code, find bugs, suggest improvements
+- `feature-impl` - Implement features with planning
+- `bug-fix` - Systematic bug investigation and fixing
+- `voice-assistant` - Voice-only assistant (restricted mode)
 
 ---
 

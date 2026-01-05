@@ -65,11 +65,11 @@ Templates stored in `~/.agentwire/templates/` as YAML or JSON files.
 
 ## Completion Criteria
 
-- [ ] Can create a template via CLI or portal
-- [ ] Can create session with template applied
-- [ ] Initial prompt sent automatically to new session
-- [ ] Templates visible in portal Create Session form
-- [ ] Variables expanded in initial prompt
+- [x] Can create a template via CLI or portal
+- [x] Can create session with template applied
+- [x] Initial prompt sent automatically to new session
+- [x] Templates visible in portal Create Session form
+- [x] Variables expanded in initial prompt
 
 ## Example Template
 

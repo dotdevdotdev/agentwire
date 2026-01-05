@@ -1,0 +1,12 @@
+name: code-review
+description: Review code, suggest improvements, find bugs
+initial_prompt: |
+  Review the codebase and provide:
+  1. Code quality issues or anti-patterns
+  2. Potential bugs or edge cases
+  3. Performance improvements
+  4. Security concerns
+
+  Start by exploring the project structure and understanding the architecture.
+bypass_permissions: true
+restricted: false

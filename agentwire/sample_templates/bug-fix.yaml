@@ -1,0 +1,15 @@
+name: bug-fix
+description: Investigate and fix bugs systematically
+initial_prompt: |
+  I'm debugging an issue in {{project_name}}.
+
+  Approach:
+  1. Understand the bug report/symptoms
+  2. Reproduce the issue (find relevant tests or create one)
+  3. Locate the root cause
+  4. Implement a fix
+  5. Verify the fix works
+
+  Tell me about the bug.
+bypass_permissions: true
+restricted: false
