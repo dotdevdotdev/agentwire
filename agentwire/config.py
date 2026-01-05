@@ -49,6 +49,7 @@ class ServerConfig:
     host: str = "0.0.0.0"
     port: int = 8765
     ssl: SSLConfig = field(default_factory=SSLConfig)
+    activity_threshold_seconds: float = 10.0  # Time in seconds before session is considered idle
 
 
 @dataclass
@@ -335,6 +336,7 @@ def _dict_to_config(data: dict) -> Config:
         host=server_data.get("host", "0.0.0.0"),
         port=server_data.get("port", 8765),
         ssl=ssl,
+        activity_threshold_seconds=server_data.get("activity_threshold_seconds", 10.0),
     )
 
     # Projects

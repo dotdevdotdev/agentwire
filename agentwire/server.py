@@ -102,6 +102,8 @@ class Room:
     played_says: set = field(default_factory=set)
     last_question: str | None = None  # Track AskUserQuestion to avoid duplicates
     pending_permission: PendingPermission | None = None  # Active permission request
+    last_output_timestamp: float = 0.0  # Last time output changed (server-side activity tracking)
+    is_active: bool = False  # Current active/idle state for transition detection
 
 
 class AgentWireServer:
@@ -372,6 +374,20 @@ class AgentWireServer:
         base_name = name.split("@")[0]
         return base_name in self.SYSTEM_SESSIONS
 
+    def _get_session_activity_status(self, room: Room) -> str:
+        """Calculate activity status based on last output timestamp.
+
+        Returns:
+            "active" if output changed within threshold, "idle" otherwise
+        """
+        if room.last_output_timestamp == 0.0:
+            return "idle"
+
+        time_since_last_output = time.time() - room.last_output_timestamp
+        threshold = self.config.server.activity_threshold_seconds
+
+        return "active" if time_since_last_output <= threshold else "idle"
+
     async def handle_room(self, request: web.Request) -> web.Response:
         """Serve a room page."""
         name = request.match_info["name"]
@@ -521,6 +537,7 @@ class AgentWireServer:
                 if output != room.last_output:
                     old_output = room.last_output
                     room.last_output = output
+                    room.last_output_timestamp = time.time()  # Update activity timestamp
                     await self._broadcast(room, {"type": "output", "data": output})
 
                     # Notify clients that agent is actively working
@@ -604,6 +621,20 @@ class AgentWireServer:
                     room.last_question = None
                     await self._broadcast(room, {"type": "question_answered"})
 
+                # Check for activity status transitions
+                current_status = self._get_session_activity_status(room)
+                new_is_active = current_status == "active"
+
+                # Broadcast transition event if state changed
+                if new_is_active != room.is_active:
+                    room.is_active = new_is_active
+                    await self._broadcast(room, {
+                        "type": "session_activity",
+                        "session": room.name,
+                        "active": new_is_active
+                    })
+                    logger.info(f"[{room.name}] Activity transition: {'active' if new_is_active else 'idle'}")
+
             except Exception as e:
                 logger.debug(f"Output poll error for {room.name}: {e}")
 
@@ -632,8 +663,14 @@ class AgentWireServer:
                 project, branch, machine = parse_session_name(name)
 
                 config = room_configs.get(name, {})
+
                 # Use path from room config if available (set during creation)
                 path = config.get("path", str(self.config.projects.dir / project))
+
+                # Calculate activity status if room exists
+                activity_status = "idle"
+                if name in self.rooms:
+                    activity_status = self._get_session_activity_status(self.rooms[name])
 
                 result.append(
                     {
@@ -644,6 +681,7 @@ class AgentWireServer:
                         "type": get_project_type(Path(path)) if Path(path).exists() else "scratch",
                         "bypass_permissions": config.get("bypass_permissions", True),
                         "restricted": config.get("restricted", False),
+                        "activity": activity_status,
                     }
                 )
 
