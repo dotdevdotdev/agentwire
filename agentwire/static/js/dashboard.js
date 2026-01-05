@@ -3,6 +3,8 @@
  * ES Module for dashboard functionality
  */
 
+import * as ws from '/static/js/websocket.js';
+
 // Get default voice from the page (set by Jinja2)
 const DEFAULT_VOICE = window.AGENTWIRE_CONFIG?.defaultVoice || 'bashbunni';
 
@@ -14,6 +16,130 @@ let machinesData = [];
 
 // Store templates data for later use
 let templatesData = [];
+
+// Track session states for sound notifications
+let sessionStates = new Map(); // session name -> 'active' | 'idle'
+
+// =============================================================================
+// WebSocket Activity Updates
+// =============================================================================
+
+/**
+ * Handle real-time session activity updates from WebSocket
+ * @param {Object} data - Activity update: {session: string, active: boolean}
+ */
+function handleSessionActivity(data) {
+    const { session, active } = data;
+    const activityState = active ? 'active' : 'idle';
+
+    // Check for state transition and play notification sound
+    checkSessionTransition(session, activityState);
+
+    // Update the UI indicator live
+    updateSessionIndicator(session, activityState);
+}
+
+/**
+ * Update the activity indicator for a specific session in the DOM
+ * @param {string} sessionName - The session name
+ * @param {string} activityState - 'active' or 'idle'
+ */
+function updateSessionIndicator(sessionName, activityState) {
+    // Find the session card for this session
+    const sessions = document.getElementById('sessions');
+    if (!sessions) return;
+
+    const sessionCards = sessions.querySelectorAll('.session-card');
+
+    for (const card of sessionCards) {
+        const link = card.querySelector('a');
+        if (!link) continue;
+
+        // Extract session name from href: /room/{name}
+        const href = link.getAttribute('href');
+        const match = href?.match(/\/room\/(.+)/);
+        if (!match) continue;
+
+        const cardSessionName = decodeURIComponent(match[1]);
+        if (cardSessionName !== sessionName) continue;
+
+        // Find the activity indicator span
+        const indicator = card.querySelector('.activity-indicator');
+        if (!indicator) continue;
+
+        // Update the class with smooth transition
+        indicator.classList.remove('active', 'idle');
+        indicator.classList.add(activityState);
+
+        // Add pulse animation effect
+        indicator.classList.add('updating');
+        setTimeout(() => {
+            indicator.classList.remove('updating');
+        }, 300);
+
+        break;
+    }
+}
+
+// =============================================================================
+// Sound Notification
+// =============================================================================
+
+// Generate a subtle notification sound using Web Audio API
+function playIdleNotification() {
+    const enabled = localStorage.getItem('agentwire-sound-notifications') === 'true';
+    if (!enabled) return;
+
+    try {
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+
+        // Subtle two-tone notification (E5 -> C5)
+        oscillator.frequency.setValueAtTime(659.25, audioContext.currentTime); // E5
+        oscillator.frequency.setValueAtTime(523.25, audioContext.currentTime + 0.1); // C5
+
+        // Fade in and out for smooth sound
+        gainNode.gain.setValueAtTime(0, audioContext.currentTime);
+        gainNode.gain.linearRampToValueAtTime(0.15, audioContext.currentTime + 0.05);
+        gainNode.gain.linearRampToValueAtTime(0, audioContext.currentTime + 0.25);
+
+        oscillator.start(audioContext.currentTime);
+        oscillator.stop(audioContext.currentTime + 0.25);
+    } catch (error) {
+        console.error('Failed to play notification sound:', error);
+    }
+}
+
+// Check if a session transitioned from active to idle
+function checkSessionTransition(sessionName, currentState) {
+    const previousState = sessionStates.get(sessionName);
+
+    // Active -> Idle transition
+    if (previousState === 'active' && currentState === 'idle') {
+        playIdleNotification();
+    }
+
+    // Update state
+    sessionStates.set(sessionName, currentState);
+}
+
+// Load sound notification preference from localStorage
+function loadSoundNotificationPreference() {
+    const checkbox = document.getElementById('soundNotificationEnabled');
+    if (!checkbox) return;
+
+    const enabled = localStorage.getItem('agentwire-sound-notifications') === 'true';
+    checkbox.checked = enabled;
+}
+
+// Save sound notification preference to localStorage
+function saveSoundNotificationPreference(enabled) {
+    localStorage.setItem('agentwire-sound-notifications', enabled.toString());
+}
 
 // =============================================================================
 // Input Validation
@@ -305,6 +431,13 @@ async function loadSessions() {
         return;
     }
 
+    // Check for activity state transitions and play notification sound
+    sessions.forEach(session => {
+        if (session.activity) {
+            checkSessionTransition(session.name, session.activity);
+        }
+    });
+
     // Update session count in left column
     if (sessionCountEl) {
         sessionCountEl.innerHTML =
@@ -330,10 +463,14 @@ async function loadSessions() {
         } else if (s.machine) {
             machineSuffix = `<span style="color:var(--text-muted);font-weight:normal">@${s.machine}</span>`;
         }
+        // Activity indicator
+        const activityClass = s.activity === 'active' ? 'active' : 'idle';
+        const activityIndicator = `<span class="activity-indicator ${activityClass}"></span>`;
+
         return `
         <div class="session-card">
             <a href="/room/${encodeURIComponent(s.name)}" style="flex:1;text-decoration:none;color:inherit;">
-                <div class="session-name">${displayName}${machineSuffix}${badge}</div>
+                <div class="session-name">${activityIndicator}${displayName}${machineSuffix}${badge}</div>
                 <div class="session-meta">
                     ${s.path || '~/projects/' + s.name}
                     <span class="session-voice">• ${s.voice || DEFAULT_VOICE}</span>
@@ -852,6 +989,14 @@ function formatTimeAgo(date) {
 // =============================================================================
 
 function bindEventListeners() {
+    // Sound notification toggle
+    const soundToggle = document.getElementById('soundNotificationEnabled');
+    if (soundToggle) {
+        soundToggle.addEventListener('change', (e) => {
+            saveSoundNotificationPreference(e.target.checked);
+        });
+    }
+
     // Accordion headers
     document.querySelectorAll('.action-header').forEach(header => {
         header.addEventListener('click', () => {
@@ -977,13 +1122,26 @@ function bindEventListeners() {
 
 export function init() {
     bindEventListeners();
+    loadSoundNotificationPreference();
     loadSessions();
     loadMachines();
     loadTemplates();
     loadConfig();
     loadArchive();
 
-    // Refresh sessions every 5 seconds
+    // Connect WebSocket for real-time activity updates
+    // Use 'dashboard' as a special room name for global session updates
+    ws.connect('dashboard', {
+        onSessionActivity: handleSessionActivity,
+        onConnect: () => {
+            console.log('[Dashboard] WebSocket connected - real-time activity updates enabled');
+        },
+        onDisconnect: () => {
+            console.log('[Dashboard] WebSocket disconnected - falling back to polling');
+        }
+    });
+
+    // Refresh sessions every 5 seconds (fallback for when WebSocket is down)
     setInterval(loadSessions, 5000);
 }
 
