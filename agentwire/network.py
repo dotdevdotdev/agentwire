@@ -103,10 +103,8 @@ class NetworkContext:
             # Fallback for unknown services
             return "https://localhost:8765"
 
-        # Portal uses HTTPS when SSL is enabled
-        scheme = "http"
-        if service == "portal" and self.config.server.ssl.enabled:
-            scheme = "https"
+        # Use scheme from service config (portal defaults to https, tts to http)
+        scheme = service_config.scheme
 
         if self.is_local(service):
             return f"{scheme}://localhost:{service_config.port}"
