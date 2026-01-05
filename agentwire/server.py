@@ -467,10 +467,18 @@ class AgentWireServer:
     ASK_PATTERN = re.compile(
         r'☐\s+(\S+)'              # ☐ followed by first word only (active tab name)
         r'.*?\n\s*\n'             # Rest of header line + blank line
-        r'(.+?\?)\s*\n'           # Question text ending with ?
-        r'\s*\n'                  # Blank line
+        r'((?:.+\n)+?)'           # Question text (one or more lines, non-greedy)
+        r'\s*\n'                  # Blank line before options
         r'((?:[❯\s]+\d+\.\s+.+\n(?:\s{3,}.+\n)?)+)',  # Options block
         re.MULTILINE | re.DOTALL
+    )
+
+    # Simple format without ☐ header (e.g., "Ready to submit?\n\n❯ 1. Submit\n  2. Cancel")
+    ASK_PATTERN_SIMPLE = re.compile(
+        r'\n([^\n☐❯]+\?)\s*\n'    # Question ending with ? (not containing ☐ or ❯)
+        r'\s*\n'                   # Blank line
+        r'((?:[❯\s]+\d+\.\s+.+\n(?:\s{3,}.+\n)?)+)',  # Options block
+        re.MULTILINE
     )
 
     def _parse_ask_options(self, options_block: str) -> list[dict]:
@@ -553,12 +561,26 @@ class AgentWireServer:
                 clean_output = self.ANSI_PATTERN.sub('', output)
                 ask_match = self.ASK_PATTERN.search(clean_output)
 
+                # Try simple pattern if main pattern doesn't match
+                # (e.g., "Ready to submit your answers?\n\n❯ 1. Submit")
+                header = None
+                question = None
+                options_block = None
+
                 if ask_match:
                     header = ask_match.group(1)
                     question = ask_match.group(2).strip()
                     options_block = ask_match.group(3)
-                    options = self._parse_ask_options(options_block)
+                else:
+                    simple_match = self.ASK_PATTERN_SIMPLE.search(clean_output)
+                    if simple_match:
+                        question = simple_match.group(1).strip()
+                        options_block = simple_match.group(2)
+                        # Generate header from question (first word or "Confirm")
+                        header = question.split()[0].rstrip('?') if question else "Confirm"
 
+                if question and options_block:
+                    options = self._parse_ask_options(options_block)
                     question_key = f"{header}:{question}"
 
                     if question_key != room.last_question and options:

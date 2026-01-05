@@ -14,6 +14,7 @@ from pathlib import Path
 
 from . import __version__
 from .worktree import parse_session_name, get_session_path, ensure_worktree, remove_worktree
+from . import cli_safety
 
 # Default config directory
 CONFIG_DIR = Path.home() / ".agentwire"
@@ -2686,6 +2687,32 @@ def cmd_network_status(args) -> int:
     return 0 if not issues else 1
 
 
+def cmd_safety_check(args) -> int:
+    """CLI command: agentwire safety check"""
+    command = args.command
+    verbose = getattr(args, 'verbose', False)
+    return cli_safety.safety_check_cmd(command, verbose)
+
+
+def cmd_safety_status(args) -> int:
+    """CLI command: agentwire safety status"""
+    return cli_safety.safety_status_cmd()
+
+
+def cmd_safety_logs(args) -> int:
+    """CLI command: agentwire safety logs"""
+    tail = getattr(args, 'tail', None)
+    session = getattr(args, 'session', None)
+    today = getattr(args, 'today', False)
+    pattern = getattr(args, 'pattern', None)
+    return cli_safety.safety_logs_cmd(tail, session, today, pattern)
+
+
+def cmd_safety_install(args) -> int:
+    """CLI command: agentwire safety install"""
+    return cli_safety.safety_install_cmd()
+
+
 def cmd_doctor(args) -> int:
     """Auto-diagnose and fix common issues."""
     from .network import NetworkContext
@@ -3928,6 +3955,52 @@ def main() -> int:
     )
     network_status.set_defaults(func=cmd_network_status)
 
+    # === safety command group ===
+    safety_parser = subparsers.add_parser(
+        "safety", help="Damage control security commands"
+    )
+    safety_subparsers = safety_parser.add_subparsers(dest="safety_command")
+
+    # safety check <command>
+    safety_check = safety_subparsers.add_parser(
+        "check", help="Test if a command would be blocked/allowed"
+    )
+    safety_check.add_argument("command", help="Command to test")
+    safety_check.add_argument(
+        "--verbose", "-v", action="store_true", help="Verbose output"
+    )
+    safety_check.set_defaults(func=cmd_safety_check)
+
+    # safety status
+    safety_status = safety_subparsers.add_parser(
+        "status", help="Show safety status and pattern counts"
+    )
+    safety_status.set_defaults(func=cmd_safety_status)
+
+    # safety logs
+    safety_logs = safety_subparsers.add_parser(
+        "logs", help="Query audit logs"
+    )
+    safety_logs.add_argument(
+        "--tail", "-n", type=int, help="Show last N entries"
+    )
+    safety_logs.add_argument(
+        "--session", "-s", help="Filter by session ID"
+    )
+    safety_logs.add_argument(
+        "--today", action="store_true", help="Show only today's logs"
+    )
+    safety_logs.add_argument(
+        "--pattern", "-p", help="Filter by pattern (regex or substring)"
+    )
+    safety_logs.set_defaults(func=cmd_safety_logs)
+
+    # safety install
+    safety_install = safety_subparsers.add_parser(
+        "install", help="Install damage control hooks (interactive)"
+    )
+    safety_install.set_defaults(func=cmd_safety_install)
+
     # === doctor command (top-level) ===
     doctor_parser = subparsers.add_parser(
         "doctor", help="Auto-diagnose and fix common issues"
@@ -3984,6 +4057,10 @@ def main() -> int:
 
     if args.command == "skills" and getattr(args, "skills_command", None) is None:
         skills_parser.print_help()
+        return 0
+
+    if args.command == "safety" and getattr(args, "safety_command", None) is None:
+        safety_parser.print_help()
         return 0
 
     if args.command == "network" and getattr(args, "network_command", None) is None:
