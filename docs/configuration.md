@@ -48,6 +48,16 @@ machines:
 # Room configurations (voice, model per room)
 rooms:
   file: "~/.agentwire/rooms.json"
+
+# Session templates (pre-configured setups)
+templates:
+  dir: "~/.agentwire/templates"
+
+# Damage control security (optional)
+safety:
+  hooks_dir: "~/.agentwire/hooks/damage-control"
+  patterns_file: "~/.agentwire/hooks/damage-control/patterns.yaml"
+  logs_dir: "~/.agentwire/logs/damage-control"
 ```
 
 ## Environment Variables
@@ -128,6 +138,7 @@ Room config options:
 - `voice` - TTS voice for this room
 - `model` - AI model (passed to agent command as {model})
 - `bypass_permissions` - If true (default), skips permission prompts; if false, shows prompts in portal
+- `restricted` - If true, session only allows voice commands (say/remote-say/AskUserQuestion), denies all other tools
 - `machine` - Remote machine ID for this room
 - `path` - Custom project path
 
@@ -145,3 +156,90 @@ If no config file exists, AgentWire uses these defaults:
 | Agent command | claude |
 
 *STT default: `whisperkit` on macOS, `whispercpp` on Linux/WSL2
+
+## Session Templates
+
+Session templates provide pre-configured setups with initial prompts, voice settings, and permission modes.
+
+Templates are stored as YAML files in `~/.agentwire/templates/`:
+
+```yaml
+name: feature-impl
+description: Implement a feature with planning and tests
+voice: bashbunni
+initial_prompt: |
+  I'm working on {{project_name}} {{branch}}.
+
+  Before implementing anything:
+  1. Read relevant docs and code
+  2. Understand existing patterns
+  3. Create a todo list to track progress
+
+  Ask me what feature to implement.
+bypass_permissions: true
+restricted: false
+```
+
+### Template Variables
+
+Variables are expanded when sessions are created:
+
+| Variable | Description |
+|----------|-------------|
+| `{{project_name}}` | Session name (e.g., "myapp") |
+| `{{branch}}` | Branch name for worktree sessions (e.g., "feature-auth") |
+| `{{machine}}` | Machine ID for remote sessions (e.g., "gpu-server") |
+
+### Using Templates
+
+```bash
+# Install sample templates
+agentwire template install-samples
+
+# List available templates
+agentwire template list
+
+# Create session with template
+agentwire new -s myproject --template feature-impl
+
+# Create custom template
+agentwire template create my-template
+```
+
+See README.md for sample template descriptions.
+
+## Damage Control Security
+
+AgentWire includes optional damage-control hooks that protect against dangerous operations across all Claude Code sessions.
+
+### Installation
+
+```bash
+agentwire safety install
+```
+
+This registers PreToolUse hooks in `~/.claude/settings.json` that intercept Bash, Edit, and Write tool calls before execution.
+
+### Protected Operations
+
+- **300+ dangerous command patterns** - rm -rf, git push --force, cloud platform destructive operations
+- **Sensitive file protection** - Zero-access to .env, SSH keys, credentials
+- **Read-only paths** - System configs, lock files
+- **No-delete paths** - .git/, README.md, mission files
+
+### Usage
+
+```bash
+# Test if command would be blocked
+agentwire safety check "rm -rf /tmp"
+
+# View recent blocks
+agentwire safety status
+
+# Query audit logs
+agentwire safety logs --tail 20
+```
+
+All security decisions are logged to `~/.agentwire/logs/damage-control/` in JSONL format.
+
+See `docs/security/damage-control.md` for detailed documentation.

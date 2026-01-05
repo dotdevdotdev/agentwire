@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Session Templates** - Pre-configured session setups with initial prompts, voice, and permission modes
+  - `agentwire template list` - List available templates
+  - `agentwire template show <name>` - Show template details
+  - `agentwire template create <name>` - Create new template interactively
+  - `agentwire template delete <name>` - Delete a template
+  - `agentwire template install-samples` - Install sample templates (bug-fix, code-review, feature-impl, voice-assistant)
+  - `agentwire new -s <name> --template <template>` - Create session with template
+  - Template variables: `{{project_name}}`, `{{branch}}`, `{{machine}}`
+  - Configure voice, permission mode, and initial prompts per template
+
+- **Damage Control Security Hooks** - PreToolUse hooks that protect against dangerous operations
+  - 300+ dangerous command patterns blocked (rm -rf, git push --force, cloud destructive ops, etc.)
+  - Three-tier path protection: zero-access, read-only, no-delete
+  - Audit logging with JSONL format in `~/.agentwire/logs/damage-control/`
+  - `agentwire safety check "command"` - Test if command would be blocked
+  - `agentwire safety status` - Show pattern counts and recent blocks
+  - `agentwire safety logs --tail N` - Query audit logs
+  - `agentwire safety install` - Install damage control hooks
+  - Integrates with Claude Code's PreToolUse hook system (Bash, Edit, Write tools)
+  - Pattern-based blocking for destructive operations, sensitive files, and credentials
+
 - **Simplified CLI Commands** - Top-level commands with consistent `-s/--session` flag pattern:
   - `agentwire list` (was: `agentwire session list`)
   - `agentwire new -s <name> [-p path] [-f]` (was: `agentwire session new`)
