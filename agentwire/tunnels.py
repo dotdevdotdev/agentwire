@@ -185,8 +185,9 @@ class TunnelManager:
         """Find the PID of an SSH tunnel process."""
         # Use pgrep to find SSH processes with our port forward
         try:
-            # Look for: ssh -L <local_port>:localhost:<remote_port>
-            pattern = f"-L.*{spec.local_port}:localhost:{spec.remote_port}"
+            # Pattern must not start with - (interpreted as option on Linux)
+            # Look for: ssh ... -L <local_port>:localhost:<remote_port>
+            pattern = f"ssh.*{spec.local_port}:localhost:{spec.remote_port}"
             result = subprocess.run(
                 ["pgrep", "-f", pattern],
                 capture_output=True,
