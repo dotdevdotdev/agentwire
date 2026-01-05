@@ -25,7 +25,7 @@ import jinja2
 from aiohttp import web
 
 from .config import Config, load_config
-from .worktree import get_project_type, get_session_path, parse_session_name
+from .worktree import get_project_type, parse_session_name
 
 __version__ = "0.1.0"
 
@@ -662,17 +662,10 @@ class AgentWireServer:
             for name in sessions:
                 project, branch, machine = parse_session_name(name)
 
-                # Get path for session
-                if branch:
-                    path = get_session_path(
-                        name,
-                        self.config.projects.dir,
-                        self.config.projects.worktrees.suffix,
-                    )
-                else:
-                    path = self.config.projects.dir / project
-
                 config = room_configs.get(name, {})
+
+                # Use path from room config if available (set during creation)
+                path = config.get("path", str(self.config.projects.dir / project))
 
                 # Calculate activity status if room exists
                 activity_status = "idle"
@@ -682,10 +675,10 @@ class AgentWireServer:
                 result.append(
                     {
                         "name": name,
-                        "path": str(path),
+                        "path": path,
                         "machine": machine,
                         "voice": config.get("voice", self.config.tts.default_voice),
-                        "type": get_project_type(path) if path.exists() else "scratch",
+                        "type": get_project_type(Path(path)) if Path(path).exists() else "scratch",
                         "bypass_permissions": config.get("bypass_permissions", True),
                         "restricted": config.get("restricted", False),
                         "activity": activity_status,
@@ -874,14 +867,18 @@ class AgentWireServer:
                 return web.json_response({"error": error_msg})
 
             # CLI updates rooms.json with bypass_permissions/restricted and template voice
-            # We may still need to set voice if user selected one explicitly (overrides template)
+            # We may still need to set voice/path if user selected explicitly
             session_name = result.get("session", cli_session)
+            session_path = result.get("path")
             configs = self._load_room_configs()
             if session_name not in configs:
                 configs[session_name] = {}
             # Only set voice if explicitly provided (not using template default)
             if voice != self.config.tts.default_voice or not template_name:
                 configs[session_name]["voice"] = voice
+            # Save path from CLI result
+            if session_path:
+                configs[session_name]["path"] = session_path
             self._save_room_configs(configs)
 
             return web.json_response({"success": True, "name": session_name, "template": template_name})
@@ -917,14 +914,7 @@ class AgentWireServer:
             session_config = room_configs.get(name, {})
 
             project, branch, machine = parse_session_name(name)
-            if branch:
-                path = get_session_path(
-                    name,
-                    self.config.projects.dir,
-                    self.config.projects.worktrees.suffix,
-                )
-            else:
-                path = self.config.projects.dir / project
+            path = session_config.get("path", str(self.config.projects.dir / project))
 
             # Kill the tmux session via CLI (handles local and remote)
             success, result = await self.run_agentwire_cmd(["kill", "-s", name])
@@ -937,7 +927,7 @@ class AgentWireServer:
             archive = self._load_archive()
             archive.insert(0, {
                 "name": name,
-                "path": str(path),
+                "path": path,
                 "machine": machine,
                 "voice": session_config.get("voice", self.config.tts.default_voice),
                 "closed_at": int(time.time()),
@@ -1826,6 +1816,7 @@ projects:
                 return web.json_response({"error": error_msg}, status=500)
 
             new_session_name = result.get("session", name)
+            session_path = result.get("path")
 
             # Clean up old room state
             if name in self.rooms:
@@ -1834,11 +1825,13 @@ projects:
                     room.output_task.cancel()
                 del self.rooms[name]
 
-            # CLI updates rooms.json with bypass_permissions, add voice
+            # CLI updates rooms.json with bypass_permissions, add voice and path
             configs = self._load_room_configs()
             if new_session_name not in configs:
                 configs[new_session_name] = {}
             configs[new_session_name]["voice"] = old_config.get("voice", self.config.tts.default_voice)
+            if session_path:
+                configs[new_session_name]["path"] = session_path
             self._save_room_configs(configs)
 
             logger.info(f"[{name}] Session recreated as '{new_session_name}'")
@@ -1888,12 +1881,15 @@ projects:
                 return web.json_response({"error": error_msg}, status=500)
 
             session_name = result.get("session", new_session_name)
+            session_path = result.get("path")
 
-            # CLI updates rooms.json with bypass_permissions, add voice
+            # CLI updates rooms.json with bypass_permissions, add voice and path
             configs = self._load_room_configs()
             if session_name not in configs:
                 configs[session_name] = {}
             configs[session_name]["voice"] = old_config.get("voice", self.config.tts.default_voice)
+            if session_path:
+                configs[session_name]["path"] = session_path
             self._save_room_configs(configs)
 
             logger.info(f"[{name}] Sibling session created: '{session_name}'")
@@ -1950,12 +1946,15 @@ projects:
                 return web.json_response({"error": error_msg}, status=500)
 
             session_name = result.get("session", target_session)
+            session_path = result.get("path")
 
-            # CLI updates rooms.json with bypass_permissions, add voice
+            # CLI updates rooms.json with bypass_permissions, add voice and path
             configs = self._load_room_configs()
             if session_name not in configs:
                 configs[session_name] = {}
             configs[session_name]["voice"] = room_config.voice
+            if session_path:
+                configs[session_name]["path"] = session_path
             self._save_room_configs(configs)
 
             logger.info(f"[{name}] Session forked as '{session_name}'")
