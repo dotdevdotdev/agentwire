@@ -722,3 +722,33 @@
     outline: none;
     border-color: var(--primary);
 }
+
+/* =============================================================================
+   Template Selector
+   ============================================================================= */
+
+.template-preview {
+    margin-top: var(--space-sm);
+    padding: var(--space-sm);
+    background: rgba(0, 221, 0, 0.05);
+    border: 1px solid rgba(0, 221, 0, 0.2);
+    border-radius: var(--radius-sm);
+}
+
+.template-description {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    margin-bottom: var(--space-sm);
+}
+
+.template-prompt {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    white-space: pre-wrap;
+    max-height: 100px;
+    overflow-y: auto;
+    padding: var(--space-sm);
+    background: var(--bg-dark);
+    border-radius: var(--radius-sm);
+}

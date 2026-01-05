@@ -145,6 +145,79 @@ class UploadsConfig:
 
 
 @dataclass
+class TemplatesConfig:
+    """Session templates configuration."""
+
+    dir: Path = field(
+        default_factory=lambda: Path.home() / ".agentwire" / "templates"
+    )
+
+    def __post_init__(self):
+        self.dir = _expand_path(self.dir) or self.dir
+
+
+@dataclass
+class Template:
+    """A session template with pre-configured settings.
+
+    Stored as YAML files in ~/.agentwire/templates/
+    """
+
+    name: str
+    description: str = ""
+    role: str | None = None  # Role file from ~/.agentwire/roles/
+    voice: str | None = None  # TTS voice
+    project: str | None = None  # Default project path
+    initial_prompt: str = ""  # Context sent to Claude on session start
+    bypass_permissions: bool = True  # Permission mode
+    restricted: bool = False  # Restricted mode
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for YAML serialization."""
+        d = {
+            "name": self.name,
+            "description": self.description,
+            "initial_prompt": self.initial_prompt,
+            "bypass_permissions": self.bypass_permissions,
+            "restricted": self.restricted,
+        }
+        if self.role:
+            d["role"] = self.role
+        if self.voice:
+            d["voice"] = self.voice
+        if self.project:
+            d["project"] = self.project
+        return d
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Template":
+        """Create Template from dictionary."""
+        return cls(
+            name=data.get("name", ""),
+            description=data.get("description", ""),
+            role=data.get("role"),
+            voice=data.get("voice"),
+            project=data.get("project"),
+            initial_prompt=data.get("initial_prompt", ""),
+            bypass_permissions=data.get("bypass_permissions", True),
+            restricted=data.get("restricted", False),
+        )
+
+    def expand_variables(self, variables: dict[str, str]) -> str:
+        """Expand template variables in the initial prompt.
+
+        Supported variables:
+        - {{project_name}} - Name of the project/session
+        - {{branch}} - Current git branch
+        - {{machine}} - Machine ID if remote
+        """
+        prompt = self.initial_prompt
+        for key, value in variables.items():
+            prompt = prompt.replace(f"{{{{{key}}}}}", value or "")
+        return prompt
+
+
+@dataclass
 class PortalConfig:
     """Portal connection settings (for remote machines)."""
 
@@ -183,6 +256,7 @@ class Config:
     uploads: UploadsConfig = field(default_factory=UploadsConfig)
     portal: PortalConfig = field(default_factory=PortalConfig)
     services: ServicesConfig = field(default_factory=ServicesConfig)
+    templates: TemplatesConfig = field(default_factory=TemplatesConfig)
 
 
 def _merge_dict(base: dict, override: dict) -> dict:
@@ -345,6 +419,12 @@ def _dict_to_config(data: dict) -> Config:
         tts=tts_service,
     )
 
+    # Templates
+    templates_data = data.get("templates", {})
+    templates = TemplatesConfig(
+        dir=templates_data.get("dir", "~/.agentwire/templates"),
+    )
+
     return Config(
         server=server,
         projects=projects,
@@ -356,6 +436,7 @@ def _dict_to_config(data: dict) -> Config:
         uploads=uploads,
         portal=portal,
         services=services,
+        templates=templates,
     )
 
 
@@ -410,3 +491,122 @@ def reload_config(config_path: Optional[Path] = None) -> Config:
     global _config
     _config = load_config(config_path)
     return _config
+
+
+# =============================================================================
+# Template Management Functions
+# =============================================================================
+
+
+def load_templates(templates_dir: Optional[Path] = None) -> list[Template]:
+    """Load all templates from the templates directory.
+
+    Args:
+        templates_dir: Path to templates directory. Defaults to config's templates.dir
+
+    Returns:
+        List of Template objects sorted by name.
+    """
+    if templates_dir is None:
+        templates_dir = get_config().templates.dir
+
+    templates_dir = Path(templates_dir).expanduser().resolve()
+
+    if not templates_dir.exists():
+        return []
+
+    templates = []
+    for file_path in templates_dir.glob("*.yaml"):
+        try:
+            with open(file_path) as f:
+                data = yaml.safe_load(f) or {}
+            # Ensure name matches filename if not specified
+            if not data.get("name"):
+                data["name"] = file_path.stem
+            templates.append(Template.from_dict(data))
+        except Exception:
+            # Skip invalid template files
+            continue
+
+    return sorted(templates, key=lambda t: t.name)
+
+
+def load_template(name: str, templates_dir: Optional[Path] = None) -> Optional[Template]:
+    """Load a specific template by name.
+
+    Args:
+        name: Template name (without .yaml extension)
+        templates_dir: Path to templates directory. Defaults to config's templates.dir
+
+    Returns:
+        Template object if found, None otherwise.
+    """
+    if templates_dir is None:
+        templates_dir = get_config().templates.dir
+
+    templates_dir = Path(templates_dir).expanduser().resolve()
+    template_file = templates_dir / f"{name}.yaml"
+
+    if not template_file.exists():
+        return None
+
+    try:
+        with open(template_file) as f:
+            data = yaml.safe_load(f) or {}
+        if not data.get("name"):
+            data["name"] = name
+        return Template.from_dict(data)
+    except Exception:
+        return None
+
+
+def save_template(template: Template, templates_dir: Optional[Path] = None) -> bool:
+    """Save a template to disk.
+
+    Args:
+        template: Template object to save
+        templates_dir: Path to templates directory. Defaults to config's templates.dir
+
+    Returns:
+        True if saved successfully, False otherwise.
+    """
+    if templates_dir is None:
+        templates_dir = get_config().templates.dir
+
+    templates_dir = Path(templates_dir).expanduser().resolve()
+    templates_dir.mkdir(parents=True, exist_ok=True)
+
+    template_file = templates_dir / f"{template.name}.yaml"
+
+    try:
+        with open(template_file, "w") as f:
+            yaml.safe_dump(template.to_dict(), f, default_flow_style=False, sort_keys=False)
+        return True
+    except Exception:
+        return False
+
+
+def delete_template(name: str, templates_dir: Optional[Path] = None) -> bool:
+    """Delete a template from disk.
+
+    Args:
+        name: Template name (without .yaml extension)
+        templates_dir: Path to templates directory. Defaults to config's templates.dir
+
+    Returns:
+        True if deleted successfully, False otherwise.
+    """
+    if templates_dir is None:
+        templates_dir = get_config().templates.dir
+
+    templates_dir = Path(templates_dir).expanduser().resolve()
+    template_file = templates_dir / f"{name}.yaml"
+
+    if not template_file.exists():
+        return False
+
+    try:
+        template_file.unlink()
+        return True
+    except Exception:
+        return False
