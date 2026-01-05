@@ -119,6 +119,16 @@ agentwire skills install              # Install Claude Code skills
 agentwire skills status               # Check installation status
 agentwire skills uninstall            # Remove skills
 
+# Network & Tunnels
+agentwire network status              # Show complete network health
+agentwire tunnels up                  # Create all required SSH tunnels
+agentwire tunnels down                # Tear down all tunnels
+agentwire tunnels status              # Show tunnel health
+agentwire tunnels check               # Verify tunnels with health checks
+agentwire doctor                      # Auto-diagnose and fix common issues
+agentwire doctor --yes                # Auto-fix without prompting
+agentwire doctor --dry-run            # Show what would be fixed
+
 # Development
 agentwire dev              # Start orchestrator session (agentwire)
 agentwire rebuild          # Clear uv cache and reinstall from source
@@ -610,6 +620,135 @@ This command-based approach is more reliable than pattern-matching terminal outp
 - `say/remote-say` → TTS audio playback
 - `agentwire send` → Send prompts to sessions
 - Image uploads → `@/path` references in messages
+
+---
+
+## Network Architecture
+
+AgentWire services can run on different machines. The **service topology** concept lets you specify where each service runs (portal, TTS), with SSH tunnels providing connectivity between them.
+
+### Service Topology
+
+| Service | Purpose | Typical Location |
+|---------|---------|------------------|
+| Portal | Web UI, WebSocket server, session management | Local machine (laptop/desktop) |
+| TTS | Voice synthesis (Chatterbox) | GPU machine (requires CUDA) |
+| STT | Voice transcription | Local machine |
+| Sessions | Claude Code instances | Local or remote machines |
+
+**Single-machine setup:** Portal and TTS run locally. No tunnels needed.
+
+**Multi-machine setup:** TTS runs on GPU server, portal runs locally. Tunnel forwards localhost:8100 to gpu-server:8100.
+
+### Configuration: services Section
+
+Add `services` to `~/.agentwire/config.yaml` to define where services run:
+
+```yaml
+services:
+  # Portal runs locally (default)
+  portal:
+    machine: null    # null = local
+    port: 8765
+    health_endpoint: "/health"
+
+  # TTS runs on GPU server
+  tts:
+    machine: "gpu-server"  # Must exist in machines.json
+    port: 8100
+    health_endpoint: "/health"
+```
+
+**machine field:**
+- `null` = service runs on this machine
+- `"machine-id"` = service runs on a machine from machines.json
+
+### SSH Tunnels
+
+When a service is configured to run on a remote machine, you need an SSH tunnel to reach it from your local machine.
+
+```bash
+# Tunnel management
+agentwire tunnels up       # Create all required tunnels
+agentwire tunnels down     # Tear down all tunnels
+agentwire tunnels status   # Show tunnel health
+agentwire tunnels check    # Verify with health checks
+```
+
+**How tunnels work:**
+
+1. Config says `services.tts.machine: "gpu-server"`
+2. AgentWire calculates: need tunnel from localhost:8100 to gpu-server:8100
+3. `agentwire tunnels up` creates: `ssh -L 8100:localhost:8100 -N -f user@gpu-server`
+4. Local code can now use `http://localhost:8100` to reach TTS on gpu-server
+
+**Tunnel state** is stored in `~/.agentwire/tunnels/` (PID files for process tracking).
+
+### Network Commands
+
+```bash
+# Show complete network health at a glance
+agentwire network status
+
+# Auto-diagnose and fix common issues
+agentwire doctor              # Interactive - asks before fixing
+agentwire doctor --yes        # Auto-fix everything
+agentwire doctor --dry-run    # Show what would be fixed
+```
+
+### Troubleshooting Guide
+
+| Symptom | Likely Cause | Fix |
+|---------|--------------|-----|
+| TTS not responding | Tunnel not running | `agentwire tunnels up` |
+| Tunnel fails to create | SSH key not configured | Check `ssh gpu-server` works |
+| Port already in use | Stale tunnel or other process | `lsof -i :8100` to find process |
+| Machine not found | Not in machines.json | `agentwire machine add gpu-server --host <ip>` |
+| Service responding on wrong port | Port mismatch in config | Check `services.tts.port` matches TTS server |
+
+**Quick diagnostics:**
+
+```bash
+# Full diagnostic with auto-fix
+agentwire doctor
+
+# Check specific components
+agentwire tunnels status    # Are tunnels up?
+agentwire network status    # Overall health
+agentwire config validate   # Config file issues
+```
+
+**Common issues:**
+
+1. **"Connection refused" to TTS:**
+   ```bash
+   # Check if tunnel exists
+   agentwire tunnels status
+
+   # Create missing tunnels
+   agentwire tunnels up
+
+   # Verify TTS is running on remote
+   ssh gpu-server "curl http://localhost:8100/health"
+   ```
+
+2. **Tunnel created but service still unreachable:**
+   ```bash
+   # Check if port is actually listening locally
+   lsof -i :8100
+
+   # Test health endpoint
+   curl -k https://localhost:8100/health
+   ```
+
+3. **SSH timeout when creating tunnel:**
+   ```bash
+   # Verify SSH connectivity
+   ssh -o ConnectTimeout=5 gpu-server echo ok
+
+   # Check machine config
+   agentwire machine list
+   ```
 
 ---
 

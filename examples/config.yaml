@@ -8,7 +8,7 @@ server:
   ssl:
     cert: "~/.agentwire/cert.pem"
     key: "~/.agentwire/key.pem"
-  
+
   # Public URL for clients (when behind proxy or on different network)
   # public_url: "https://myserver.local:8765"
 
@@ -24,11 +24,11 @@ projects:
 tts:
   # Backend: chatterbox | elevenlabs | none
   backend: "chatterbox"
-  
+
   # TTS server URL - can be local or remote
   url: "http://localhost:8100"
   # Remote example: url: "http://gpu-server:8100"
-  
+
   # Default voice settings
   default_voice: "default"
   exaggeration: 0.5            # 0-1, voice expressiveness
@@ -41,10 +41,10 @@ stt:
   #   Linux: whispercpp, openai
   #   Any:   openai (requires API key)
   backend: "whisperkit"
-  
+
   # Local model path (for whisperkit/whispercpp)
   model_path: "~/models/whisperkit/large-v3"
-  
+
   # Language for transcription
   language: "en"
 
@@ -53,6 +53,24 @@ agent:
   # Command to start AI agent in new sessions
   # Placeholders: {name}, {path}, {model}
   command: "claude --dangerously-skip-permissions"
+
+# === Service Locations (Network Topology) ===
+# Define where each service runs. For single-machine setups,
+# leave machine as null (or omit entirely) - no tunnels needed.
+services:
+  # Portal (web UI, WebSocket server)
+  portal:
+    machine: null               # null = runs on this machine
+    port: 8765
+    health_endpoint: "/health"
+
+  # TTS server (Chatterbox voice synthesis)
+  tts:
+    machine: null               # null = runs locally
+    port: 8100
+    health_endpoint: "/health"
+    # For remote TTS on GPU server, use:
+    # machine: "gpu-server"     # Must exist in machines.json
 
 # === Remote Machines Registry ===
 machines:

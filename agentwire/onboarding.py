@@ -186,8 +186,12 @@ def backup_config() -> Optional[Path]:
     return None
 
 
-def run_onboarding() -> int:
-    """Run the interactive onboarding wizard."""
+def run_onboarding(skip_orchestrator: bool = False) -> int:
+    """Run the interactive onboarding wizard.
+
+    Args:
+        skip_orchestrator: If True, skip the final orchestrator setup prompt.
+    """
     print()
     print(f"{BOLD}Welcome to AgentWire Setup!{RESET}")
     print()
@@ -635,7 +639,7 @@ Stay focused on your project directory and commit frequently.
     # ─────────────────────────────────────────────────────────────
     # Summary
     # ─────────────────────────────────────────────────────────────
-    print_header("Setup Complete!")
+    print_header("Local Setup Complete!")
 
     print(f"{BOLD}Your configuration:{RESET}")
     print(f"  Projects:    {config['projects_dir']}")
@@ -648,6 +652,20 @@ Stay focused on your project directory and commit frequently.
     print(f"  STT:         {config['stt_backend']}")
     print(f"  Machines:    {len(config['machines'])} configured" if config['machines'] else "  Machines:    Local only")
 
+    # ─────────────────────────────────────────────────────────────
+    # Orchestrator Setup (Optional)
+    # ─────────────────────────────────────────────────────────────
+    if not skip_orchestrator:
+        print()
+        print_info("The next step is optional: Claude can help you with advanced setup")
+        print_info("(multi-machine networking, TTS configuration, testing services).")
+        print()
+
+        if prompt_yes_no("Ready to start orchestrator setup?"):
+            from .init_orchestrator import spawn_init_orchestrator
+            return spawn_init_orchestrator()
+
+    # User declined orchestrator setup (or skip_orchestrator=True) - show manual next steps
     print()
     print(f"{BOLD}Next steps:{RESET}")
     if config['tts_backend'] == 'chatterbox':
@@ -657,5 +675,8 @@ Stay focused on your project directory and commit frequently.
         print(f"  1. {CYAN}agentwire portal start{RESET}  # Start the web portal")
     print(f"  3. Open {CYAN}https://localhost:8765{RESET} in your browser")
     print()
+    if not skip_orchestrator:
+        print_info("Run 'agentwire dev' anytime to start the orchestrator session.")
+        print()
 
     return 0

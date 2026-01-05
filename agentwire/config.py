@@ -152,6 +152,23 @@ class PortalConfig:
 
 
 @dataclass
+class ServiceConfig:
+    """Configuration for a single service location."""
+
+    machine: Optional[str] = None  # None = local, or machine ID from machines.json
+    port: int = 8765
+    health_endpoint: str = "/health"
+
+
+@dataclass
+class ServicesConfig:
+    """Where each service runs in the network."""
+
+    portal: ServiceConfig = field(default_factory=lambda: ServiceConfig(port=8765))
+    tts: ServiceConfig = field(default_factory=lambda: ServiceConfig(port=8100))
+
+
+@dataclass
 class Config:
     """Root configuration for AgentWire."""
 
@@ -164,6 +181,7 @@ class Config:
     rooms: RoomsConfig = field(default_factory=RoomsConfig)
     uploads: UploadsConfig = field(default_factory=UploadsConfig)
     portal: PortalConfig = field(default_factory=PortalConfig)
+    services: ServicesConfig = field(default_factory=ServicesConfig)
 
 
 def _merge_dict(base: dict, override: dict) -> dict:
@@ -305,6 +323,25 @@ def _dict_to_config(data: dict) -> Config:
         url=portal_data.get("url", "https://localhost:8765"),
     )
 
+    # Services (network service locations)
+    services_data = data.get("services", {})
+    portal_service_data = services_data.get("portal", {})
+    tts_service_data = services_data.get("tts", {})
+    portal_service = ServiceConfig(
+        machine=portal_service_data.get("machine"),
+        port=portal_service_data.get("port", 8765),
+        health_endpoint=portal_service_data.get("health_endpoint", "/health"),
+    )
+    tts_service = ServiceConfig(
+        machine=tts_service_data.get("machine"),
+        port=tts_service_data.get("port", 8100),
+        health_endpoint=tts_service_data.get("health_endpoint", "/health"),
+    )
+    services = ServicesConfig(
+        portal=portal_service,
+        tts=tts_service,
+    )
+
     return Config(
         server=server,
         projects=projects,
@@ -315,6 +352,7 @@ def _dict_to_config(data: dict) -> Config:
         rooms=rooms,
         uploads=uploads,
         portal=portal,
+        services=services,
     )
 
 
