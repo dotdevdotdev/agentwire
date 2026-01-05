@@ -1,5 +1,13 @@
 # AgentWire Distributed Configuration Example
 # For setups with components on different machines
+#
+# This example shows a multi-machine setup:
+#   - Portal runs on your laptop/desktop (orchestrator)
+#   - TTS runs on a GPU server (for Chatterbox voice synthesis)
+#   - STT runs locally (uses laptop's Neural Engine on macOS)
+#   - Sessions can run locally or on remote machines
+#
+# Required: machines.json must have "gpu-server" defined
 
 # === Server (runs on orchestrator machine) ===
 server:
@@ -8,8 +16,8 @@ server:
   ssl:
     cert: "~/.agentwire/cert.pem"
     key: "~/.agentwire/key.pem"
-  
-  # Public URL that clients use to connect
+
+  # Public URL that clients use to connect (for phones/tablets on LAN)
   public_url: "https://mac-mini.local:8765"
 
 # === Projects ===
@@ -19,18 +27,37 @@ projects:
     enabled: true
     suffix: "-worktrees"
 
-# === TTS (remote GPU server) ===
+# === Service Locations (Network Topology) ===
+# This is the key section for distributed setups.
+# AgentWire uses this to determine which tunnels to create.
+services:
+  # Portal runs locally (where you run `agentwire portal start`)
+  portal:
+    machine: null               # null = this machine
+    port: 8765
+    health_endpoint: "/health"
+
+  # TTS runs on GPU server (requires tunnel)
+  # When you run `agentwire tunnels up`, it creates:
+  #   ssh -L 8100:localhost:8100 -N -f developer@192.168.1.50
+  tts:
+    machine: "gpu-server"       # Must exist in machines.json
+    port: 8100
+    health_endpoint: "/health"
+
+# === TTS Backend Settings ===
 tts:
   backend: "chatterbox"
-  
-  # Point to remote TTS server
-  url: "http://gpu-server:8100"
-  
+
+  # This URL is used AFTER the tunnel is created
+  # Tunnel maps localhost:8100 -> gpu-server:8100
+  url: "http://localhost:8100"
+
   default_voice: "default"
   exaggeration: 0.5
   cfg_weight: 0.5
 
-# === STT (local on orchestrator) ===
+# === STT (local on orchestrator - uses Apple Neural Engine on macOS) ===
 stt:
   backend: "whisperkit"
   model_path: "~/models/whisperkit/large-v3"
@@ -40,9 +67,21 @@ stt:
 agent:
   command: "claude --dangerously-skip-permissions"
 
-# === Machines (define all remote hosts) ===
+# === Remote Machines Registry ===
 machines:
   file: "~/.agentwire/machines.json"
 
 rooms:
   file: "~/.agentwire/rooms.json"
+
+# === Usage ===
+# 1. Ensure machines.json has gpu-server defined
+# 2. Run: agentwire tunnels up    (creates SSH tunnels)
+# 3. Run: agentwire portal start  (starts web UI)
+# 4. On GPU server: agentwire tts start
+# 5. Access portal at https://localhost:8765
+#
+# Diagnostics:
+#   agentwire network status    # Check all services
+#   agentwire tunnels status    # Check tunnels
+#   agentwire doctor            # Auto-fix issues
