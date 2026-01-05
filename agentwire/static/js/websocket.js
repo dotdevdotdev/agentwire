@@ -52,7 +52,8 @@ function getReconnectDelay() {
  * @param {Function} [eventHandlers.onState] - Called when room state changes (locked/unlocked)
  * @param {Function} [eventHandlers.onConnect] - Called when connection is established
  * @param {Function} [eventHandlers.onDisconnect] - Called when connection is lost
- * @param {Function} [eventHandlers.onActivity] - Called when session activity is detected
+ * @param {Function} [eventHandlers.onActivity] - Called when session activity is detected (room-specific)
+ * @param {Function} [eventHandlers.onSessionActivity] - Called when any session's activity changes (dashboard global updates)
  */
 export function connect(room, eventHandlers) {
     roomName = room;
@@ -138,6 +139,15 @@ function handleMessage(msg) {
         case 'activity':
             if (handlers.onActivity) {
                 handlers.onActivity();
+            }
+            break;
+
+        case 'session_activity':
+            if (handlers.onSessionActivity) {
+                handlers.onSessionActivity({
+                    session: msg.session,
+                    active: msg.active
+                });
             }
             break;
 

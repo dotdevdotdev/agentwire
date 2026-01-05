@@ -18,7 +18,7 @@ Let users see at a glance which sessions are actively outputting vs idle/waiting
 
 ## Wave 1: Human Actions (BLOCKING)
 
-- [ ] Decide on idle threshold (5s? 10s? configurable?)
+- [x] Decide on idle threshold (5s? 10s? configurable?) - Default 10s, configurable via config.yaml
 
 ## Wave 2: Server-Side Tracking
 
@@ -52,10 +52,10 @@ Let users see at a glance which sessions are actively outputting vs idle/waiting
 
 ## Completion Criteria
 
-- [ ] Dashboard shows active/idle status per session
-- [ ] Status updates in real-time via WebSocket
-- [ ] Optional sound when session goes idle
-- [ ] Threshold is configurable (default 10s)
+- [x] Dashboard shows active/idle status per session
+- [x] Status updates in real-time via WebSocket
+- [x] Optional sound when session goes idle
+- [x] Threshold is configurable (default 10s)
 
 ## Technical Notes
 
