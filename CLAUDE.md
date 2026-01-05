@@ -122,6 +122,12 @@ agentwire template create <name>      # Create new template interactively
 agentwire template delete <name>      # Delete a template
 agentwire template install-samples    # Install sample templates
 
+# Safety & Security (Damage Control)
+agentwire safety check "command"      # Test if command would be blocked
+agentwire safety status               # Show pattern counts and recent blocks
+agentwire safety logs --tail 20       # Query audit logs
+agentwire safety install              # Install damage control hooks
+
 # Skills (Claude Code integration)
 agentwire skills install              # Install Claude Code skills
 agentwire skills status               # Check installation status
@@ -427,6 +433,161 @@ Set per-session in `~/.agentwire/rooms.json`:
 | Voice-only agent (no code changes) | Restricted |
 | Public demo or kiosk | Restricted |
 | Sandboxed experimentation | Restricted |
+
+---
+
+## Safety & Security (Damage Control)
+
+AgentWire integrates damage-control security hooks that protect against dangerous operations across all Claude Code sessions.
+
+### What's Protected
+
+**300+ Dangerous Command Patterns:**
+- **Destructive file operations:** `rm -rf`, `shred`, `truncate`, `dd`
+- **Git operations:** `git reset --hard`, `git push --force`, `git stash clear`
+- **Cloud platforms:** AWS, GCP, Firebase, Vercel, Netlify, Cloudflare resource deletion
+- **Databases:** SQL DROP/TRUNCATE, Redis FLUSHALL, MongoDB dropDatabase
+- **Containers:** Docker/Kubernetes destructive operations
+- **Infrastructure:** Terraform destroy, Pulumi destroy, CloudFormation delete
+
+**Three-Tier Path Protection:**
+
+| Protection Level | Operations | Examples |
+|------------------|------------|----------|
+| **Zero-Access** | None allowed (read/write/edit/delete) | `.env`, `.env.*`, `~/.ssh/`, `*.pem`, `*-credentials.json`, API tokens |
+| **Read-Only** | Read allowed, modifications blocked | `/etc/`, system configs, lock files |
+| **No-Delete** | Read/write/edit allowed, delete blocked | `.git/`, `README.md`, `.agentwire/mission.md` |
+
+**AgentWire-Specific Protections:**
+- `~/.agentwire/credentials/`, `~/.agentwire/api-keys/`, `~/.agentwire/secrets/` (zero-access)
+- `~/.agentwire/sessions/`, `~/.agentwire/missions/` (no-delete)
+- `tmux kill-server`, `tmux kill-session -t agentwire-*` (blocked)
+- `rm -rf ~/.agentwire/` (blocked)
+
+### CLI Commands
+
+```bash
+# Test if command would be blocked (dry-run)
+agentwire safety check "rm -rf /tmp"
+# → ✗ Decision: BLOCK
+#   Reason: rm with recursive or force flags
+
+# Show system status
+agentwire safety status
+# → Shows pattern counts, recent blocks, audit log location
+
+# Query audit logs
+agentwire safety logs --tail 20
+# → Shows recent blocked/allowed operations with timestamps
+
+# Install hooks (first time setup)
+agentwire safety install
+```
+
+### How It Works
+
+**PreToolUse Hooks** intercept Bash, Edit, and Write operations before execution:
+
+1. Claude attempts operation (e.g., `rm -rf /tmp/test`)
+2. Hook script runs (`~/.agentwire/hooks/damage-control/bash-tool-damage-control.py`)
+3. Pattern matching against `patterns.yaml`
+4. Decision made:
+   - **Block** → Operation prevented, security message shown
+   - **Allow** → Operation proceeds
+   - **Ask** → User confirmation required (for risky but valid operations)
+5. Decision logged to `~/.agentwire/logs/damage-control/YYYY-MM-DD.jsonl`
+
+**Audit Logging:** All security decisions are logged with:
+- Timestamp
+- Session ID
+- Tool (Bash/Edit/Write)
+- Command/path
+- Decision (blocked/allowed/asked)
+- Pattern matched
+- User approval (if asked)
+
+### Hook Registration
+
+Hooks are registered in `~/.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [{
+          "type": "command",
+          "command": "uv run ~/.agentwire/hooks/damage-control/bash-tool-damage-control.py",
+          "timeout": 5
+        }]
+      },
+      {
+        "matcher": "Edit",
+        "hooks": [{
+          "type": "command",
+          "command": "uv run ~/.agentwire/hooks/damage-control/edit-tool-damage-control.py",
+          "timeout": 5
+        }]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [{
+          "type": "command",
+          "command": "uv run ~/.agentwire/hooks/damage-control/write-tool-damage-control.py",
+          "timeout": 5
+        }]
+      }
+    ]
+  }
+}
+```
+
+### Customizing Patterns
+
+Edit `~/.agentwire/hooks/damage-control/patterns.yaml` to customize:
+
+```yaml
+bashToolPatterns:
+  - pattern: '\brm\s+-[rRf]'
+    reason: rm with recursive or force flags
+
+  - pattern: '\bgit\s+push\s+.*--force(?!-with-lease)'
+    reason: git push --force (use --force-with-lease)
+
+zeroAccessPaths:
+  - ".env"
+  - ".env.*"
+  - "~/.ssh/"
+  - "*.pem"
+  - "*-credentials.json"
+
+readOnlyPaths:
+  - "/etc/"
+  - "*.lock"
+
+noDeletePaths:
+  - ".git/"
+  - "README.md"
+```
+
+### Testing Hooks
+
+Interactive test tool:
+
+```bash
+cd ~/.agentwire/hooks/damage-control
+uv run test-damage-control.py -i
+
+# Test specific commands
+uv run test-damage-control.py bash "rm -rf /" --expect-blocked
+```
+
+### Documentation
+
+- **Integration Guide:** `docs/security/damage-control.md`
+- **Migration Guide:** `docs/security/damage-control-migration.md`
+- **Source Patterns:** `~/.agentwire/hooks/damage-control/patterns.yaml`
 
 ---
 

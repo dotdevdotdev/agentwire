@@ -25,6 +25,8 @@ Push-to-talk voice input from any device to tmux sessions running Claude Code or
 - **Room Locking** - One person talks at a time per room
 - **Git Worktrees** - Multiple agents work same project in parallel
 - **Remote Machines** - Orchestrate agents on remote servers
+- **Session Templates** - Pre-configured session setups with initial prompts, voice, and permission modes
+- **Safety Hooks** - Damage control system blocks dangerous operations (rm -rf, secret exposure, etc.)
 - **Claude Code Skills** - Session orchestration via `/sessions`, `/send`, `/spawn`, etc.
 
 ## Quick Start
@@ -90,9 +92,23 @@ agentwire voiceclone list       # List available voices
 # Session Management
 agentwire list                        # List all tmux sessions
 agentwire new -s <name> [-p path] [-f] # Create new Claude session
+agentwire new -s <name> --template <template> # Create session with template
 agentwire output -s <session> [-n 100] # Read session output
 agentwire kill -s <session>           # Kill session (clean shutdown)
 agentwire send -s <session> "prompt"  # Send prompt to session
+
+# Session Templates
+agentwire template list               # List available templates
+agentwire template show <name>        # Show template details
+agentwire template create <name>      # Create new template
+agentwire template delete <name>      # Delete a template
+agentwire template install-samples    # Install sample templates
+
+# Safety & Security
+agentwire safety check "command"      # Test if command would be blocked
+agentwire safety status               # Show pattern counts and recent blocks
+agentwire safety logs --tail 20       # Query audit logs
+agentwire safety install              # Install damage control hooks
 
 # Remote Machines
 agentwire machine list          # List registered machines
@@ -173,6 +189,87 @@ Multiple agents working on the same project in parallel, each on their own branc
 ml@gpu-server -> SSH to gpu-server, session "ml"
 ```
 Agent running on a remote machine.
+
+## Session Templates
+
+Session templates provide pre-configured setups with initial prompts, voice settings, and permission modes.
+
+### Install Sample Templates
+
+```bash
+agentwire template install-samples
+```
+
+### Available Templates
+
+| Template | Description | Mode | Use Case |
+|----------|-------------|------|----------|
+| `bug-fix` | Systematic debugging assistant | bypass | Investigating and fixing bugs |
+| `code-review` | Code review and improvements | bypass | Reviewing code quality |
+| `feature-impl` | Feature implementation with planning | bypass | Building new features |
+| `voice-assistant` | Voice-only assistant, no code execution | restricted | Conversational assistance |
+
+### Usage
+
+```bash
+# Create session with template
+agentwire new -s myproject --template feature-impl
+
+# Create custom template
+agentwire template create my-template
+```
+
+Templates can include:
+- **Initial prompts** - Auto-sent when session starts
+- **Voice settings** - Default TTS voice for the room
+- **Permission modes** - bypass (fast) or restricted (voice-only)
+- **Variable expansion** - `{{project_name}}`, `{{branch}}`
+
+## Safety & Security
+
+AgentWire includes damage control hooks that protect against dangerous operations across all Claude Code sessions.
+
+### What's Protected
+
+**300+ dangerous command patterns:**
+- Destructive operations: `rm -rf`, `git push --force`, `git reset --hard`
+- Cloud platforms: AWS, GCP, Firebase, Vercel, Netlify, Cloudflare
+- Databases: SQL DROP/TRUNCATE, Redis FLUSHALL, MongoDB dropDatabase
+- Containers: Docker/Kubernetes destructive operations
+- Infrastructure: Terraform destroy, Pulumi destroy
+
+**Sensitive file protection:**
+- **Zero-access paths** (no operations): `.env`, SSH keys, credentials, API tokens
+- **Read-only paths**: System configs, lock files
+- **No-delete paths**: `.git/`, `README.md`, mission files
+
+### Usage
+
+```bash
+# Test if command would be blocked
+agentwire safety check "rm -rf /tmp"
+# → ✗ Decision: BLOCK (rm with recursive or force flags)
+
+# Check system status
+agentwire safety status
+# → Shows pattern counts, recent blocks, audit log location
+
+# Query audit logs
+agentwire safety logs --tail 20
+# → Shows recent blocked/allowed operations with timestamps
+
+# Install hooks (first time setup)
+agentwire safety install
+```
+
+### How It Works
+
+PreToolUse hooks intercept Bash, Edit, and Write operations before execution:
+- **Blocked** → Operation prevented, security message shown
+- **Allowed** → Operation proceeds normally
+- **Ask** → User confirmation required (for risky but valid operations)
+
+All decisions are logged to `~/.agentwire/logs/damage-control/` for audit trails.
 
 ## TTS Setup
 
