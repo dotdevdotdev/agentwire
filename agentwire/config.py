@@ -158,14 +158,15 @@ class ServiceConfig:
     machine: Optional[str] = None  # None = local, or machine ID from machines.json
     port: int = 8765
     health_endpoint: str = "/health"
+    scheme: str = "http"  # http or https
 
 
 @dataclass
 class ServicesConfig:
     """Where each service runs in the network."""
 
-    portal: ServiceConfig = field(default_factory=lambda: ServiceConfig(port=8765))
-    tts: ServiceConfig = field(default_factory=lambda: ServiceConfig(port=8100))
+    portal: ServiceConfig = field(default_factory=lambda: ServiceConfig(port=8765, scheme="https"))
+    tts: ServiceConfig = field(default_factory=lambda: ServiceConfig(port=8100, scheme="http"))
 
 
 @dataclass
@@ -331,11 +332,13 @@ def _dict_to_config(data: dict) -> Config:
         machine=portal_service_data.get("machine"),
         port=portal_service_data.get("port", 8765),
         health_endpoint=portal_service_data.get("health_endpoint", "/health"),
+        scheme=portal_service_data.get("scheme", "https"),  # Portal defaults to HTTPS
     )
     tts_service = ServiceConfig(
         machine=tts_service_data.get("machine"),
         port=tts_service_data.get("port", 8100),
         health_endpoint=tts_service_data.get("health_endpoint", "/health"),
+        scheme=tts_service_data.get("scheme", "http"),  # TTS defaults to HTTP
     )
     services = ServicesConfig(
         portal=portal_service,
