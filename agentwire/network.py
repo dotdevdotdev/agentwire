@@ -96,27 +96,32 @@ class NetworkContext:
             use_tunnel: If True and service is remote, assume tunnel exists on localhost
 
         Returns:
-            URL like "http://localhost:8765" or "http://192.168.1.50:8765"
+            URL like "https://localhost:8765" or "http://192.168.1.50:8100"
         """
         service_config = getattr(self.config.services, service, None)
         if service_config is None:
             # Fallback for unknown services
-            return "http://localhost:8765"
+            return "https://localhost:8765"
+
+        # Portal uses HTTPS when SSL is enabled
+        scheme = "http"
+        if service == "portal" and self.config.server.ssl.enabled:
+            scheme = "https"
 
         if self.is_local(service):
-            return f"http://localhost:{service_config.port}"
+            return f"{scheme}://localhost:{service_config.port}"
 
         if use_tunnel:
             # Assume tunnel brings remote port to localhost
-            return f"http://localhost:{service_config.port}"
+            return f"{scheme}://localhost:{service_config.port}"
 
         # Direct connection to remote
         machine = self.machines.get(service_config.machine)
         if machine:
             host = machine.get("host", service_config.machine)
-            return f"http://{host}:{service_config.port}"
+            return f"{scheme}://{host}:{service_config.port}"
 
-        return f"http://localhost:{service_config.port}"
+        return f"{scheme}://localhost:{service_config.port}"
 
     def get_required_tunnels(self) -> list[TunnelSpec]:
         """
