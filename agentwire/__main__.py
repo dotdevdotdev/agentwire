@@ -762,6 +762,17 @@ def cmd_tts_status(args) -> int:
 
             return 0
         else:
+            # No local tmux session, but check if TTS is reachable anyway
+            # (might be running via manual tunnel or external process)
+            url = ctx.get_service_url("tts", use_tunnel=False)
+            healthy, voices = _check_tts_health(url)
+            if healthy:
+                print(f"TTS server is running (external/tunnel)")
+                if voices:
+                    print(f"  Voices: {', '.join(voices)}")
+                print(f"  URL: {url}")
+                return 0
+
             print("TTS server is not running.")
             print("  Start:  agentwire tts start")
             return 1
