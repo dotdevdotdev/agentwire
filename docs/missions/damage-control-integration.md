@@ -88,7 +88,7 @@ Integrate the Claude Code Damage Control security hooks system into AgentWire to
 
 **Tasks**:
 
-- [ ] **2.1**: Add AgentWire infrastructure protection patterns
+- [x] **2.1**: Add AgentWire infrastructure protection patterns
   - File: `~/.agentwire/hooks/damage-control/patterns.yaml`
   - Add bashToolPatterns:
     - `tmux kill-server` (kills all sessions)
@@ -96,7 +96,7 @@ Integrate the Claude Code Damage Control security hooks system into AgentWire to
     - `agentwire destroy` (if we add this command)
     - `rm -rf ~/.agentwire/` (destroys state)
 
-- [ ] **2.2**: Add AgentWire path protections
+- [x] **2.2**: Add AgentWire path protections
   - File: `~/.agentwire/hooks/damage-control/patterns.yaml`
   - Add to zeroAccessPaths:
     - `~/.agentwire/credentials/`
@@ -107,30 +107,30 @@ Integrate the Claude Code Damage Control security hooks system into AgentWire to
     - `~/.agentwire/missions/`
     - `.agentwire/mission.md`
 
-- [ ] **2.3**: Add remote execution safeguards
+- [x] **2.3**: Add remote execution safeguards
   - File: `~/.agentwire/hooks/damage-control/patterns.yaml`
   - Add patterns for dangerous remote operations:
     - `ssh ... rm -rf` variations
     - Remote database drops
     - Remote service shutdowns
 
-- [ ] **2.4**: Implement audit logging framework
+- [x] **2.4**: Implement audit logging framework
   - File: `~/.agentwire/hooks/damage-control/audit_logger.py`
   - Log structure: `{timestamp, session, agent, tool, command, blocked_by, user_approved}`
   - Storage: `~/.agentwire/logs/damage-control/YYYY-MM-DD.jsonl`
   - Functions: `log_blocked()`, `log_allowed()`, `log_asked()`
 
-- [ ] **2.5**: Integrate audit logging into hooks
+- [x] **2.5**: Integrate audit logging into hooks
   - Files: All three damage-control hooks (bash, edit, write)
   - Import audit_logger
   - Log every block, ask, and allow decision
   - Include session context if available
 
-- [ ] **2.6**: Create audit log query tool
+- [x] **2.6**: Create audit log query tool
   - File: `~/.agentwire/hooks/damage-control/query_audit.py`
-  - CLI: `uv run query_audit.py --today` (show today's blocks)
-  - CLI: `uv run query_audit.py --session mission/auth` (show session blocks)
-  - CLI: `uv run query_audit.py --pattern "rm -rf"` (show specific pattern blocks)
+  - CLI: `python query_audit.py --today` (show today's blocks)
+  - CLI: `python query_audit.py --session mission/auth` (show session blocks)
+  - CLI: `python query_audit.py --pattern "rm -rf"` (show specific pattern blocks)
 
 ---
 
