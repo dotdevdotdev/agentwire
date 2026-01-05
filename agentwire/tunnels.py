@@ -155,7 +155,8 @@ class TunnelManager:
                 )
 
             # Find the PID of the SSH process
-            # The -f flag backgrounds the process, so we need to find it
+            # The -f flag backgrounds the process, so we need to wait a moment
+            time.sleep(0.5)
             pid = self._find_tunnel_pid(spec)
 
             if pid:
