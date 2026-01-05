@@ -1,7 +1,7 @@
 name: feature-impl
 description: Implement a feature with planning and tests
 initial_prompt: |
-  I'm working on {{project_name}}{{branch}}.
+  I'm working on {{project_name}} {{branch}}.
 
   Before implementing anything:
   1. Read relevant docs and code
