@@ -135,6 +135,7 @@ class AgentWireServer:
         self.app.router.add_get("/", self.handle_dashboard)
         self.app.router.add_get("/room/{name:.+}", self.handle_room)
         self.app.router.add_get("/ws/{name:.+}", self.handle_websocket)
+        self.app.router.add_get("/ws/terminal/{name:.+}", self.handle_terminal_ws)
         self.app.router.add_get("/api/sessions", self.api_sessions)
         self.app.router.add_get("/api/check-path", self.api_check_path)
         self.app.router.add_get("/api/check-branches", self.api_check_branches)

@@ -53,6 +53,20 @@
         </div>
     </div>
 
+    {# Terminal Mode #}
+    <div class="mode-content terminal-mode-content" style="display: none;">
+        <div class="terminal-activation" id="terminalActivation">
+            <button class="activate-terminal-btn" id="activateTerminal">
+                🖥️ Activate Interactive Terminal
+            </button>
+            <p class="terminal-info">
+                Connect to tmux session for full terminal control (vim, interactive commands, etc.)
+            </p>
+        </div>
+        <div id="terminal" class="terminal-container" style="display: none;"></div>
+        <div class="terminal-status" id="terminalStatus"></div>
+    </div>
+
     {# Floating controls (both modes) #}
     <div class="floating-controls" id="floatingControls">
         <div class="text-input-wrapper">
