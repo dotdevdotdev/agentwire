@@ -3218,6 +3218,110 @@ def cmd_doctor(args) -> int:
             else:
                 print(f"     -> Service is remote, start it on {service_config.machine}")
 
+    # 9. Validate remote machines
+    print("\nChecking remote machines...")
+    remote_machines = {mid: m for mid, m in ctx.machines.items() if mid != ctx.local_machine_id}
+
+    if not remote_machines:
+        print("  [ok] No remote machines configured")
+    else:
+        for machine_id, machine in remote_machines.items():
+            host = machine.get("host", machine_id)
+            user = machine.get("user")
+            target = f"{user}@{host}" if user else host
+
+            print(f"\n  {machine_id}:")
+
+            # Check SSH connectivity (already done above, but include latency here)
+            latency = test_ssh_connectivity(host, user, timeout=5)
+            if latency is not None:
+                print(f"    [ok] SSH connectivity ({latency}ms)")
+            else:
+                print(f"    [!!] SSH connectivity failed")
+                print(f"         Fix: ssh {target}")
+                issues_found += 1
+                continue  # Can't check further if SSH fails
+
+            # Check if agentwire is installed
+            try:
+                result = subprocess.run(
+                    ["ssh", "-o", "ConnectTimeout=5", "-o", "BatchMode=yes", target, "agentwire --version"],
+                    capture_output=True,
+                    text=True,
+                    timeout=7,
+                )
+                if result.returncode == 0:
+                    version = result.stdout.strip()
+                    print(f"    [ok] agentwire installed ({version})")
+                else:
+                    print(f"    [!!] agentwire not installed")
+                    print(f"         Fix: ssh {target} 'pip install git+https://github.com/dotdevdotdev/agentwire.git'")
+                    issues_found += 1
+                    continue
+            except (subprocess.TimeoutExpired, subprocess.CalledProcessError):
+                print(f"    [!!] agentwire not installed")
+                print(f"         Fix: ssh {target} 'pip install git+https://github.com/dotdevdotdev/agentwire.git'")
+                issues_found += 1
+                continue
+
+            # Check portal_url file
+            try:
+                result = subprocess.run(
+                    ["ssh", "-o", "ConnectTimeout=5", "-o", "BatchMode=yes", target, "cat ~/.agentwire/portal_url"],
+                    capture_output=True,
+                    text=True,
+                    timeout=7,
+                )
+                if result.returncode == 0:
+                    portal_url = result.stdout.strip()
+                    print(f"    [ok] portal_url set ({portal_url})")
+                else:
+                    print(f"    [!!] portal_url not set")
+                    print(f"         Fix: ssh {target} 'echo \"https://localhost:8765\" > ~/.agentwire/portal_url'")
+                    issues_found += 1
+            except (subprocess.TimeoutExpired, subprocess.CalledProcessError):
+                print(f"    [!!] portal_url not set")
+                print(f"         Fix: ssh {target} 'echo \"https://localhost:8765\" > ~/.agentwire/portal_url'")
+                issues_found += 1
+
+            # Check if skills are installed
+            try:
+                result = subprocess.run(
+                    ["ssh", "-o", "ConnectTimeout=5", "-o", "BatchMode=yes", target, "test -d ~/.claude/skills/agentwire && echo ok"],
+                    capture_output=True,
+                    text=True,
+                    timeout=7,
+                )
+                if result.returncode == 0 and result.stdout.strip() == "ok":
+                    print(f"    [ok] Skills installed")
+                else:
+                    print(f"    [!!] Skills not installed")
+                    print(f"         Fix: ssh {target} 'agentwire skills install'")
+                    issues_found += 1
+            except (subprocess.TimeoutExpired, subprocess.CalledProcessError):
+                print(f"    [!!] Skills not installed")
+                print(f"         Fix: ssh {target} 'agentwire skills install'")
+                issues_found += 1
+
+            # Test remote-say command
+            try:
+                result = subprocess.run(
+                    ["ssh", "-o", "ConnectTimeout=5", "-o", "BatchMode=yes", target, "which remote-say"],
+                    capture_output=True,
+                    text=True,
+                    timeout=7,
+                )
+                if result.returncode == 0:
+                    print(f"    [ok] remote-say command available")
+                else:
+                    print(f"    [!!] remote-say command not found")
+                    print(f"         Fix: ssh {target} 'agentwire skills install'")
+                    issues_found += 1
+            except (subprocess.TimeoutExpired, subprocess.CalledProcessError):
+                print(f"    [!!] remote-say command not found")
+                print(f"         Fix: ssh {target} 'agentwire skills install'")
+                issues_found += 1
+
     # Summary
     print()
     print("-" * 60)

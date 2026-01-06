@@ -324,12 +324,12 @@ Show venv approach as primary method in README installation instructions for Ubu
 ## Completion Criteria
 
 - [x] `agentwire init` checks Python version, ffmpeg, STT dependencies
-- [ ] `agentwire init` offers automated remote machine setup
-- [ ] `agentwire init` can create reverse tunnels automatically
+- [x] `agentwire init` offers automated remote machine setup
+- [x] `agentwire init` can create reverse tunnels automatically
 - [x] `agentwire skills install` installs say/remote-say scripts
-- [ ] `agentwire doctor` validates all dependencies
-- [ ] `agentwire doctor` can fix missing scripts/hooks
-- [ ] `agentwire doctor` validates remote machine setup
+- [x] `agentwire doctor` validates all dependencies
+- [x] `agentwire doctor` can fix missing scripts/hooks
+- [x] `agentwire doctor` validates remote machine setup
 - [ ] Installation time reduced to 20-30 minutes for first-timers
 - [x] Documentation covers all platform-specific issues from case study
 
