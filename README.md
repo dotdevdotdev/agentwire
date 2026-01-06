@@ -43,15 +43,74 @@ Push-to-talk voice input from any device to tmux sessions running Claude Code or
 
 ## Quick Start
 
-```bash
-# Install
-pip install agentwire-dev
+### System Requirements
 
-# Interactive setup (configures audio devices, creates config)
+Before installing, ensure you have:
+
+| Requirement | Minimum | Check |
+|-------------|---------|-------|
+| **Python** | 3.10+ | `python3 --version` |
+| **tmux** | Any recent | `tmux -V` |
+| **ffmpeg** | Any recent | `ffmpeg -version` |
+
+**Important for Ubuntu 24.04+ users:** Ubuntu's externally-managed Python requires using a virtual environment. See the Ubuntu installation instructions below.
+
+### Platform-Specific Installation
+
+**macOS:**
+
+```bash
+# Install dependencies
+brew install tmux ffmpeg
+
+# If Python < 3.10, upgrade via pyenv
+brew install pyenv
+pyenv install 3.12.0
+pyenv global 3.12.0
+
+# Install AgentWire
+pip install git+https://github.com/dotdevdotdev/agentwire.git
+```
+
+**Ubuntu/Debian:**
+
+```bash
+# Install dependencies
+sudo apt update
+sudo apt install tmux ffmpeg python3-pip
+
+# For Ubuntu 24.04+ (recommended approach):
+# Create venv to avoid externally-managed error
+python3 -m venv ~/.agentwire-venv
+source ~/.agentwire-venv/bin/activate
+echo 'source ~/.agentwire-venv/bin/activate' >> ~/.bashrc
+
+# Install AgentWire
+pip install git+https://github.com/dotdevdotdev/agentwire.git
+```
+
+**WSL2:**
+
+```bash
+# Same as Ubuntu
+sudo apt install tmux ffmpeg python3-pip
+pip install git+https://github.com/dotdevdotdev/agentwire.git
+
+# Note: Audio support limited in WSL
+# Recommended: Use as remote worker with portal on Windows host
+```
+
+### Setup & Run
+
+```bash
+# Interactive setup (configures audio, creates config)
 agentwire init
 
-# Generate SSL certs (required for mic access in browsers)
+# Generate SSL certs (required for browser mic access)
 agentwire generate-certs
+
+# Install Claude Code skills and damage control hooks
+agentwire skills install
 
 # Start the portal
 agentwire portal start
@@ -60,20 +119,21 @@ agentwire portal start
 # https://localhost:8765
 ```
 
-## Requirements
+**Expected Install Time:**
+- **First time:** 20-30 minutes (including dependency installation, configuration)
+- **Subsequent installs:** 5 minutes (if dependencies already present)
 
-- Python 3.10+
-- tmux
-- ffmpeg (for audio conversion)
-- Claude Code or other AI agent (optional but recommended)
+### Common First-Time Issues
 
-### Platform-specific
+| Issue | Solution |
+|-------|----------|
+| "Python 3.X.X not in '>=3.10'" | Upgrade Python (see platform instructions above) |
+| "externally-managed-environment" (Ubuntu) | Use venv approach (see Ubuntu instructions above) |
+| "agentwire: command not found" | Add to PATH: `export PATH="$HOME/.local/bin:$PATH"` |
+| "ffmpeg not found" | Install ffmpeg (see platform commands above) |
+| SSL warnings in browser | Run `agentwire generate-certs`, then accept cert in browser |
 
-| Platform | Install Dependencies |
-|----------|---------------------|
-| macOS | `brew install tmux ffmpeg` |
-| Linux | `apt install tmux ffmpeg` |
-| WSL2 | `apt install tmux ffmpeg` |
+**Full troubleshooting guide:** See `docs/TROUBLESHOOTING.md` after installation
 
 ## CLI Commands
 

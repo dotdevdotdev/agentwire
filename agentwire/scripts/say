@@ -1,0 +1,3 @@
+#!/bin/bash
+# Local TTS playback via agentwire CLI
+exec agentwire say "$@"

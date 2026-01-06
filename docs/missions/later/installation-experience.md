@@ -140,52 +140,34 @@ artifacts = [
 
 **Files:** `agentwire/onboarding.py` (setup_remote_machine function)
 
-When user adds a remote machine in init wizard, offer automated setup:
-
-```
-Machine 'devbox1' added successfully.
-
-Set up AgentWire on devbox1 now? [Y/n]
-  → Install agentwire package
-  → Install skills and scripts
-  → Configure portal_url
-  → Test remote-say connectivity
-```
-
-Implementation:
-- SSH to remote machine
-- Detect Python version (exit if < 3.10 with upgrade instructions)
-- Detect externally-managed environment (Ubuntu):
-  - Recommend venv (better practice)
-  - Create ~/.agentwire-venv automatically
-  - Add activation to ~/.bashrc
-  - Show alternative: --break-system-packages (if user prefers)
-- Install: `pip install git+https://github.com/dotdevdotdev/agentwire.git`
-- Create `~/.agentwire/config.yaml` with minimal config (TTS URL, projects dir)
-- Create `~/.agentwire/portal_url` pointing to tunnel endpoint
-- Run `agentwire skills install` on remote
-- Verify: SSH and run `remote-say "test"`, check if portal receives it
+- [x] Create `detect_remote_python_version()` helper function
+- [x] Create `check_remote_externally_managed()` helper function
+- [x] Create `setup_remote_machine()` that:
+  - Checks Python version via SSH (requires >= 3.10)
+  - Detects externally-managed environments (Ubuntu)
+  - Recommends venv for Ubuntu (creates ~/.agentwire-venv, adds to bashrc)
+  - Installs agentwire package via pip/venv
+  - Creates config files via `setup_remote_machine_config()`
+  - Installs skills and scripts
+  - Verifies remote-say command exists
+- [x] Integrate into onboarding wizard (Section 7: Remote Machines)
+- [x] Show detailed progress and status during installation
 
 ### 4.2 Reverse tunnel setup
 
 **Files:** `agentwire/onboarding.py`
 
-For portal hosts, offer to create reverse tunnels:
-
-```
-Create reverse SSH tunnels for remote machines? [Y/n]
-
-This allows workers to reach the portal via localhost:8765.
-
-  devbox1: ssh -R 8765:localhost:8765 -N -f dev@134.122.35.134
-  devbox2: ssh -R 8765:localhost:8765 -N -f dev@138.197.145.5
-
-Keep tunnels running with autossh? [Y/n]
-```
-
-- Create tunnels automatically
-- Offer autossh for persistence
-- Verify tunnel works: `ssh dev@host "curl -k https://localhost:8765/health"`
+- [x] Create `create_reverse_tunnel()` function that:
+  - Creates SSH reverse tunnel: `ssh -R 8765:localhost:8765 -N -f user@host`
+  - Verifies tunnel with health check
+  - Returns success/failure status
+- [x] Create `offer_autossh_setup()` function that:
+  - Checks for autossh availability
+  - Shows autossh command for persistence
+  - Provides platform-specific installation instructions
+- [x] Integrate into onboarding wizard after successful remote setup
+- [x] Offer tunnel creation per machine (default: Yes)
+- [x] Offer autossh setup after tunnel creation
 
 ## Wave 5: doctor Command Enhancements
 
@@ -264,32 +246,32 @@ Checking remote machines...
 
 **Files:** `docs/TROUBLESHOOTING.md` (new)
 
-Sections:
-- Python version errors (platform-specific fixes)
-- Externally-managed environments (Ubuntu)
-- Missing dependencies (ffmpeg, whisperkit-cli)
-- PATH issues (~/.local/bin not in PATH)
-- SSL certificate errors
-- Remote machine connectivity
+- [x] Sections:
+  - [x] Python version errors (platform-specific fixes)
+  - [x] Externally-managed environments (Ubuntu)
+  - [x] Missing dependencies (ffmpeg, whisperkit-cli)
+  - [x] PATH issues (~/.local/bin not in PATH)
+  - [x] SSL certificate errors
+  - [x] Remote machine connectivity
 
 ### 6.2 Update CLAUDE.md installation section
 
 **Files:** `CLAUDE.md`
 
-Add:
-- Pre-requisites section (Python >=3.10, ffmpeg)
-- Platform-specific notes (macOS vs Ubuntu)
-- Common issues and quick fixes
-- Link to full troubleshooting guide
+- [x] Add:
+  - [x] Pre-requisites section (Python >=3.10, ffmpeg)
+  - [x] Platform-specific notes (macOS vs Ubuntu)
+  - [x] Common issues and quick fixes
+  - [x] Link to full troubleshooting guide
 
 ### 6.3 Update README.md quick start
 
 **Files:** `README.md`
 
-Clarify:
-- System requirements (Python version, dependencies)
-- Platform-specific installation steps
-- Expected install time (20-30 min first time, 5 min after)
+- [x] Clarify:
+  - [x] System requirements (Python version, dependencies)
+  - [x] Platform-specific installation steps
+  - [x] Expected install time (20-30 min first time, 5 min after)
 
 ## Wave 7: Platform-Specific Error Messages
 
@@ -341,15 +323,15 @@ Show venv approach as primary method in README installation instructions for Ubu
 
 ## Completion Criteria
 
-- [ ] `agentwire init` checks Python version, ffmpeg, STT dependencies
-- [ ] `agentwire init` offers automated remote machine setup
-- [ ] `agentwire init` can create reverse tunnels automatically
-- [ ] `agentwire skills install` installs say/remote-say scripts
-- [ ] `agentwire doctor` validates all dependencies
-- [ ] `agentwire doctor` can fix missing scripts/hooks
-- [ ] `agentwire doctor` validates remote machine setup
+- [x] `agentwire init` checks Python version, ffmpeg, STT dependencies
+- [x] `agentwire init` offers automated remote machine setup
+- [x] `agentwire init` can create reverse tunnels automatically
+- [x] `agentwire skills install` installs say/remote-say scripts
+- [x] `agentwire doctor` validates all dependencies
+- [x] `agentwire doctor` can fix missing scripts/hooks
+- [x] `agentwire doctor` validates remote machine setup
 - [ ] Installation time reduced to 20-30 minutes for first-timers
-- [ ] Documentation covers all platform-specific issues from case study
+- [x] Documentation covers all platform-specific issues from case study
 
 ## Technical Notes
 
