@@ -125,16 +125,23 @@ error: externally-managed-environment
 
 **Context:** Ubuntu 24.04+ uses PEP 668 to prevent pip from modifying system Python
 
-**Solution:** Used `--break-system-packages` flag:
+**Solution Used (not recommended):** Used `--break-system-packages` flag:
 ```bash
 ssh dev@134.122.35.134 "pip3 install --break-system-packages git+https://github.com/dotdevdotdev/agentwire.git"
 ```
 
-**Alternative Solutions Not Used:**
-- Create venv (better practice but more complex)
-- Use pipx (cleaner but requires pipx installation)
+**Better Solution (recommended):** Create venv for isolation:
+```bash
+# On remote machine
+python3 -m venv ~/.agentwire-venv
+source ~/.agentwire-venv/bin/activate
+pip install git+https://github.com/dotdevdotdev/agentwire.git
 
-**Lesson:** Installation docs need Ubuntu-specific section addressing externally-managed environments with pros/cons of each approach.
+# Add to ~/.bashrc for persistence
+echo 'source ~/.agentwire-venv/bin/activate' >> ~/.bashrc
+```
+
+**Lesson:** Installation wizard should guide Ubuntu users to create venv with automatic setup, making the better practice approach just as easy as --break-system-packages.
 
 ---
 
