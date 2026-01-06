@@ -21,6 +21,70 @@ from . import cli_safety
 CONFIG_DIR = Path.home() / ".agentwire"
 
 
+def check_python_version() -> bool:
+    """Check if Python version meets minimum requirements.
+
+    Returns:
+        True if version is acceptable, False otherwise (exits with message).
+    """
+    min_version = (3, 10)
+    current_version = sys.version_info[:2]
+
+    if current_version < min_version:
+        print(f"⚠️  Python {current_version[0]}.{current_version[1]} detected")
+        print(f"   AgentWire requires Python {min_version[0]}.{min_version[1]} or higher")
+        print()
+
+        if sys.platform == "darwin":
+            print("Install Python 3.12 on macOS:")
+            print("  brew install python@3.12")
+            print("  # or")
+            print("  pyenv install 3.12.0 && pyenv global 3.12.0")
+        elif sys.platform.startswith("linux"):
+            print("Install Python 3.12 on Ubuntu/Debian:")
+            print("  sudo apt update && sudo apt install python3.12")
+        else:
+            print("Install Python 3.12 from:")
+            print("  https://www.python.org/downloads/")
+
+        print()
+        return False
+
+    return True
+
+
+def check_pip_environment() -> bool:
+    """Check if we're in an externally-managed environment (Ubuntu 24.04+).
+
+    Returns:
+        True if environment is OK to proceed, False if user should take action.
+    """
+    if not sys.platform.startswith('linux'):
+        return True
+
+    # Check for EXTERNALLY-MANAGED marker
+    marker = Path(sys.prefix) / "EXTERNALLY-MANAGED"
+    if marker.exists():
+        print("⚠️  Externally-managed Python environment detected (Ubuntu 24.04+)")
+        print()
+        print("Ubuntu prevents pip from installing packages system-wide to avoid conflicts.")
+        print()
+        print("Recommended approach - Use venv:")
+        print("  python3 -m venv ~/.agentwire-venv")
+        print("  source ~/.agentwire-venv/bin/activate")
+        print("  pip install agentwire-dev")
+        print()
+        print("  Add to ~/.bashrc for persistence:")
+        print("  echo 'source ~/.agentwire-venv/bin/activate' >> ~/.bashrc")
+        print()
+        print("Alternative (not recommended):")
+        print("  pip3 install --break-system-packages agentwire-dev")
+        print()
+        return False
+
+    return True
+
+
 def generate_certs() -> int:
     """Generate self-signed SSL certificates."""
     cert_dir = CONFIG_DIR
@@ -2646,6 +2710,15 @@ def cmd_init(args) -> int:
     Default behavior: Run full wizard with optional orchestrator setup at the end.
     Quick mode (--quick): Run wizard only, skip orchestrator setup prompt.
     """
+    # Check Python version first
+    if not check_python_version():
+        return 1
+
+    # Check for externally-managed environment (Ubuntu)
+    if not check_pip_environment():
+        print("Please set up a virtual environment before running init.")
+        return 1
+
     from .onboarding import run_onboarding
 
     if args.quick:
@@ -4067,6 +4140,29 @@ def _print_tunnel_help(spec, error: str) -> None:
         print(f"        ssh {spec.remote_machine} 'lsof -i :{spec.remote_port}'")
 
 
+class VersionAction(argparse.Action):
+    """Custom version action that checks Python version and pip environment."""
+
+    def __init__(self, option_strings, dest=argparse.SUPPRESS, default=argparse.SUPPRESS, help=None):
+        super().__init__(option_strings, dest=dest, default=default, nargs=0, help=help)
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        # Print version
+        print(f"agentwire {__version__}")
+        print(f"Python {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}")
+
+        # Check version compatibility
+        version_ok = check_python_version()
+        env_ok = check_pip_environment()
+
+        if version_ok and env_ok:
+            print("\n✓ System is ready for AgentWire")
+        else:
+            print("\n⚠️  Please resolve the issues above before installing/running AgentWire")
+
+        parser.exit()
+
+
 def main() -> int:
     """Main entry point."""
     parser = argparse.ArgumentParser(
@@ -4075,8 +4171,8 @@ def main() -> int:
     )
     parser.add_argument(
         "--version",
-        action="version",
-        version=f"%(prog)s {__version__}",
+        action=VersionAction,
+        help="Show version and check system compatibility",
     )
 
     subparsers = parser.add_subparsers(dest="command", help="Commands")

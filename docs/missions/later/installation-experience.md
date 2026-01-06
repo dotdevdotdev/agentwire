@@ -341,7 +341,7 @@ Show venv approach as primary method in README installation instructions for Ubu
 
 ## Completion Criteria
 
-- [ ] `agentwire init` checks Python version, ffmpeg, STT dependencies
+- [x] `agentwire init` checks Python version, ffmpeg, STT dependencies
 - [ ] `agentwire init` offers automated remote machine setup
 - [ ] `agentwire init` can create reverse tunnels automatically
 - [ ] `agentwire skills install` installs say/remote-say scripts

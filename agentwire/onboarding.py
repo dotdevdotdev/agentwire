@@ -336,6 +336,150 @@ def backup_config() -> Optional[Path]:
     return None
 
 
+def check_python_version() -> tuple[bool, str]:
+    """Check if Python version is >= 3.10.
+
+    Returns:
+        Tuple of (is_valid, version_string)
+    """
+    version_info = sys.version_info
+    version_string = f"{version_info.major}.{version_info.minor}.{version_info.micro}"
+    is_valid = version_info >= (3, 10)
+    return is_valid, version_string
+
+
+def get_python_upgrade_instructions(platform: str) -> str:
+    """Get platform-specific Python upgrade instructions."""
+    if platform == "macos":
+        return """To upgrade Python on macOS:
+
+  Using Homebrew (recommended):
+    brew install python@3.12
+
+  Using pyenv:
+    pyenv install 3.12.0
+    pyenv global 3.12.0
+
+  More info: https://www.python.org/downloads/macos/"""
+    elif platform in ("linux", "wsl"):
+        return """To upgrade Python on Ubuntu/Debian:
+
+  sudo apt update
+  sudo apt install python3.12 python3.12-venv
+
+  More info: https://www.python.org/downloads/"""
+    else:
+        return """Please visit https://www.python.org/downloads/ to install Python 3.10 or later."""
+
+
+def check_ffmpeg() -> tuple[bool, str]:
+    """Check if ffmpeg is installed.
+
+    Returns:
+        Tuple of (is_installed, path_or_message)
+    """
+    ffmpeg_path = shutil.which("ffmpeg")
+    if ffmpeg_path:
+        return True, ffmpeg_path
+    return False, "not found"
+
+
+def get_ffmpeg_install_instructions(platform: str) -> str:
+    """Get platform-specific ffmpeg install instructions."""
+    if platform == "macos":
+        return "Install with Homebrew: brew install ffmpeg"
+    elif platform in ("linux", "wsl"):
+        return "Install with apt: sudo apt install ffmpeg"
+    else:
+        return "Visit https://ffmpeg.org/download.html"
+
+
+def check_stt_dependencies(backend: str, platform: str) -> tuple[bool, str]:
+    """Check if STT backend dependencies are available.
+
+    Returns:
+        Tuple of (is_available, message)
+    """
+    if backend == "whisperkit":
+        # Check for whisperkit-cli binary
+        whisperkit_cli = shutil.which("whisperkit-cli")
+        if not whisperkit_cli:
+            return False, "whisperkit-cli binary not found"
+
+        # Check for MacWhisper models directory
+        models_dir = Path.home() / "Library/Application Support/MacWhisper/models/whisperkit/models/argmaxinc/whisperkit-coreml"
+        if not models_dir.exists():
+            return False, "MacWhisper models directory not found"
+
+        # List available models
+        try:
+            models = [d.name for d in models_dir.iterdir() if d.is_dir()]
+            if not models:
+                return False, "No WhisperKit models found in MacWhisper directory"
+            return True, f"Found {len(models)} model(s)"
+        except Exception:
+            return False, "Could not read models directory"
+
+    elif backend == "whispercpp":
+        return True, "Model path will be configured"
+
+    elif backend == "openai":
+        api_key = os.environ.get("OPENAI_API_KEY")
+        if not api_key:
+            return False, "OPENAI_API_KEY environment variable not set"
+        return True, "API key found"
+
+    elif backend == "faster-whisper":
+        return True, "Faster-whisper will download models on first use"
+
+    else:
+        return True, "No dependencies required"
+
+
+def get_stt_dependency_fix(backend: str) -> str:
+    """Get instructions for fixing missing STT dependencies."""
+    if backend == "whisperkit":
+        return """Install MacWhisper to get WhisperKit:
+
+  Download from: https://goodsnooze.gumroad.com/l/macwhisper
+
+  After installation, models will be at:
+  ~/Library/Application Support/MacWhisper/models/whisperkit/models/argmaxinc/whisperkit-coreml/
+
+  Or choose a different STT backend (whispercpp, openai)."""
+
+    elif backend == "openai":
+        return """Set your OpenAI API key:
+
+  export OPENAI_API_KEY='your-api-key-here'
+
+  Add to ~/.bashrc or ~/.zshrc for persistence."""
+
+    return "No action needed"
+
+
+def print_dependency_summary(checks: dict[str, tuple[bool, str]]) -> bool:
+    """Print summary of dependency checks.
+
+    Args:
+        checks: Dict mapping check name to (passed, message) tuple
+
+    Returns:
+        True if all checks passed
+    """
+    print_header("Dependency Summary")
+
+    all_passed = True
+    for check_name, (passed, message) in checks.items():
+        if passed:
+            print_success(f"{check_name}: {message}")
+        else:
+            print_error(f"{check_name}: {message}")
+            all_passed = False
+
+    return all_passed
+
+
 def run_onboarding(skip_orchestrator: bool = False) -> int:
     """Run the interactive onboarding wizard.
 
@@ -347,6 +491,40 @@ def run_onboarding(skip_orchestrator: bool = False) -> int:
     print()
     print("AgentWire is a multi-room voice interface for AI coding agents.")
     print("I'll walk you through configuring your environment.")
+    print()
+
+    # ─────────────────────────────────────────────────────────────
+    # Pre-flight Checks
+    # ─────────────────────────────────────────────────────────────
+    print_header("Pre-flight Checks")
+
+    platform = detect_platform()
+    dependency_checks = {}
+
+    # Check Python version
+    python_valid, python_version = check_python_version()
+    dependency_checks["Python version"] = (python_valid, f"{python_version} (required: >=3.10)")
+
+    if not python_valid:
+        print_error(f"Python {python_version} is too old (required: >=3.10)")
+        print()
+        print(get_python_upgrade_instructions(platform))
+        print()
+        return 1
+    else:
+        print_success(f"Python {python_version}")
+
+    # Check ffmpeg
+    ffmpeg_installed, ffmpeg_path = check_ffmpeg()
+    dependency_checks["ffmpeg"] = (ffmpeg_installed, ffmpeg_path)
+
+    if not ffmpeg_installed:
+        print_warning(f"ffmpeg not found")
+        print_info(get_ffmpeg_install_instructions(platform))
+        print_info("Push-to-talk voice input will not work without ffmpeg")
+    else:
+        print_success(f"ffmpeg: {ffmpeg_path}")
+
     print()
 
     # Check for existing config
@@ -671,13 +849,28 @@ def run_onboarding(skip_orchestrator: bool = False) -> int:
     stt_choice = prompt_choice("Which STT backend?", stt_options, default=default_stt)
     config["stt_backend"] = stt_choice
 
+    # Check STT dependencies
+    if stt_choice != "none":
+        print()
+        stt_ok, stt_message = check_stt_dependencies(stt_choice, platform)
+        dependency_checks[f"STT ({stt_choice})"] = (stt_ok, stt_message)
+
+        if not stt_ok:
+            print_error(f"STT dependency check failed: {stt_message}")
+            print()
+            print(get_stt_dependency_fix(stt_choice))
+            print()
+        else:
+            print_success(f"{stt_choice}: {stt_message}")
+
     if stt_choice == "openai":
         print()
         print_info("Set OPENAI_API_KEY environment variable with your API key")
     elif stt_choice == "none":
         print_info("Voice input disabled. Use typing to communicate with agents.")
     else:
-        print_success(f"Using {stt_choice} for speech recognition")
+        if stt_choice not in dependency_checks:
+            print_success(f"Using {stt_choice} for speech recognition")
 
     # ─────────────────────────────────────────────────────────────
     # Section 6: SSL Certificates
@@ -789,6 +982,24 @@ def run_onboarding(skip_orchestrator: bool = False) -> int:
                     print_success(f"Configured {machine['id']} to connect to this portal")
                 else:
                     print_warning(f"Could not configure {machine['id']} - you'll need to set it up manually")
+
+    # ─────────────────────────────────────────────────────────────
+    # Dependency Summary
+    # ─────────────────────────────────────────────────────────────
+    print()
+    all_deps_ok = print_dependency_summary(dependency_checks)
+
+    if not all_deps_ok:
+        print()
+        print_warning("Some dependencies are missing. AgentWire may not work correctly.")
+        print_info("You can install missing dependencies later and re-run 'agentwire init'")
+        print_info("Or use 'agentwire doctor' to check and fix issues after installation.")
+        print()
+
+        if not prompt_yes_no("Continue anyway?", default=False):
+            print()
+            print("Setup cancelled. Fix the issues above and run 'agentwire init' again.")
+            return 1
 
     # ─────────────────────────────────────────────────────────────
     # Generate Configuration Files
