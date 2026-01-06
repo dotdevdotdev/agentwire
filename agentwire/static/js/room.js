@@ -565,7 +565,10 @@ async function sendTextInput() {
             body: JSON.stringify({ text: '[Remote text - use remote-say "message"] ' + finalText })
         });
 
-        if (elements.textInputAmbient) elements.textInputAmbient.value = '';
+        if (elements.textInputAmbient) {
+            elements.textInputAmbient.value = '';
+            elements.textInputAmbient.style.height = 'auto';
+        }
         setState(STATES.PROCESSING);
 
         if (isAmbientMode) {
@@ -842,6 +845,13 @@ function bindEvents() {
                 e.preventDefault();
                 sendTextInput();
             }
+        });
+
+        // Auto-resize textarea
+        elements.textInputAmbient.addEventListener('input', () => {
+            const textarea = elements.textInputAmbient;
+            textarea.style.height = 'auto';
+            textarea.style.height = textarea.scrollHeight + 'px';
         });
     }
 
