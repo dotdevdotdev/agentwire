@@ -74,6 +74,18 @@ A complete voice-enabled orchestration system for AI coding agents:
 - **CLI Tools** - Manage sessions, speak text, orchestrate agents
 - **Skills** - Claude Code skills for session orchestration
 
+## Recent Features
+
+**January 2026:**
+
+| Feature | PR | Description |
+|---------|-----|-------------|
+| Multiline Input | [#12](https://github.com/dotdevdotdev/agentwire/pull/12) | Auto-expanding textarea with Enter/Shift+Enter support |
+| CLI Worktree Support | [#11](https://github.com/dotdevdotdev/agentwire/pull/11) | Complete worktree operations via CLI (new, fork, recreate) |
+| Session Activity Status | [#10](https://github.com/dotdevdotdev/agentwire/pull/10) | Real-time active/idle indicators on dashboard |
+| Damage Control Hooks | [#9](https://github.com/dotdevdotdev/agentwire/pull/9) | PreToolUse security hooks for parallel agent protection |
+| Session Templates | [#8](https://github.com/dotdevdotdev/agentwire/pull/8) | Pre-configured session setups with voice, permissions, initial prompts |
+
 ---
 
 ## CLI Commands
@@ -889,6 +901,19 @@ uploads:
   max_size_mb: 10
   cleanup_days: 7              # Auto-delete old uploads
 ```
+
+### Multiline Text Input
+
+The text input area supports multiline messages with auto-resize:
+
+| Action | Result |
+|--------|--------|
+| Type text | Textarea auto-expands as content grows |
+| **Enter** | Submits the message |
+| **Shift+Enter** | Adds a newline (for multi-paragraph messages) |
+| Clear text | Textarea collapses back to single line |
+
+The textarea starts as a single line and dynamically expands up to 10 lines before scrolling. This provides a natural typing experience for both quick single-line messages and longer multi-paragraph prompts.
 
 ### Voice Commands (say/remote-say)
 
