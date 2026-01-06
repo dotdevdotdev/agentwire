@@ -20,14 +20,26 @@ Push-to-talk voice input from any device to tmux sessions running Claude Code or
 
 - **Voice Rooms** - One room per AI agent session (tmux + your agent)
 - **Push-to-Talk** - Hold to speak, release to send transcription
+- **Multiline Input** - Auto-expanding textarea with Enter/Shift+Enter support
 - **TTS Playback** - Agent responses spoken back via browser audio
 - **Multi-Device** - Access from phone, tablet, laptop on your network
 - **Room Locking** - One person talks at a time per room
-- **Git Worktrees** - Multiple agents work same project in parallel
+- **Git Worktrees** - Multiple agents work same project in parallel (CLI + UI support)
 - **Remote Machines** - Orchestrate agents on remote servers
 - **Session Templates** - Pre-configured session setups with initial prompts, voice, and permission modes
 - **Safety Hooks** - Damage control system blocks dangerous operations (rm -rf, secret exposure, etc.)
+- **Activity Status** - Real-time active/idle indicators on dashboard
 - **Claude Code Skills** - Session orchestration via `/sessions`, `/send`, `/spawn`, etc.
+
+## Recent Updates
+
+**January 2026:**
+
+- ✅ **Multiline Input** - Auto-expanding textarea with natural Enter/Shift+Enter behavior ([#12](https://github.com/dotdevdotdev/agentwire/pull/12))
+- ✅ **CLI Worktree Support** - Complete worktree operations: new, fork, recreate ([#11](https://github.com/dotdevdotdev/agentwire/pull/11))
+- ✅ **Session Activity Status** - Real-time active/idle indicators on dashboard ([#10](https://github.com/dotdevdotdev/agentwire/pull/10))
+- ✅ **Damage Control Hooks** - PreToolUse security hooks for parallel agent protection ([#9](https://github.com/dotdevdotdev/agentwire/pull/9))
+- ✅ **Session Templates** - Pre-configured session setups with voice, permissions, initial prompts ([#8](https://github.com/dotdevdotdev/agentwire/pull/8))
 
 ## Quick Start
 
