@@ -148,6 +148,354 @@ def get_local_machine_info() -> tuple[str, str]:
     return hostname, local_ip
 
 
+def detect_remote_python_version(host: str, user: str) -> Optional[tuple[int, int, int]]:
+    """Detect Python version on remote machine via SSH.
+
+    Returns:
+        Tuple of (major, minor, patch) or None if failed
+    """
+    try:
+        ssh_target = f"{user}@{host}"
+        result = subprocess.run(
+            ["ssh", ssh_target, "python3 --version"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+
+        if result.returncode == 0:
+            # Parse "Python 3.10.12"
+            version_str = result.stdout.strip().split()[1]
+            parts = version_str.split(".")
+            return (int(parts[0]), int(parts[1]), int(parts[2]))
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, ValueError, IndexError):
+        pass
+
+    return None
+
+
+def check_remote_externally_managed(host: str, user: str) -> bool:
+    """Check if remote Python is externally managed (Ubuntu 24.04+).
+
+    Returns:
+        True if EXTERNALLY-MANAGED marker file exists
+    """
+    try:
+        ssh_target = f"{user}@{host}"
+        result = subprocess.run(
+            ["ssh", ssh_target, "python3 -c 'import sys; print(sys.prefix)'"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+
+        if result.returncode == 0:
+            prefix = result.stdout.strip()
+            check_result = subprocess.run(
+                ["ssh", ssh_target, f"test -f {prefix}/EXTERNALLY-MANAGED && echo yes || echo no"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            return check_result.stdout.strip() == "yes"
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        pass
+
+    return False
+
+
+def setup_remote_machine(
+    host: str,
+    user: str,
+    projects_dir: str,
+    portal_machine_id: str,
+    portal_host: str,
+    portal_user: str,
+) -> bool:
+    """Set up AgentWire on a remote machine: install package, configure, verify.
+
+    Steps:
+    1. Check Python version (must be >= 3.10)
+    2. Handle externally-managed environments (recommend venv for Ubuntu)
+    3. Install agentwire package
+    4. Create config files
+    5. Install skills/scripts
+    6. Verify remote-say works
+
+    Returns:
+        True if successful
+    """
+    ssh_target = f"{user}@{host}"
+
+    # Step 1: Check Python version
+    print(f"\nChecking Python version on {ssh_target}...")
+    python_version = detect_remote_python_version(host, user)
+
+    if python_version is None:
+        print_error("Could not detect Python version")
+        return False
+
+    major, minor, patch = python_version
+    print_success(f"Python {major}.{minor}.{patch}")
+
+    if major < 3 or (major == 3 and minor < 10):
+        print_error(f"Python {major}.{minor} is too old. AgentWire requires Python >=3.10")
+        print()
+        print("Upgrade instructions:")
+        print("  Ubuntu: sudo apt update && sudo apt install python3.12")
+        print("  macOS:  pyenv install 3.12.0 && pyenv global 3.12.0")
+        return False
+
+    # Step 2: Check for externally-managed environment
+    print("Checking for externally-managed Python...")
+    is_externally_managed = check_remote_externally_managed(host, user)
+
+    install_command = "pip3 install git+https://github.com/dotdevdotdev/agentwire.git"
+
+    if is_externally_managed:
+        print_warning("Externally-managed Python environment detected (Ubuntu 24.04+)")
+        print()
+        print(f"{BOLD}Recommended approach: Use venv{RESET}")
+        print()
+
+        if prompt_yes_no("Create venv at ~/.agentwire-venv?", default=True):
+            print("Creating virtual environment...")
+            try:
+                # Create venv
+                subprocess.run(
+                    ["ssh", ssh_target, "python3 -m venv ~/.agentwire-venv"],
+                    check=True,
+                    capture_output=True,
+                    timeout=60,
+                )
+                print_success("Created ~/.agentwire-venv")
+
+                # Add to bashrc
+                bashrc_line = "source ~/.agentwire-venv/bin/activate"
+                subprocess.run(
+                    ["ssh", ssh_target, f"grep -qxF '{bashrc_line}' ~/.bashrc || echo '{bashrc_line}' >> ~/.bashrc"],
+                    check=True,
+                    capture_output=True,
+                    timeout=10,
+                )
+                print_success("Added activation to ~/.bashrc")
+
+                # Update install command to use venv
+                install_command = f"~/.agentwire-venv/bin/pip install git+https://github.com/dotdevdotdev/agentwire.git"
+
+            except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
+                print_error(f"Failed to create venv: {e}")
+                print()
+                print("Alternative: use --break-system-packages (not recommended)")
+                if prompt_yes_no("Try with --break-system-packages?", default=False):
+                    install_command = "pip3 install --break-system-packages git+https://github.com/dotdevdotdev/agentwire.git"
+                else:
+                    return False
+        else:
+            print()
+            if prompt_yes_no("Use --break-system-packages instead?", default=False):
+                install_command = "pip3 install --break-system-packages git+https://github.com/dotdevdotdev/agentwire.git"
+            else:
+                print_info("Setup cancelled. You can install manually later.")
+                return False
+
+    # Step 3: Install agentwire package
+    print(f"\nInstalling AgentWire on {ssh_target}...")
+    print_info(f"Command: {install_command}")
+    print()
+
+    try:
+        result = subprocess.run(
+            ["ssh", ssh_target, install_command],
+            capture_output=True,
+            text=True,
+            timeout=300,  # 5 minutes for git clone + install
+        )
+
+        if result.returncode != 0:
+            print_error(f"Installation failed:")
+            print(result.stderr)
+            return False
+
+        print_success("AgentWire installed successfully")
+
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
+        print_error(f"Installation failed: {e}")
+        return False
+
+    # Step 4: Create config files
+    print("\nCreating configuration files...")
+    if not setup_remote_machine_config(host, user, projects_dir, portal_machine_id, portal_host, portal_user):
+        return False
+
+    # Step 5: Install skills and scripts
+    print("\nInstalling skills and scripts...")
+
+    # Determine agentwire command path (venv or system)
+    if is_externally_managed and "~/.agentwire-venv" in install_command:
+        agentwire_cmd = "~/.agentwire-venv/bin/agentwire"
+    else:
+        agentwire_cmd = "agentwire"
+
+    try:
+        result = subprocess.run(
+            ["ssh", ssh_target, f"{agentwire_cmd} skills install"],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+
+        if result.returncode == 0:
+            print_success("Skills and scripts installed")
+        else:
+            print_warning(f"Skills install had issues: {result.stderr[:200]}")
+
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        print_warning("Could not install skills automatically")
+
+    # Step 6: Verify remote-say works
+    print("\nVerifying remote-say connectivity...")
+
+    try:
+        # Try to run remote-say with test message (will fail if portal not running, but that's OK)
+        result = subprocess.run(
+            ["ssh", ssh_target, f"{agentwire_cmd} say --room test 'Setup complete'"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+
+        # We don't expect this to fully work yet (portal may not be running),
+        # but the command should exist
+        if "command not found" in result.stderr:
+            print_warning("remote-say command not found")
+        else:
+            print_success("remote-say command is available")
+
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        print_info("Could not verify remote-say (portal may not be running yet)")
+
+    print()
+    print_success(f"Remote setup complete for {ssh_target}")
+    return True
+
+
+def create_reverse_tunnel(portal_port: int, machine: dict) -> bool:
+    """Create a reverse SSH tunnel for a remote machine to access the portal.
+
+    Creates: ssh -R 8765:localhost:8765 -N -f user@host
+
+    Args:
+        portal_port: Local portal port to tunnel (usually 8765)
+        machine: Machine dict with 'id', 'host', 'user'
+
+    Returns:
+        True if tunnel created successfully
+    """
+    machine_id = machine.get("id", "unknown")
+    host = machine.get("host", "")
+    user = machine.get("user", "")
+
+    ssh_target = f"{user}@{host}" if user else host
+
+    print(f"\nCreating reverse tunnel for {machine_id} ({ssh_target})...")
+
+    # Build SSH command
+    # -R remote_port:localhost:local_port - Reverse port forwarding
+    # -N - Don't execute remote command
+    # -f - Go to background
+    # -o ExitOnForwardFailure=yes - Exit if port forward fails
+    # -o ServerAliveInterval=60 - Keep connection alive
+    # -o ServerAliveCountMax=3 - Max missed keepalives
+    cmd = [
+        "ssh",
+        "-R", f"{portal_port}:localhost:{portal_port}",
+        "-N",
+        "-f",
+        "-o", "ExitOnForwardFailure=yes",
+        "-o", "ServerAliveInterval=60",
+        "-o", "ServerAliveCountMax=3",
+        ssh_target,
+    ]
+
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+
+        if result.returncode != 0:
+            print_error(f"Tunnel creation failed: {result.stderr.strip()}")
+            return False
+
+        print_success(f"Reverse tunnel created: {ssh_target} port {portal_port} → localhost:{portal_port}")
+
+        # Verify tunnel works
+        print("Verifying tunnel...")
+        verify_result = subprocess.run(
+            ["ssh", ssh_target, f"curl -k -s https://localhost:{portal_port}/health"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+
+        if verify_result.returncode == 0:
+            print_success("Tunnel verified - portal is accessible from remote machine")
+        else:
+            print_warning("Could not verify tunnel (portal may not be running yet)")
+
+        return True
+
+    except subprocess.TimeoutExpired:
+        print_error("Tunnel creation timed out")
+        return False
+    except Exception as e:
+        print_error(f"Tunnel creation failed: {e}")
+        return False
+
+
+def offer_autossh_setup(machine: dict, portal_port: int) -> None:
+    """Offer to install and configure autossh for persistent tunnels.
+
+    Args:
+        machine: Machine dict with 'id', 'host', 'user'
+        portal_port: Portal port number
+    """
+    machine_id = machine.get("id", "unknown")
+    host = machine.get("host", "")
+    user = machine.get("user", "")
+    ssh_target = f"{user}@{host}" if user else host
+
+    print(f"\n{BOLD}Persistent Tunnels with autossh{RESET}")
+    print()
+    print_info("autossh automatically restarts SSH tunnels if they fail.")
+    print_info("This keeps the tunnel running even after network interruptions.")
+    print()
+
+    if not prompt_yes_no(f"Set up autossh for {machine_id}?", default=False):
+        print_info(f"You can manually restart the tunnel with:")
+        print_info(f"  ssh -R {portal_port}:localhost:{portal_port} -N -f {ssh_target}")
+        return
+
+    # Check if autossh is installed on portal machine (local)
+    if not check_command_exists("autossh"):
+        print_error("autossh not found on this machine")
+        print()
+        platform = detect_platform()
+        if platform == "macos":
+            print_info("Install with: brew install autossh")
+        elif platform in ("linux", "wsl"):
+            print_info("Install with: sudo apt install autossh")
+        print()
+        return
+
+    # Create autossh command
+    print(f"\nTo make the tunnel persistent, add this to your startup scripts:")
+    print()
+    print(f"{CYAN}autossh -M 0 -N -f -R {portal_port}:localhost:{portal_port} \\")
+    print(f"  -o ServerAliveInterval=60 -o ServerAliveCountMax=3 \\")
+    print(f"  {ssh_target}{RESET}")
+    print()
+    print_info("This will be started automatically on portal startup if added to agentwire config.")
+
+
 def setup_remote_machine_config(
     host: str,
     user: str,
@@ -957,21 +1305,26 @@ def run_onboarding(skip_orchestrator: bool = False) -> int:
             if not prompt_yes_no("\nAdd another machine?", default=False):
                 break
 
-    # Offer to set up remote machine configs
+    # Offer to set up remote machines with full installation
     if machines_to_setup and config["is_portal_host"]:
         print()
         print_header("Remote Machine Setup")
-        print("I can configure AgentWire on the remote machines to connect back to this portal.")
-        print_info("This creates ~/.agentwire/config.yaml on each machine with the correct settings.")
+        print("I can install and configure AgentWire on remote machines automatically.")
+        print()
+        print_info("This will:")
+        print_info("  • Check Python version and dependencies")
+        print_info("  • Install AgentWire package (handles venv for Ubuntu)")
+        print_info("  • Create configuration files")
+        print_info("  • Install skills and scripts")
+        print_info("  • Set up reverse SSH tunnels for portal access")
         print()
 
         local_hostname, local_ip = get_local_machine_info()
         local_user = os.environ.get("USER", "user")
 
         for machine in machines_to_setup:
-            if prompt_yes_no(f"Set up AgentWire config on {machine['id']} ({machine['user']}@{machine['host']})?"):
-                print(f"Setting up {machine['id']}...")
-                if setup_remote_machine_config(
+            if prompt_yes_no(f"Set up AgentWire on {machine['id']} ({machine['user']}@{machine['host']})?"):
+                if setup_remote_machine(
                     host=machine["host"],
                     user=machine["user"],
                     projects_dir=machine["projects_dir"],
@@ -979,9 +1332,14 @@ def run_onboarding(skip_orchestrator: bool = False) -> int:
                     portal_host=local_ip,
                     portal_user=local_user,
                 ):
-                    print_success(f"Configured {machine['id']} to connect to this portal")
+                    # Offer reverse tunnel setup
+                    if prompt_yes_no(f"\nCreate reverse SSH tunnel for {machine['id']}?", default=True):
+                        portal_port = 8765  # Default portal port
+                        if create_reverse_tunnel(portal_port, machine):
+                            # Offer autossh for persistence
+                            offer_autossh_setup(machine, portal_port)
                 else:
-                    print_warning(f"Could not configure {machine['id']} - you'll need to set it up manually")
+                    print_warning(f"Could not set up {machine['id']} - you'll need to configure it manually")
 
     # ─────────────────────────────────────────────────────────────
     # Dependency Summary

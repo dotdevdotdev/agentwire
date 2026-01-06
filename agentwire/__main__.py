@@ -2988,7 +2988,100 @@ def cmd_doctor(args) -> int:
     issues_found = 0
     issues_fixed = 0
 
-    # 1. Validate config
+    # 1. Check Python version
+    print("\nChecking Python version...")
+    py_version = sys.version_info
+    version_str = f"{py_version.major}.{py_version.minor}.{py_version.micro}"
+    if py_version >= (3, 10):
+        print(f"  [ok] Python {version_str} (>=3.10 required)")
+    else:
+        print(f"  [!!] Python {version_str} (>=3.10 required)")
+        print("     macOS: pyenv install 3.12.0 && pyenv global 3.12.0")
+        print("     Ubuntu: sudo apt update && sudo apt install python3.12")
+        issues_found += 1
+
+    # 2. Check system dependencies
+    print("\nChecking system dependencies...")
+
+    # Check ffmpeg
+    ffmpeg_path = shutil.which("ffmpeg")
+    if ffmpeg_path:
+        print(f"  [ok] ffmpeg: {ffmpeg_path}")
+    else:
+        print("  [!!] ffmpeg: not found")
+        print("     macOS: brew install ffmpeg")
+        print("     Ubuntu: sudo apt install ffmpeg")
+        issues_found += 1
+
+    # Check whisperkit-cli (macOS only)
+    if sys.platform == "darwin":
+        whisperkit_path = shutil.which("whisperkit-cli")
+        if whisperkit_path:
+            print(f"  [ok] whisperkit-cli: {whisperkit_path}")
+        else:
+            print("  [..] whisperkit-cli: not found (optional for STT)")
+            print("     Install MacWhisper: https://goodsnooze.gumroad.com/l/macwhisper")
+
+    # 3. Check AgentWire scripts
+    print("\nChecking AgentWire scripts...")
+
+    say_path = shutil.which("say")
+    remote_say_path = shutil.which("remote-say")
+
+    scripts_missing = False
+    if say_path:
+        print(f"  [ok] say: {say_path}")
+    else:
+        print("  [!!] say: not found")
+        scripts_missing = True
+        issues_found += 1
+
+    if remote_say_path:
+        print(f"  [ok] remote-say: {remote_say_path}")
+    else:
+        print("  [!!] remote-say: not found")
+        scripts_missing = True
+        issues_found += 1
+
+    # Offer to fix missing scripts
+    if scripts_missing and not dry_run:
+        if auto_confirm or _confirm("     Install say/remote-say scripts?"):
+            print("     -> Installing scripts...", end=" ", flush=True)
+
+            # Create a minimal args object for cmd_skills_install
+            class SkillsArgs:
+                force = False
+                copy = False
+
+            skills_args = SkillsArgs()
+            result = cmd_skills_install(skills_args)
+
+            if result == 0:
+                print("[ok] installed")
+                issues_fixed += 2 if not say_path and not remote_say_path else 1
+            else:
+                print("[!!] failed")
+
+    # 4. Check Claude Code hooks
+    print("\nChecking Claude Code hooks...")
+
+    permission_hook = CLAUDE_HOOKS_DIR / "agentwire-permission.sh"
+    if permission_hook.exists():
+        print(f"  [ok] Permission hook: {permission_hook}")
+    else:
+        print(f"  [!!] Permission hook: not found")
+        print("     Run: agentwire skills install")
+        issues_found += 1
+
+    skills_dir = CLAUDE_SKILLS_DIR / "agentwire"
+    if skills_dir.exists():
+        print(f"  [ok] Skills linked: {skills_dir}")
+    else:
+        print(f"  [!!] Skills not linked")
+        print("     Run: agentwire skills install")
+        issues_found += 1
+
+    # 5. Validate config
     print("\nChecking configuration...")
     try:
         from .config import load_config as load_config_typed
@@ -3016,7 +3109,7 @@ def cmd_doctor(args) -> int:
         for warn in warnings:
             print(f"  [..] {warn.message}")
 
-    # 2. Check SSH connectivity
+    # 6. Check SSH connectivity
     print("\nChecking SSH connectivity...")
     ctx = NetworkContext.from_config()
 
@@ -3034,7 +3127,7 @@ def cmd_doctor(args) -> int:
             print(f"  [!!] {machine_id}: unreachable")
             issues_found += 1
 
-    # 3. Check/create tunnels
+    # 7. Check/create tunnels
     print("\nChecking tunnels...")
     tm = TunnelManager()
     required_tunnels = ctx.get_required_tunnels()
@@ -3063,7 +3156,7 @@ def cmd_doctor(args) -> int:
                 else:
                     print("     -> Would create tunnel (dry-run)")
 
-    # 4. Check services
+    # 8. Check services
     print("\nChecking services...")
 
     for service_name in ["portal", "tts"]:
@@ -3585,6 +3678,137 @@ def get_hooks_source() -> Path:
     raise FileNotFoundError("Could not find hooks directory in package")
 
 
+def get_scripts_source() -> Path:
+    """Get the path to the scripts directory in the installed package."""
+    # First try: scripts directory inside the agentwire package
+    package_dir = Path(__file__).parent
+    scripts_dir = package_dir / "scripts"
+    if scripts_dir.exists():
+        return scripts_dir
+
+    # Fallback: try importlib.resources (for installed packages)
+    try:
+        with importlib.resources.files("agentwire").joinpath("scripts") as p:
+            if p.exists():
+                return Path(p)
+    except (TypeError, FileNotFoundError):
+        pass
+
+    raise FileNotFoundError("Could not find scripts directory in package")
+
+
+def detect_bin_directory() -> Path:
+    """Detect the appropriate bin directory for script installation.
+
+    Returns the bin directory in this order of preference:
+    1. pyenv shims directory (if using pyenv)
+    2. ~/.local/bin (user installation)
+    3. /usr/local/bin (system installation, requires sudo)
+    """
+    # Check if we're using pyenv
+    pyenv_root = os.environ.get("PYENV_ROOT")
+    if pyenv_root:
+        # Get current Python version
+        try:
+            result = subprocess.run(
+                ["pyenv", "version-name"],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            version = result.stdout.strip()
+            pyenv_bin = Path(pyenv_root) / "versions" / version / "bin"
+            if pyenv_bin.exists():
+                return pyenv_bin
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            pass
+
+    # Check if we're in a virtual environment
+    venv_bin = os.environ.get("VIRTUAL_ENV")
+    if venv_bin:
+        venv_bin_path = Path(venv_bin) / "bin"
+        if venv_bin_path.exists():
+            return venv_bin_path
+
+    # Default to user bin directory
+    user_bin = Path.home() / ".local" / "bin"
+    user_bin.mkdir(parents=True, exist_ok=True)
+    return user_bin
+
+
+def install_scripts(force: bool = False, copy: bool = False) -> bool:
+    """Install say and remote-say shell scripts.
+
+    Returns True if scripts were installed/updated, False if skipped.
+    """
+    try:
+        scripts_source = get_scripts_source()
+    except FileNotFoundError:
+        print("  Warning: scripts directory not found, skipping script installation")
+        return False
+
+    bin_dir = detect_bin_directory()
+
+    scripts_to_install = ["say", "remote-say"]
+    scripts_installed = []
+    scripts_skipped = []
+
+    for script_name in scripts_to_install:
+        source_script = scripts_source / script_name
+        if not source_script.exists():
+            print(f"  Warning: {script_name} not found in package, skipping")
+            continue
+
+        target_script = bin_dir / script_name
+
+        # Check if already installed
+        file_updated = False
+        if target_script.exists():
+            if target_script.is_symlink():
+                current_target = target_script.resolve()
+                if current_target == source_script.resolve() and not force:
+                    scripts_skipped.append(script_name)
+                    continue
+                else:
+                    target_script.unlink()
+                    file_updated = True
+            elif not force:
+                scripts_skipped.append(script_name)
+                continue
+            else:
+                target_script.unlink()
+                file_updated = True
+        else:
+            file_updated = True
+
+        # Create symlink (preferred) or copy
+        if file_updated or not target_script.exists():
+            if copy:
+                shutil.copy2(source_script, target_script)
+            else:
+                target_script.symlink_to(source_script)
+            # Make executable
+            target_script.chmod(0o755)
+            scripts_installed.append(script_name)
+
+    if scripts_installed:
+        print(f"Installed scripts to {bin_dir}: {', '.join(scripts_installed)}")
+
+        # Check if bin_dir is in PATH
+        path_dirs = os.environ.get("PATH", "").split(os.pathsep)
+        if str(bin_dir) not in path_dirs:
+            print(f"\n  Warning: {bin_dir} is not in your PATH")
+            print(f"  Add to your shell profile (~/.bashrc or ~/.zshrc):")
+            print(f'    export PATH="{bin_dir}:$PATH"')
+
+        return True
+    elif scripts_skipped:
+        print(f"Scripts already installed: {', '.join(scripts_skipped)}")
+        return False
+
+    return False
+
+
 def register_hook_in_settings() -> bool:
     """Register the permission hook in Claude's settings.json.
 
@@ -3754,10 +3978,15 @@ def cmd_skills_install(args) -> int:
     if hook_installed:
         print(f"Installed permission hook to {CLAUDE_HOOKS_DIR / 'agentwire-permission.sh'}")
 
+    # Install say/remote-say scripts
+    scripts_installed = install_scripts(force=args.force, copy=args.copy)
+
     print("\nClaude Code skills installed. Available commands:")
     print("  /sessions, /send, /output, /spawn, /new, /kill, /status, /jump")
     if hook_installed:
         print("\nPermission hook installed for normal session support.")
+    if scripts_installed:
+        print("\nVoice commands installed: say, remote-say")
     return 0
 
 
