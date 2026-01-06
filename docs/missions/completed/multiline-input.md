@@ -47,7 +47,7 @@ textarea.addEventListener('keydown', (e) => {
 
 ## Acceptance Criteria
 
-- [ ] Text input expands vertically as user types
-- [ ] Enter submits, Shift+Enter adds newline
-- [ ] Collapses back to single line when cleared
-- [ ] Styling matches current input appearance
+- [x] Text input expands vertically as user types
+- [x] Enter submits, Shift+Enter adds newline
+- [x] Collapses back to single line when cleared
+- [x] Styling matches current input appearance
