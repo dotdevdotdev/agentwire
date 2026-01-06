@@ -15,9 +15,14 @@ See `docs/installation-case-study.md` for complete timeline and pain points.
 
 ## Wave 1: Human Actions (BLOCKING)
 
-- [ ] Review case study and prioritize fixes
-- [ ] Decide: Should say/remote-say be shell scripts or Python entry points?
-- [ ] Confirm platform-specific install instructions are correct
+**Decisions made:**
+- ✅ say/remote-say: Shell wrapper scripts (simple, works anywhere)
+- ✅ Remote setup: Fully automated (install + configure + tunnels)
+- ✅ Ubuntu approach: Recommend venv (better practice over --break-system-packages)
+- ✅ Priority: All waves (dependency checks, scripts, remote setup, doctor enhancements)
+
+- [ ] Review case study one more time for any missed issues
+- [ ] Verify shell script installation paths are correct for all platforms
 
 ## Wave 2: Dependency Detection & Pre-Flight Checks
 
@@ -79,25 +84,27 @@ Continue anyway? [y/N]
 
 ## Wave 3: say/remote-say Script Installation
 
-### 3.1 Create executable scripts
+### 3.1 Create executable shell scripts
 
 **Files:** `agentwire/scripts/say`, `agentwire/scripts/remote-say`
 
-Create proper entry point scripts (decide format in Wave 1):
-
-**Option A: Shell scripts**
+**say:**
 ```bash
 #!/bin/bash
-# agentwire/scripts/say
-exec python3 -m agentwire say "$@"
+# Local TTS playback via agentwire CLI
+agentwire say "$@"
 ```
 
-**Option B: Python entry points**
-```python
-# pyproject.toml
-[project.scripts]
-say = "agentwire.commands:cmd_say_standalone"
-remote-say = "agentwire.commands:cmd_remote_say_standalone"
+**remote-say:**
+```bash
+#!/bin/bash
+# Remote TTS via portal (auto-detects room from AGENTWIRE_ROOM or tmux session)
+room="${AGENTWIRE_ROOM:-$(tmux display-message -p '#S' 2>/dev/null)}"
+if [ -z "$room" ]; then
+  echo "Error: Not in a tmux session and AGENTWIRE_ROOM not set" >&2
+  exit 1
+fi
+agentwire say --room "$room" "$@"
 ```
 
 ### 3.2 Install scripts during skills installation
@@ -147,11 +154,13 @@ Set up AgentWire on devbox1 now? [Y/n]
 
 Implementation:
 - SSH to remote machine
-- Detect Python version
-- Handle externally-managed environments (Ubuntu):
-  - Show options: venv, pipx, --break-system-packages
-  - Default: --break-system-packages with warning
-- Install: `pip3 install --break-system-packages git+https://github.com/dotdevdotdev/agentwire.git`
+- Detect Python version (exit if < 3.10 with upgrade instructions)
+- Detect externally-managed environment (Ubuntu):
+  - Recommend venv (better practice)
+  - Create ~/.agentwire-venv automatically
+  - Add activation to ~/.bashrc
+  - Show alternative: --break-system-packages (if user prefers)
+- Install: `pip install git+https://github.com/dotdevdotdev/agentwire.git`
 - Create `~/.agentwire/config.yaml` with minimal config (TTS URL, projects dir)
 - Create `~/.agentwire/portal_url` pointing to tunnel endpoint
 - Run `agentwire skills install` on remote
@@ -311,22 +320,24 @@ def check_pip_environment():
         # Check for EXTERNALLY-MANAGED marker
         marker = Path(sys.prefix) / "EXTERNALLY-MANAGED"
         if marker.exists():
-            print("⚠️  Externally-managed Python environment detected")
+            print("⚠️  Externally-managed Python environment detected (Ubuntu 24.04+)")
             print()
-            print("Options:")
-            print("  1. Use venv (recommended):")
-            print("     python3 -m venv ~/.agentwire-venv")
-            print("     source ~/.agentwire-venv/bin/activate")
-            print("     pip install git+https://github.com/dotdevdotdev/agentwire.git")
+            print("Recommended approach - Use venv:")
+            print("  python3 -m venv ~/.agentwire-venv")
+            print("  source ~/.agentwire-venv/bin/activate")
+            print("  pip install git+https://github.com/dotdevdotdev/agentwire.git")
             print()
-            print("  2. Use --break-system-packages (simpler, but modifies system):")
-            print("     pip3 install --break-system-packages git+https://...")
+            print("  Add to ~/.bashrc for persistence:")
+            print("  echo 'source ~/.agentwire-venv/bin/activate' >> ~/.bashrc")
+            print()
+            print("Alternative (not recommended):")
+            print("  pip3 install --break-system-packages git+https://...")
             print()
             return True
     return False
 ```
 
-Show this in README installation instructions for Ubuntu.
+Show venv approach as primary method in README installation instructions for Ubuntu.
 
 ## Completion Criteria
 
