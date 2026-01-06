@@ -34,11 +34,25 @@ Enable full terminal interaction in the browser while preserving all existing fu
 - User's local terminal can also be attached (common workflow)
 - All three see the same session, all can send input
 
-## Wave 1: Human Actions (BLOCKING)
+## Wave 1: Human Actions (DECISIONS MADE)
 
-- [ ] Review xterm.js license (MIT - should be fine)
-- [ ] Decide on default mode when opening a room (Monitor or stay on last used?)
-- [ ] Confirm terminal should be opt-in per tab (not always on)
+- [x] Review xterm.js license (MIT - acceptable)
+- [x] Default mode: **Remember last used mode** (localStorage per room)
+- [x] Terminal activation: **Always manual** (button click required, never auto-activate)
+- [x] tmux approach: **Regular attach** (not control mode -CC)
+- [x] Background behavior: **Keep connected** when switching to Ambient/Monitor
+- [x] Monitor mode input: **Keep text input** in Monitor mode for prompt sending
+- [x] Directory fix testing: **Add automated test** to verify sessions start in correct directory
+- [x] Terminal error handling: **Show error message + reconnect button**
+- [x] Mode selector UI: **Tab-style** (horizontal browser-like tabs)
+- [x] Keyboard shortcuts: **Only active when Terminal tab showing** (no global shortcuts)
+- [x] First-time activation: **No warning/info modal** (clean UX, just activate)
+- [x] Terminal theme: **Match portal theme** (adapts to dark/light mode)
+- [x] WebGL addon: **Include xterm-addon-webgl** for performance
+- [x] Mobile support: **Desktop-only initially** (disable Terminal tab on mobile with message)
+- [x] Terminal size display: **Show in status indicator** (e.g., "Connected (120x40)")
+- [x] Copy/paste: **No UI hints** (rely on native Cmd/Ctrl+C/V behavior)
+- [x] Mode switching: **No keyboard shortcuts** (tab clicks only)
 
 ## Wave 2: Fix Directory Issue (Quick Win)
 
@@ -66,11 +80,41 @@ f"tmux send-keys -t {session_name} 'claude{bypass_flag}' Enter"
 - Fork session (cmd_fork, line ~2140)
 - Portal API `/api/create` endpoint
 
-**Testing:**
+**Manual Testing:**
 - Create session with path: `agentwire new -s test -p ~/projects/agentwire`
 - Verify: `agentwire send -s test "pwd"` returns correct path
 - Create worktree session: `agentwire new -s agentwire/test-branch`
 - Verify: Session detects git repo and can create commits
+
+### 2.2 Add automated directory verification test
+
+**Files:** `tests/test_session_directory.py` (new)
+
+**Purpose:** Prevent regression - ensure sessions always start in specified directory
+
+**Test implementation:**
+```python
+def test_session_starts_in_correct_directory():
+    """Verify session pwd matches specified path."""
+    test_session = "test-dir-verification"
+    test_path = "~/projects/agentwire"
+
+    # Create session with specific path
+    subprocess.run(["agentwire", "new", "-s", test_session, "-p", test_path])
+    time.sleep(2)  # Wait for Claude to start
+
+    # Send pwd command
+    subprocess.run(["agentwire", "send", "-s", test_session, "pwd"])
+    time.sleep(1)
+
+    # Read output and verify
+    output = subprocess.check_output(["agentwire", "output", "-s", test_session])
+    expected_path = os.path.expanduser(test_path)
+    assert expected_path in output.decode()
+
+    # Cleanup
+    subprocess.run(["agentwire", "kill", "-s", test_session])
+```
 
 ## Wave 3: Rename "Terminal Mode" to "Monitor Mode"
 
@@ -82,9 +126,12 @@ f"tmux send-keys -t {session_name} 'claude{bypass_flag}' Enter"
 - `agentwire/static/css/room.css`
 
 **Changes:**
-- Mode selector: `[Ambient] [Monitor] [Terminal]` (Terminal tab disabled/grayed out for now)
+- Mode selector: Tab-style UI (horizontal browser-like tabs): `[Ambient] [Monitor] [Terminal]`
+- Terminal tab initially disabled/grayed out (activated in Wave 6)
 - CSS class renames: `.terminal-mode` → `.monitor-mode`
 - JavaScript: `terminalMode` → `monitorMode`
+- Keep text input in Monitor mode for sending prompts
+- Add localStorage to remember last active mode per room
 - Keep all existing functionality, just rename
 
 ### 3.2 Update documentation
@@ -106,13 +153,9 @@ Update all references:
 - `xterm.js` (core library)
 - `xterm-addon-fit` (auto-resize terminal)
 - `xterm-addon-web-links` (clickable URLs)
-- `xterm-addon-webgl` (hardware acceleration, optional)
+- `xterm-addon-webgl` (hardware acceleration - **include for performance**)
 
-**Options:**
-1. CDN: Load from unpkg.com (simpler, no build step)
-2. NPM: Install and bundle (better for offline)
-
-**Recommendation:** CDN for now (simpler, faster to implement)
+**Approach:** CDN for simplicity (no build step required)
 
 ```html
 <!-- In base.html -->
@@ -120,6 +163,7 @@ Update all references:
 <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xterm-addon-web-links@0.9.0/lib/xterm-addon-web-links.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xterm-addon-webgl@0.16.0/lib/xterm-addon-webgl.js"></script>
 ```
 
 ### 4.2 Create terminal container in room.html
@@ -218,14 +262,25 @@ class TerminalMode {
   }
 
   async activate() {
-    // Create xterm instance
+    // Detect if mobile/tablet (desktop-only feature)
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    if (isMobile) {
+      this.showMobileMessage();
+      return;
+    }
+
+    // Create xterm instance with theme matching portal
+    const isDark = document.body.classList.contains('dark');
     this.term = new Terminal({
       cursorBlink: true,
       fontSize: 14,
       fontFamily: 'Menlo, Monaco, "Courier New", monospace',
-      theme: {
+      theme: isDark ? {
         background: '#1e1e1e',
         foreground: '#d4d4d4',
+      } : {
+        background: '#ffffff',
+        foreground: '#333333',
       },
     });
 
@@ -235,6 +290,14 @@ class TerminalMode {
 
     // Add web links addon (clickable URLs)
     this.term.loadAddon(new WebLinksAddon.WebLinksAddon());
+
+    // Add WebGL addon for performance
+    try {
+      const webglAddon = new WebglAddon.WebglAddon();
+      this.term.loadAddon(webglAddon);
+    } catch (e) {
+      console.warn('[Terminal] WebGL not available, using canvas renderer:', e);
+    }
 
     // Attach to DOM
     this.term.open(document.getElementById('terminal'));
@@ -339,47 +402,55 @@ Update mode switching:
 **UI feedback:**
 ```javascript
 socket.onerror = (error) => {
-  terminalStatus.textContent = '❌ Connection failed';
+  terminalStatus.innerHTML = '❌ Connection failed <button class="reconnect-btn">Reconnect</button>';
   terminalStatus.className = 'terminal-status error';
+  this.attachReconnectHandler();
 };
 
 socket.onclose = (event) => {
   if (event.code !== 1000) {
     // Abnormal closure
-    terminalStatus.textContent = '⚠️ Connection lost. Reconnect?';
-    // Show reconnect button
+    terminalStatus.innerHTML = '⚠️ Connection lost <button class="reconnect-btn">Reconnect</button>';
+    terminalStatus.className = 'terminal-status error';
+    this.attachReconnectHandler();
   }
 };
+
+attachReconnectHandler() {
+  const reconnectBtn = document.querySelector('.reconnect-btn');
+  if (reconnectBtn) {
+    reconnectBtn.onclick = () => this.connect();
+  }
+}
 ```
 
 ## Wave 8: Polish and UX
 
 ### 8.1 Terminal theme matching
 
-**Files:** `agentwire/static/css/room.css`
-
-Match terminal colors to portal theme:
-- Dark theme: xterm dark theme
-- Light theme: xterm light theme (if supported)
-- Custom colors for AgentWire branding
+**Theme handled in Wave 6** - Terminal theme already adapts to portal dark/light mode in the activate() method.
 
 ### 8.2 Keyboard shortcuts
 
 **Files:** `agentwire/static/js/terminal.js`
 
-**Shortcuts:**
+**Shortcuts (only active when Terminal tab showing):**
 - `Cmd/Ctrl + K` - Clear terminal (send `clear` command)
 - `Cmd/Ctrl + D` - Disconnect terminal
 - All other shortcuts passed through to tmux
 
-**Important:** Don't intercept Cmd+C, Cmd+V (let terminal handle)
+**Important:**
+- Don't intercept Cmd+C, Cmd+V (let terminal handle for copy/paste)
+- Shortcuts should NOT work globally - only when Terminal tab is active
+- No mode-switching shortcuts (tab clicks only per Wave 1 decision)
 
 ### 8.3 Copy/paste support
 
-xterm.js handles this automatically, but verify:
-- Right-click context menu (if needed)
-- Cmd/Ctrl+C/V works
-- Middle-click paste on Linux
+**No UI hints needed** - rely on native behavior:
+- xterm.js handles copy/paste automatically
+- Cmd/Ctrl+C/V works natively
+- Middle-click paste on Linux supported
+- No context menu, no tooltips, clean UX
 
 ### 8.4 Terminal status indicator
 
