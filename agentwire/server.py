@@ -477,6 +477,174 @@ class AgentWireServer:
 
         return ws
 
+    async def handle_terminal_ws(self, request: web.Request) -> web.WebSocketResponse:
+        """WebSocket endpoint for interactive terminal via tmux attach.
+
+        Provides bidirectional communication between browser terminal (xterm.js)
+        and tmux session. Handles terminal input, output, and resize commands.
+        """
+        room_name = request.match_info["name"]
+        ws = web.WebSocketResponse()
+        await ws.prepare(request)
+
+        proc = None
+        tmux_to_ws_task = None
+        ws_to_tmux_task = None
+
+        try:
+            # Parse session name for local vs remote
+            parsed = parse_session_name(room_name)
+            session_name = parsed["session"]
+            machine = parsed.get("machine")
+
+            # Build tmux attach command
+            if machine:
+                # Remote session via SSH
+                cmd = ["ssh", machine, "tmux", "attach", "-t", session_name]
+            else:
+                # Local session
+                cmd = ["tmux", "attach", "-t", session_name]
+
+            logger.info(f"[Terminal] Attaching to {room_name}: {' '.join(cmd)}")
+
+            # Spawn tmux attach process
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+
+            # Task: Forward tmux stdout → WebSocket
+            async def forward_tmux_to_ws():
+                """Read from tmux and send to WebSocket."""
+                try:
+                    while True:
+                        data = await proc.stdout.read(8192)
+                        if not data:
+                            break
+                        if not ws.closed:
+                            await ws.send_bytes(data)
+                except asyncio.CancelledError:
+                    logger.debug(f"[Terminal] tmux→ws task cancelled for {room_name}")
+                except Exception as e:
+                    logger.error(f"[Terminal] Error forwarding tmux→ws for {room_name}: {e}")
+
+            # Task: Forward WebSocket → tmux stdin
+            async def forward_ws_to_tmux():
+                """Read from WebSocket and write to tmux stdin."""
+                try:
+                    async for msg in ws:
+                        if msg.type == web.WSMsgType.TEXT:
+                            try:
+                                payload = json.loads(msg.data)
+                                msg_type = payload.get("type")
+
+                                if msg_type == "input":
+                                    # Terminal input from browser
+                                    input_data = payload.get("data", "")
+                                    if input_data and proc.stdin:
+                                        proc.stdin.write(input_data.encode())
+                                        await proc.stdin.drain()
+
+                                elif msg_type == "resize":
+                                    # Terminal resize
+                                    cols = payload.get("cols", 80)
+                                    rows = payload.get("rows", 24)
+                                    logger.debug(f"[Terminal] Resize {room_name} to {cols}x{rows}")
+
+                                    # Send tmux resize-window command
+                                    resize_cmd = f"tmux resize-window -t {session_name} -x {cols} -y {rows}\n"
+                                    if machine:
+                                        # Remote: use SSH
+                                        resize_proc = await asyncio.create_subprocess_exec(
+                                            "ssh", machine, "sh", "-c", resize_cmd,
+                                            stdout=asyncio.subprocess.DEVNULL,
+                                            stderr=asyncio.subprocess.DEVNULL,
+                                        )
+                                        await resize_proc.wait()
+                                    else:
+                                        # Local: run directly
+                                        resize_proc = await asyncio.create_subprocess_shell(
+                                            resize_cmd,
+                                            stdout=asyncio.subprocess.DEVNULL,
+                                            stderr=asyncio.subprocess.DEVNULL,
+                                        )
+                                        await resize_proc.wait()
+
+                            except json.JSONDecodeError:
+                                logger.warning(f"[Terminal] Invalid JSON from WebSocket: {msg.data}")
+                            except Exception as e:
+                                logger.error(f"[Terminal] Error handling message: {e}")
+
+                        elif msg.type == web.WSMsgType.ERROR:
+                            logger.error(f"[Terminal] WebSocket error: {ws.exception()}")
+                            break
+
+                except asyncio.CancelledError:
+                    logger.debug(f"[Terminal] ws→tmux task cancelled for {room_name}")
+                except Exception as e:
+                    logger.error(f"[Terminal] Error forwarding ws→tmux for {room_name}: {e}")
+
+            # Start both forwarding tasks
+            tmux_to_ws_task = asyncio.create_task(forward_tmux_to_ws())
+            ws_to_tmux_task = asyncio.create_task(forward_ws_to_tmux())
+
+            # Wait for either task to complete (disconnect or error)
+            done, pending = await asyncio.wait(
+                [tmux_to_ws_task, ws_to_tmux_task],
+                return_when=asyncio.FIRST_COMPLETED
+            )
+
+            # Cancel remaining tasks
+            for task in pending:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+
+            logger.info(f"[Terminal] Disconnected from {room_name}")
+
+        except FileNotFoundError:
+            logger.error(f"[Terminal] tmux command not found")
+            if not ws.closed:
+                await ws.send_json({
+                    "type": "error",
+                    "message": "tmux not found on system"
+                })
+
+        except Exception as e:
+            logger.error(f"[Terminal] Error attaching to {room_name}: {e}")
+            if not ws.closed:
+                await ws.send_json({
+                    "type": "error",
+                    "message": f"Failed to attach: {str(e)}"
+                })
+
+        finally:
+            # Clean up subprocess
+            if proc and proc.returncode is None:
+                try:
+                    proc.terminate()
+                    await asyncio.wait_for(proc.wait(), timeout=2.0)
+                except asyncio.TimeoutError:
+                    proc.kill()
+                    await proc.wait()
+                except Exception as e:
+                    logger.debug(f"[Terminal] Error terminating process: {e}")
+
+            # Ensure tasks are cancelled
+            for task in [tmux_to_ws_task, ws_to_tmux_task]:
+                if task and not task.done():
+                    task.cancel()
+                    try:
+                        await task
+                    except asyncio.CancelledError:
+                        pass
+
+        return ws
+
     async def _handle_ws_message(
         self, room: Room, ws: web.WebSocketResponse, client_id: str, data: dict
     ):
