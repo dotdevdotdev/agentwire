@@ -693,7 +693,7 @@ function renderSessionCard(session, machineId) {
                 </div>
                 <div class="session-header-right">
                     <a href="/room/${encodeURIComponent(session.name)}" class="session-action-btn goto-btn" title="Go to room">→</a>
-                    <button class="session-action-btn close-btn" data-session="${session.name}" title="Close session">🗑</button>
+                    <button class="session-action-btn close-btn" data-session="${session.name}" title="Close session">×</button>
                 </div>
             </div>
             <div class="session-details" style="display: ${isExpanded ? 'block' : 'none'}">
