@@ -688,8 +688,8 @@ function renderSessionCard(session, machineId) {
                 <div class="session-header-left">
                     <span class="expand-icon">${expandIcon}</span>
                     ${activityIndicator}
-                    <span class="session-display-name">${displayName}</span>
                     ${badge}
+                    <span class="session-display-name">${displayName}</span>
                 </div>
                 <div class="session-header-right">
                     <a href="/room/${encodeURIComponent(session.name)}" class="session-action-btn goto-btn" title="Go to room">→</a>
