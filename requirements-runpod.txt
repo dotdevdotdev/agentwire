@@ -1,0 +1,12 @@
+# RunPod Serverless TTS Dependencies
+# Minimal set for TTS generation only (no web server, no portal dependencies)
+
+# RunPod SDK
+runpod>=1.3.0
+
+# TTS Engine
+chatterbox-tts>=0.1.6
+
+# PyTorch (CUDA support)
+torch>=2.0.0
+torchaudio>=2.0.0
