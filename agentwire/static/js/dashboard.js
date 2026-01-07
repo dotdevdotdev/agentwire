@@ -17,6 +17,9 @@ let machinesData = [];
 // Store templates data for later use
 let templatesData = [];
 
+// Store current machine for create session modal
+let currentMachine = 'local';
+
 // Track session states for sound notifications
 let sessionStates = new Map(); // session name -> 'active' | 'idle'
 
