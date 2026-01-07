@@ -2,8 +2,9 @@
 
 > Living document. Update this, don't create new versions.
 
-**Status:** Active
+**Status:** Active (Wave 1 complete, testing pending)
 **Branch:** `mission/connection-aware-tts-routing`
+**PR:** https://github.com/dotdevdotdev/agentwire/pull/17
 **Created:** 2026-01-07
 
 ## Goal
