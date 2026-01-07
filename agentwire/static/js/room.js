@@ -542,6 +542,9 @@ function switchToMode(mode) {
     console.log('[Mode] Switching from', currentMode, 'to', mode);
     currentMode = mode;
 
+    // Update legacy flag for backward compatibility
+    isAmbientMode = (mode === 'ambient');
+
     // Update tab states
     if (elements.ambientTab) elements.ambientTab.classList.toggle('active', mode === 'ambient');
     if (elements.monitorTab) elements.monitorTab.classList.toggle('active', mode === 'monitor');

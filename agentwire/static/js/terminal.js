@@ -144,6 +144,41 @@ export class TerminalMode {
         this.socket.send(JSON.stringify({ type: 'input', data }));
       }
     });
+
+    // Add keyboard shortcuts (only active when terminal is focused)
+    this.setupKeyboardShortcuts();
+  }
+
+  setupKeyboardShortcuts() {
+    // Keyboard shortcuts only work when terminal tab is showing
+    // These are handled at the document level but checked for terminal visibility
+    this.keyboardHandler = (e) => {
+      // Only handle shortcuts if terminal is activated and container is visible
+      if (!this.isActivated || !this.terminalContainer || this.terminalContainer.style.display === 'none') {
+        return;
+      }
+
+      // Cmd/Ctrl+K - Clear terminal
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+          // Send 'clear' command followed by Enter
+          this.socket.send(JSON.stringify({ type: 'input', data: 'clear\r' }));
+        }
+        return;
+      }
+
+      // Cmd/Ctrl+D - Disconnect terminal
+      if ((e.metaKey || e.ctrlKey) && e.key === 'd') {
+        e.preventDefault();
+        this.disconnect();
+        return;
+      }
+
+      // Don't intercept Cmd/Ctrl+C or Cmd/Ctrl+V - let terminal handle copy/paste
+    };
+
+    document.addEventListener('keydown', this.keyboardHandler);
   }
 
   sendResize() {
@@ -217,6 +252,12 @@ export class TerminalMode {
 
   disconnect() {
     console.log('[Terminal] Disconnecting...');
+
+    // Remove keyboard event listener
+    if (this.keyboardHandler) {
+      document.removeEventListener('keydown', this.keyboardHandler);
+      this.keyboardHandler = null;
+    }
 
     // Close WebSocket
     if (this.socket) {

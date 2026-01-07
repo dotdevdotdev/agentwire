@@ -1160,7 +1160,7 @@ When Claude Code uses the AskUserQuestion tool, the portal displays a modal with
 
 ### Actions Menu (Terminal Mode)
 
-In terminal mode, a ⋯ button appears above the mic button. Hover over action buttons to see labels.
+In monitor mode, a ⋯ button appears above the mic button. Hover over action buttons to see labels.
 
 **For regular project sessions:**
 
