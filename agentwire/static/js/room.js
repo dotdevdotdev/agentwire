@@ -42,6 +42,7 @@ const STATES = {
 
 let currentState = STATES.IDLE;
 let currentMode = 'ambient';  // 'ambient', 'monitor', or 'terminal'
+let isAmbientMode = true;  // Legacy flag for backward compatibility
 let textInputOpen = false;
 let processingTimeout = null;
 let pendingAiText = null;
