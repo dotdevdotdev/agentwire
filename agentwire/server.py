@@ -537,31 +537,43 @@ class AgentWireServer:
                 # Make master fd non-blocking for async reads
                 os.set_blocking(master_fd, False)
 
+                # Send initial window size to trigger tmux redraw
+                # Default to 80x24 if browser hasn't sent resize yet
+                winsize = struct.pack("HHHH", 24, 80, 0, 0)
+                fcntl.ioctl(master_fd, termios.TIOCSWINSZ, winsize)
+                logger.debug(f"[Terminal] Set initial PTY size to 80x24")
+
             # Task: Forward tmux stdout → WebSocket
             async def forward_tmux_to_ws():
                 """Read from tmux and send to WebSocket."""
                 loop = asyncio.get_event_loop()
+                data_queue = asyncio.Queue()
+                reader_registered = False
+
+                def on_readable():
+                    """Called when PTY master FD has data to read."""
+                    try:
+                        data = os.read(master_fd, 8192)
+                        if data:
+                            # Schedule putting data in queue from event loop
+                            asyncio.create_task(data_queue.put(data))
+                    except OSError as e:
+                        logger.debug(f"[Terminal] PTY read error: {e}")
+                        # Signal EOF
+                        asyncio.create_task(data_queue.put(None))
+
                 try:
+                    if master_fd is not None:
+                        # Local: register reader once for PTY master
+                        loop.add_reader(master_fd, on_readable)
+                        reader_registered = True
+                        logger.debug(f"[Terminal] Registered PTY reader for {room_name}")
+
                     while True:
                         if master_fd is not None:
-                            # Local: read from PTY master
-                            # Use add_reader for non-blocking FD reads
-                            read_event = asyncio.Event()
-
-                            def on_readable():
-                                read_event.set()
-
-                            loop.add_reader(master_fd, on_readable)
-                            try:
-                                await read_event.wait()
-                                try:
-                                    data = os.read(master_fd, 8192)
-                                except OSError:
-                                    break
-                            finally:
-                                loop.remove_reader(master_fd)
-
-                            if not data:
+                            # Local: read from queue populated by on_readable
+                            data = await data_queue.get()
+                            if data is None:  # EOF signal
                                 break
                             if not ws.closed:
                                 await ws.send_bytes(data)
@@ -577,9 +589,10 @@ class AgentWireServer:
                 except Exception as e:
                     logger.error(f"[Terminal] Error forwarding tmux→ws for {room_name}: {e}")
                 finally:
-                    if master_fd is not None:
+                    if master_fd is not None and reader_registered:
                         try:
                             loop.remove_reader(master_fd)
+                            logger.debug(f"[Terminal] Unregistered PTY reader for {room_name}")
                         except Exception:
                             pass
 
