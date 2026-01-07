@@ -4115,8 +4115,7 @@ def cmd_skills_install(args) -> int:
         print(f"Installed permission hook to {CLAUDE_HOOKS_DIR / 'agentwire-permission.sh'}")
 
     # Register MCP server
-    print("
-Registering AgentWire MCP server...")
+    print("\nRegistering AgentWire MCP server...")
     try:
         subprocess.run(
             ["claude", "mcp", "add", "--scope", "user", "agentwire", "agentwire", "daemon", "mcp"],
@@ -4133,12 +4132,10 @@ Registering AgentWire MCP server...")
         print("Warning: 'claude' command not found. Install Claude Code first.", file=sys.stderr)
         print("See: https://claude.ai/download")
 
-    print("
-Claude Code skills installed. Available commands:")
+    print("\nClaude Code skills installed. Available commands:")
     print("  /sessions, /send, /output, /spawn, /new, /kill, /status, /jump")
     if hook_installed:
-        print("
-Permission hook installed for normal session support.")
+        print("\nPermission hook installed for normal session support.")
     return 0
 
 

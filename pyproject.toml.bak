@@ -35,7 +35,6 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0",
-    "pytest-asyncio>=0.23.0",
     "ruff>=0.1.0",
 ]
 # TTS server dependencies (for GPU machines running the TTS backend)
@@ -66,6 +65,8 @@ packages = ["agentwire"]
 artifacts = [
     "agentwire/skills/*.md",
     "agentwire/sample_templates/*.yaml",
+    "agentwire/scripts/say",
+    "agentwire/scripts/remote-say",
 ]
 exclude = [
     "agentwire/static/*.xcf",
