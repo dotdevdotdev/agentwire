@@ -1374,10 +1374,11 @@
 }
 
 .session-action-btn.close-btn {
-    color: var(--error);
+    color: var(--error) !important;
 }
 
 .session-action-btn.close-btn:hover {
+    color: var(--error) !important;
     background: rgba(248, 113, 113, 0.1);
 }
 
