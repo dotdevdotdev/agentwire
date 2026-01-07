@@ -111,6 +111,7 @@ export class TerminalMode {
     console.log('[Terminal] Connecting to', url);
 
     this.socket = new WebSocket(url);
+    this.socket.binaryType = 'arraybuffer';  // Receive binary data as ArrayBuffer
 
     this.socket.onopen = () => {
       console.log('[Terminal] Connected');
@@ -123,7 +124,14 @@ export class TerminalMode {
     this.socket.onmessage = (event) => {
       // Write tmux output to terminal
       if (this.term) {
-        this.term.write(event.data);
+        // Binary data comes as ArrayBuffer (set via binaryType)
+        if (event.data instanceof ArrayBuffer) {
+          const uint8Array = new Uint8Array(event.data);
+          this.term.write(uint8Array);
+        } else {
+          // String data (for JSON error messages)
+          this.term.write(event.data);
+        }
       }
     };
 
