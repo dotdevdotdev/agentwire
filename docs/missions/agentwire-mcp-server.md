@@ -624,17 +624,17 @@ The daemon auto-detects which session is calling and routes TTS appropriately.
 
 ## Completion Criteria
 
-- [ ] Daemon service implemented and tested
-- [ ] MCP server provides speak, list_voices, set_voice tools
-- [ ] Session detection works (PID → tmux → room)
-- [ ] TTS routing with fallbacks (portal → chatterbox → system)
-- [ ] CLI commands: daemon start/stop/status/restart/logs
-- [ ] MCP server auto-registers during skills install
-- [ ] Deprecation warnings added to say/remote-say scripts
+- [x] Daemon service implemented and tested
+- [x] MCP server provides speak, list_voices, set_voice tools
+- [x] Session detection works (PID → tmux → room)
+- [x] TTS routing with fallbacks (portal → chatterbox)
+- [x] CLI commands: daemon start/stop/status/restart/logs
+- [x] MCP server auto-registers during skills install
+- [x] say/remote-say scripts removed (clean break)
 - [ ] Unit tests pass
 - [ ] Integration tests pass
 - [ ] Manual testing complete (all scenarios)
-- [ ] Documentation updated (CLAUDE.md, README.md, migration guide)
+- [x] Documentation updated (CLAUDE.md, README.md, migration guide)
 
 ## Technical Notes
 

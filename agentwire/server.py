@@ -141,6 +141,7 @@ class AgentWireServer:
         self.app.router.add_get("/ws/{name:.+}", self.handle_websocket)
         self.app.router.add_get("/ws/terminal/{name:.+}", self.handle_terminal_ws)
         self.app.router.add_get("/api/sessions", self.api_sessions)
+        self.app.router.add_get("/api/machine/{machine_id}/status", self.api_machine_status)
         self.app.router.add_get("/api/check-path", self.api_check_path)
         self.app.router.add_get("/api/check-branches", self.api_check_branches)
         self.app.router.add_post("/api/create", self.api_create_session)
@@ -928,14 +929,23 @@ class AgentWireServer:
     # API Handlers
 
     async def api_sessions(self, request: web.Request) -> web.Response:
-        """List all active sessions."""
+        """List all active sessions grouped by machine."""
         try:
             sessions = self.agent.list_sessions()
             room_configs = self._load_room_configs()
 
-            result = []
+            # Load machines for status checks
+            machines_dict = {}
+            if hasattr(self.agent, 'machines'):
+                for m in self.agent.machines:
+                    machines_dict[m.get('id')] = m
+
+            # Group sessions by machine (None = local)
+            local_sessions = []
+            machine_sessions = {}  # machine_id -> list of sessions
+
             for name in sessions:
-                project, branch, machine = parse_session_name(name)
+                project, branch, machine_id = parse_session_name(name)
 
                 config = room_configs.get(name, {})
 
@@ -945,23 +955,105 @@ class AgentWireServer:
                 # Calculate activity status from global tracking (works even without active room)
                 activity_status = self._get_global_session_activity(name)
 
-                result.append(
-                    {
-                        "name": name,
-                        "path": path,
-                        "machine": machine,
-                        "voice": config.get("voice", self.config.tts.default_voice),
-                        "type": get_project_type(Path(path)) if Path(path).exists() else "scratch",
-                        "bypass_permissions": config.get("bypass_permissions", True),
-                        "restricted": config.get("restricted", False),
-                        "activity": activity_status,
-                    }
-                )
+                session_data = {
+                    "name": name,
+                    "path": path,
+                    "machine": machine_id,
+                    "voice": config.get("voice", self.config.tts.default_voice),
+                    "type": get_project_type(Path(path)) if Path(path).exists() else "scratch",
+                    "bypass_permissions": config.get("bypass_permissions", True),
+                    "restricted": config.get("restricted", False),
+                    "activity": activity_status,
+                }
+
+                if machine_id is None:
+                    local_sessions.append(session_data)
+                else:
+                    if machine_id not in machine_sessions:
+                        machine_sessions[machine_id] = []
+                    machine_sessions[machine_id].append(session_data)
+
+            # Build machine list with status
+            machines = []
+            for machine_id, sessions_list in machine_sessions.items():
+                machine_config = machines_dict.get(machine_id, {})
+
+                # Check machine status via SSH
+                status = await self._check_machine_status(machine_config)
+
+                machines.append({
+                    "id": machine_id,
+                    "host": machine_config.get("host", machine_id),
+                    "status": status,
+                    "session_count": len(sessions_list),
+                    "sessions": sessions_list,
+                })
+
+            # Return hierarchical structure
+            result = {
+                "local": {
+                    "session_count": len(local_sessions),
+                    "sessions": local_sessions,
+                },
+                "machines": machines,
+            }
 
             return web.json_response(result)
         except Exception as e:
             logger.error(f"Failed to list sessions: {e}")
-            return web.json_response([])
+            return web.json_response({"local": {"session_count": 0, "sessions": []}, "machines": []})
+
+    async def api_machine_status(self, request: web.Request) -> web.Response:
+        """Get status for a specific machine.
+
+        Returns online/offline status and session count for a machine.
+
+        URL params:
+            machine_id: The machine ID to check
+
+        Response:
+            {
+                "status": "online" | "offline",
+                "session_count": <int>
+            }
+        """
+        machine_id = request.match_info["machine_id"]
+
+        try:
+            # Load machines config
+            machines_dict = {}
+            if hasattr(self.agent, 'machines'):
+                for m in self.agent.machines:
+                    machines_dict[m.get('id')] = m
+
+            machine_config = machines_dict.get(machine_id)
+            if not machine_config:
+                return web.json_response(
+                    {"status": "offline", "session_count": 0},
+                    status=404
+                )
+
+            # Check machine status
+            status = await self._check_machine_status(machine_config)
+
+            # Count sessions for this machine
+            sessions = self.agent.list_sessions()
+            session_count = 0
+            for name in sessions:
+                _, _, session_machine = parse_session_name(name)
+                if session_machine == machine_id:
+                    session_count += 1
+
+            return web.json_response({
+                "status": status,
+                "session_count": session_count,
+            })
+        except Exception as e:
+            logger.error(f"Failed to get machine status for {machine_id}: {e}")
+            return web.json_response(
+                {"status": "offline", "session_count": 0},
+                status=500
+            )
 
     async def api_check_path(self, request: web.Request) -> web.Response:
         """Check if a path exists and is a git repo.

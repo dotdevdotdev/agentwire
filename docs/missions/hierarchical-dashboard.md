@@ -188,17 +188,17 @@ None - all changes are self-contained frontend/backend work.
 
 ## Completion Criteria
 
-- [ ] Dashboard displays hierarchical machine→sessions view
-- [ ] Local machine always shown at top
-- [ ] Remote machines shown with host/IP and status indicator
-- [ ] Sessions are nested under their respective machines
-- [ ] Expand/collapse works for machines and sessions
-- [ ] Create session button is per-machine (removes top-level button)
-- [ ] Session details show: path, activity, branch (if worktree), voice
-- [ ] Machine status indicators update in real-time
-- [ ] State persistence via localStorage (what's expanded/collapsed)
-- [ ] Empty states for no machines and no sessions
-- [ ] Mobile responsive (hierarchy collapses gracefully)
+- [x] Dashboard displays hierarchical machine→sessions view
+- [x] Local machine always shown at top
+- [x] Remote machines shown with host/IP and status indicator
+- [x] Sessions are nested under their respective machines
+- [x] Expand/collapse works for machines and sessions
+- [x] Create session button is per-machine (removes top-level button)
+- [x] Session details show: path, activity, branch (if worktree), voice
+- [x] Machine status indicators update in real-time
+- [x] State persistence via localStorage (what's expanded/collapsed)
+- [x] Empty states for no machines and no sessions
+- [x] Mobile responsive (hierarchy collapses gracefully)
 
 ## Notes
 

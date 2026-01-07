@@ -17,8 +17,145 @@ let machinesData = [];
 // Store templates data for later use
 let templatesData = [];
 
+// Store current machine for create session modal
+let currentMachine = 'local';
+
 // Track session states for sound notifications
 let sessionStates = new Map(); // session name -> 'active' | 'idle'
+
+// =============================================================================
+// Expand/Collapse State Management
+// =============================================================================
+
+const STORAGE_KEY_EXPAND_STATE = 'agentwire:dashboard:expandedState';
+
+/**
+ * Get expand/collapse state from localStorage
+ * @returns {Object} State object with machines and sessions
+ */
+function getExpandedState() {
+    const stored = localStorage.getItem(STORAGE_KEY_EXPAND_STATE);
+    if (!stored) {
+        // Default state: local machine expanded, all remote machines collapsed
+        return {
+            machines: {
+                local: true  // Local machine expanded by default
+            },
+            sessions: {}  // Individual session expand states
+        };
+    }
+
+    try {
+        return JSON.parse(stored);
+    } catch (e) {
+        console.error('Failed to parse expand state:', e);
+        return {
+            machines: { local: true },
+            sessions: {}
+        };
+    }
+}
+
+/**
+ * Save expand/collapse state to localStorage
+ * @param {Object} state - State object with machines and sessions
+ */
+function setExpandedState(state) {
+    try {
+        localStorage.setItem(STORAGE_KEY_EXPAND_STATE, JSON.stringify(state));
+    } catch (e) {
+        console.error('Failed to save expand state:', e);
+    }
+}
+
+/**
+ * Check if a machine is expanded
+ * @param {string} machineId - Machine ID (e.g., 'local', 'gpu-server')
+ * @returns {boolean} True if expanded
+ */
+function isMachineExpanded(machineId) {
+    const state = getExpandedState();
+    // Default to expanded for local, collapsed for remotes
+    if (state.machines[machineId] === undefined) {
+        return machineId === 'local';
+    }
+    return state.machines[machineId];
+}
+
+/**
+ * Toggle machine expand/collapse state
+ * @param {string} machineId - Machine ID
+ * @returns {boolean} New state (true = expanded)
+ */
+function toggleMachineExpanded(machineId) {
+    const state = getExpandedState();
+    const currentState = isMachineExpanded(machineId);
+    state.machines[machineId] = !currentState;
+    setExpandedState(state);
+    return state.machines[machineId];
+}
+
+/**
+ * Check if a session is expanded (showing details)
+ * @param {string} sessionName - Session name
+ * @returns {boolean} True if expanded
+ */
+function isSessionExpanded(sessionName) {
+    const state = getExpandedState();
+    // Sessions collapsed by default
+    return state.sessions[sessionName] === true;
+}
+
+/**
+ * Toggle session expand/collapse state
+ * @param {string} sessionName - Session name
+ * @returns {boolean} New state (true = expanded)
+ */
+function toggleSessionExpanded(sessionName) {
+    const state = getExpandedState();
+    const currentState = isSessionExpanded(sessionName);
+    state.sessions[sessionName] = !currentState;
+    setExpandedState(state);
+    return state.sessions[sessionName];
+}
+
+/**
+ * Clean up state for removed machines/sessions
+ * Removes entries that no longer exist in the current data
+ * @param {Array} machines - Current machines list
+ * @param {Array} sessions - Current sessions list
+ */
+function cleanupExpandedState(machines, sessions) {
+    const state = getExpandedState();
+    let modified = false;
+
+    // Get valid machine IDs
+    const validMachineIds = new Set(machines.map(m => m.id));
+    validMachineIds.add('local');  // Always keep local
+
+    // Remove machine states for deleted machines
+    for (const machineId in state.machines) {
+        if (!validMachineIds.has(machineId)) {
+            delete state.machines[machineId];
+            modified = true;
+        }
+    }
+
+    // Get valid session names
+    const validSessionNames = new Set(sessions.map(s => s.name));
+
+    // Remove session states for deleted sessions
+    for (const sessionName in state.sessions) {
+        if (!validSessionNames.has(sessionName)) {
+            delete state.sessions[sessionName];
+            modified = true;
+        }
+    }
+
+    if (modified) {
+        setExpandedState(state);
+    }
+}
 
 // =============================================================================
 // WebSocket Activity Updates
@@ -167,7 +304,7 @@ function validateSessionName(name) {
 function onSessionNameInput() {
     const nameInput = document.getElementById('sessionName');
     const errorEl = document.getElementById('error');
-    const createBtn = document.querySelector('#createSessionGroup .action-btn');
+    const createBtn = document.querySelector('#createSessionModal .action-btn:not(.secondary)');
 
     const name = nameInput?.value.trim() || '';
     const validation = validateSessionName(name);
@@ -189,15 +326,14 @@ function onSessionNameInput() {
 function onSessionNameChange() {
     const name = document.getElementById('sessionName')?.value.trim() || '';
     const pathInput = document.getElementById('projectPath');
-    const machine = document.getElementById('sessionMachine')?.value || 'local';
 
     // Don't auto-fill if user has manually edited
     if (!pathInput || pathInput.dataset.userEdited === 'true') return;
 
     if (name) {
-        const projectsDir = machine === 'local'
+        const projectsDir = currentMachine === 'local'
             ? '~/projects'
-            : getMachineProjectsDir(machine);
+            : getMachineProjectsDir(currentMachine);
         pathInput.value = `${projectsDir}/${name}`;
         onPathChange();  // Trigger git detection
     } else {
@@ -212,7 +348,6 @@ function onSessionNameChange() {
 
 function onPathChange() {
     const path = document.getElementById('projectPath')?.value.trim() || '';
-    const machine = document.getElementById('sessionMachine')?.value || 'local';
 
     clearTimeout(pathCheckTimeout);
 
@@ -223,7 +358,7 @@ function onPathChange() {
 
     pathCheckTimeout = setTimeout(async () => {
         try {
-            const params = new URLSearchParams({ path, machine });
+            const params = new URLSearchParams({ path, machine: currentMachine });
             const res = await fetch(`/api/check-path?${params}`);
             const data = await res.json();
 
@@ -281,8 +416,133 @@ async function suggestBranchName() {
             increment++;
         }
 
-        branchInput.value = `${base}--${increment}`;  // e.g., "jan-3-2026--1"
+// Track which sessions are expanded (for showing details)
+let expandedSessions = new Set();
+
+// Load expanded sessions from localStorage
+function loadExpandedSessions() {
+    try {
+        const stored = localStorage.getItem('agentwire-expanded-sessions');
+        if (stored) {
+            expandedSessions = new Set(JSON.parse(stored));
+        }
     } catch (e) {
+        console.error('Failed to load expanded sessions:', e);
+    }
+}
+
+// Save expanded sessions to localStorage
+function saveExpandedSessions() {
+    try {
+        localStorage.setItem('agentwire-expanded-sessions', JSON.stringify([...expandedSessions]));
+    } catch (e) {
+        console.error('Failed to save expanded sessions:', e);
+    }
+}
+
+// Toggle session expansion (globally accessible for onclick handlers)
+window.toggleSessionExpansion = function(sessionName) {
+    if (expandedSessions.has(sessionName)) {
+        expandedSessions.delete(sessionName);
+    } else {
+        expandedSessions.add(sessionName);
+    }
+    saveExpandedSessions();
+
+    // Update the DOM directly for smooth transition
+    const sessionCard = document.querySelector(`[data-session-name="${CSS.escape(sessionName)}"]`);
+    if (sessionCard) {
+        const details = sessionCard.querySelector('.session-details');
+        const toggle = sessionCard.querySelector('.session-toggle');
+        if (details && toggle) {
+            if (expandedSessions.has(sessionName)) {
+                details.style.display = 'block';
+                toggle.textContent = '▼';
+            } else {
+                details.style.display = 'none';
+                toggle.textContent = '▶';
+            }
+        }
+    }
+};
+
+/**
+ * Render a session card (nested under machine)
+ * @param {Object} session - Session data
+ * @returns {string} HTML string for session card
+ */
+function renderSessionCard(session) {
+    const s = session;
+    const isExpanded = expandedSessions.has(s.name);
+
+    // Determine badge: restricted > prompted > bypass
+    let badge;
+    if (s.restricted) {
+        badge = '<span class="session-badge restricted">Restricted</span>';
+    } else if (s.bypass_permissions === false) {
+        badge = '<span class="session-badge prompted">Prompted</span>';
+    } else {
+        badge = '<span class="session-badge bypass">Bypass</span>';
+    }
+
+    // Strip @machine from display name if present (avoid doubling)
+    let displayName = s.name;
+    if (s.machine && s.name.endsWith('@' + s.machine)) {
+        displayName = s.name.slice(0, -('@' + s.machine).length);
+    }
+
+    // Activity indicator
+    const activityClass = s.activity === 'active' ? 'active' : 'idle';
+    const activityIndicator = `<span class="activity-indicator ${activityClass}"></span>`;
+
+    // Extract branch from session name if it's a worktree session (project/branch format)
+    let branch = null;
+    if (displayName.includes('/')) {
+        const parts = displayName.split('/');
+        if (parts.length === 2) {
+            branch = parts[1];
+        }
+    }
+
+    // Escape session name for safe onclick handler
+    const escapedName = s.name.replace(/'/g, "\\'");
+
+    return `
+        <div class="session-card nested" data-session-name="${s.name}">
+            <div class="session-header" onclick="toggleSessionExpansion('${escapedName}')">
+                <span class="session-toggle">${isExpanded ? '▼' : '▶'}</span>
+                ${activityIndicator}
+                <span class="session-name-text">${displayName}</span>
+                ${badge}
+            </div>
+            <div class="session-details" style="display: ${isExpanded ? 'block' : 'none'}">
+                <div class="session-detail-row">
+                    <span class="detail-label">Path:</span>
+                    <span class="detail-value">${s.path || '~/projects/' + displayName}</span>
+                </div>
+                <div class="session-detail-row">
+                    <span class="detail-label">Status:</span>
+                    <span class="detail-value ${activityClass}">${s.activity || 'idle'}</span>
+                </div>
+                ${branch ? `
+                <div class="session-detail-row">
+                    <span class="detail-label">Branch:</span>
+                    <span class="detail-value">${branch}</span>
+                </div>
+                ` : ''}
+                <div class="session-detail-row">
+                    <span class="detail-label">Voice:</span>
+                    <span class="detail-value">${s.voice || DEFAULT_VOICE}</span>
+                </div>
+                <div class="session-actions">
+                    <a href="/room/${encodeURIComponent(s.name)}" class="session-btn">Open Room</a>
+                    <button class="session-close-btn" data-session="${s.name}" title="Close session">Close Session</button>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
         console.error('Branch name suggestion failed:', e);
         // Fallback: just use base with --1
         branchInput.value = `${base}--1`;
@@ -416,77 +676,288 @@ function selectPermissionMode(element, bypass) {
 // =============================================================================
 // Sessions
 // =============================================================================
+// Machine Card Component
+// =============================================================================
 
-async function loadSessions() {
-    const res = await fetch('/api/sessions');
-    const sessions = await res.json();
-    const container = document.getElementById('sessions');
-    const sessionCountEl = document.getElementById('sessionCount');
+/**
+ * Render a machine card with sessions
+ * @param {Object} machine - Machine object with id, host, status, sessions
+ * @param {boolean} isLocal - True if this is the local machine
+ * @returns {string} HTML string for machine card
+ */
+function renderMachineCard(machine, isLocal = false) {
+    const machineId = machine.id || 'local';
+    const isExpanded = isMachineExpanded(machineId);
+    const expandIcon = isExpanded ? '▼' : '▶';
+    const sessionCount = machine.sessions?.length || 0;
 
-    if (sessions.length === 0) {
-        container.innerHTML = '<div class="no-sessions">No active sessions. Create one to get started.</div>';
-        if (sessionCountEl) {
-            sessionCountEl.innerHTML = '<span class="count">0</span> active sessions';
+    // Machine header info
+    const machineName = isLocal ? 'Local' : machine.id;
+    const hostInfo = !isLocal && machine.host ? ` (${machine.host})` : '';
+    const statusClass = machine.status || 'online';
+    const sessionCountText = `${sessionCount} session${sessionCount !== 1 ? 's' : ''}`;
+
+    let html = `
+        <div class="machine-card ${isExpanded ? 'expanded' : 'collapsed'}">
+            <div class="machine-header" data-machine-id="${machineId}">
+                <div class="machine-info">
+                    <span class="expand-icon">${expandIcon}</span>
+                    <span class="status-dot ${statusClass}"></span>
+                    <span class="machine-name">${machineName}${hostInfo}</span>
+                    <span class="machine-session-count">• ${sessionCountText}</span>
+                </div>
+                <button class="machine-create-btn" data-machine-id="${machineId}" title="Create session on ${machineName}">+</button>
+            </div>`;
+
+    // Sessions container (only if expanded)
+    if (isExpanded) {
+        html += '<div class="machine-sessions">';
+
+        if (sessionCount === 0) {
+            html += '<div class="machine-empty-state">No sessions running on this machine</div>';
+        } else {
+            html += machine.sessions.map(s => renderSessionCard(s, machineId)).join('');
         }
-        return;
+
+        html += '</div>';
     }
 
-    // Check for activity state transitions and play notification sound
-    sessions.forEach(session => {
-        if (session.activity) {
-            checkSessionTransition(session.name, session.activity);
-        }
+    html += '</div>';
+    return html;
+}
+
+/**
+ * Render a session card (nested under machine)
+ * @param {Object} session - Session object
+ * @param {string} machineId - ID of parent machine
+ * @returns {string} HTML string for session card
+ */
+function renderSessionCard(session, machineId) {
+    const isExpanded = isSessionExpanded(session.name);
+    const expandIcon = isExpanded ? '▼' : '▶';
+
+    // Determine badge: restricted > prompted > bypass
+    let badge;
+    if (session.restricted) {
+        badge = '<span class="session-badge restricted">Restricted</span>';
+    } else if (session.bypass_permissions === false) {
+        badge = '<span class="session-badge prompted">Prompted</span>';
+    } else {
+        badge = '<span class="session-badge bypass">Bypass</span>';
+    }
+
+    // Strip @machine from display name if present (avoid doubling)
+    let displayName = session.name;
+    if (session.machine && session.name.endsWith('@' + session.machine)) {
+        displayName = session.name.slice(0, -('@' + session.machine).length);
+    }
+
+    // Activity indicator
+    const activityClass = session.activity === 'active' ? 'active' : 'idle';
+    const activityIndicator = `<span class="activity-indicator ${activityClass}"></span>`;
+
+    let html = `
+        <div class="session-card ${isExpanded ? 'expanded' : 'collapsed'}">
+            <div class="session-header" data-session-name="${session.name}">
+                <span class="expand-icon">${expandIcon}</span>
+                ${activityIndicator}
+                <span class="session-display-name">${displayName}</span>
+                ${badge}
+            </div>`;
+
+    // Session details (only if expanded)
+    if (isExpanded) {
+        const path = session.path || `~/projects/${displayName}`;
+        const voice = session.voice || DEFAULT_VOICE;
+        const branch = session.branch ? `<div class="session-detail-row">Branch: <span class="session-detail-value">${session.branch}</span></div>` : '';
+
+        html += `
+            <div class="session-details">
+                <div class="session-detail-row">Path: <span class="session-detail-value">${path}</span></div>
+                ${branch}
+                <div class="session-detail-row">Voice: <span class="session-detail-value">${voice}</span></div>
+                <div class="session-detail-row">Status: <span class="session-detail-value ${activityClass}">${session.activity || 'idle'}</span></div>
+                <div class="session-actions">
+                    <a href="/room/${encodeURIComponent(session.name)}" class="session-open-btn">Open Room</a>
+                    <button class="session-close-btn" data-session="${session.name}">Close</button>
+                </div>
+            </div>`;
+    }
+
+    html += '</div>';
+    return html;
+}
+
+/**
+ * Attach event handlers to machine and session cards
+ */
+function attachMachineEventHandlers(container) {
+    // Machine header click - toggle expand/collapse
+    container.querySelectorAll('.machine-header').forEach(header => {
+        header.addEventListener('click', (e) => {
+            // Don't toggle if clicking the create button
+            if (e.target.classList.contains('machine-create-btn')) {
+                return;
+            }
+            const machineId = header.dataset.machineId;
+            toggleMachineExpanded(machineId);
+            loadSessions(); // Reload to show/hide sessions
+        });
     });
 
-    // Update session count in left column
-    if (sessionCountEl) {
-        sessionCountEl.innerHTML =
-            `<span class="count">${sessions.length}</span> active session${sessions.length !== 1 ? 's' : ''}`;
-    }
+    // Session header click - toggle expand/collapse
+    container.querySelectorAll('.session-header').forEach(header => {
+        header.addEventListener('click', (e) => {
+            const sessionName = header.dataset.sessionName;
+            toggleSessionExpanded(sessionName);
+            loadSessions(); // Reload to show/hide details
+        });
+    });
 
-    container.innerHTML = sessions.map(s => {
-        // Determine badge: restricted > prompted > bypass
-        let badge;
-        if (s.restricted) {
-            badge = '<span class="session-badge restricted">Restricted</span>';
-        } else if (s.bypass_permissions === false) {
-            badge = '<span class="session-badge prompted">Prompted</span>';
-        } else {
-            badge = '<span class="session-badge bypass">Bypass</span>';
-        }
-        // Strip @machine from display name if present (avoid doubling)
-        let displayName = s.name;
-        let machineSuffix = '';
-        if (s.machine && s.name.endsWith('@' + s.machine)) {
-            displayName = s.name.slice(0, -('@' + s.machine).length);
-            machineSuffix = `<span style="color:var(--text-muted);font-weight:normal">@${s.machine}</span>`;
-        } else if (s.machine) {
-            machineSuffix = `<span style="color:var(--text-muted);font-weight:normal">@${s.machine}</span>`;
-        }
-        // Activity indicator
-        const activityClass = s.activity === 'active' ? 'active' : 'idle';
-        const activityIndicator = `<span class="activity-indicator ${activityClass}"></span>`;
+    // Machine create button
+    container.querySelectorAll('.machine-create-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation(); // Prevent machine toggle
+            const machineId = btn.dataset.machineId;
+            openCreateSessionForMachine(machineId);
+        });
+    });
 
-        return `
-        <div class="session-card">
-            <a href="/room/${encodeURIComponent(s.name)}" style="flex:1;text-decoration:none;color:inherit;">
-                <div class="session-name">${activityIndicator}${displayName}${machineSuffix}${badge}</div>
-                <div class="session-meta">
-                    ${s.path || '~/projects/' + s.name}
-                    <span class="session-voice">• ${s.voice || DEFAULT_VOICE}</span>
-                </div>
-            </a>
-            <button class="session-close" data-session="${s.name}" title="Close session">✕</button>
-        </div>
-    `}).join('');
-
-    // Attach close handlers
-    container.querySelectorAll('.session-close').forEach(btn => {
+    // Session close button
+    container.querySelectorAll('.session-close-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
             e.preventDefault();
+            e.stopPropagation(); // Prevent session toggle
             closeSession(btn.dataset.session);
         });
     });
+}
+
+/**
+ * Open create session form with machine pre-selected
+ */
+function openCreateSessionForMachine(machineId) {
+    // Open the create session accordion
+    const createGroup = document.getElementById('createSessionGroup');
+    if (createGroup && !createGroup.classList.contains('open')) {
+        createGroup.classList.add('open');
+    }
+
+    // Set the machine dropdown
+    const machineSelect = document.getElementById('sessionMachine');
+    if (machineSelect) {
+        machineSelect.value = machineId === 'local' ? 'local' : machineId;
+        onMachineChange();
+    }
+
+    // Scroll to form
+    createGroup?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+    // Focus name input
+    const nameInput = document.getElementById('sessionName');
+    if (nameInput) {
+        setTimeout(() => nameInput.focus(), 300);
+    }
+}
+// =============================================================================
+
+async function loadSessions() {
+    const container = document.getElementById('sessions');
+    const sessionCountEl = document.getElementById('sessionCount');
+
+    // Show loading state
+    if (container) {
+        container.innerHTML = `
+            <div class="skeleton-session">
+                <div class="skeleton-line" style="width: 60%"></div>
+                <div class="skeleton-line" style="width: 80%; margin-top: 0.5rem"></div>
+            </div>
+            <div class="skeleton-session">
+                <div class="skeleton-line" style="width: 70%"></div>
+                <div class="skeleton-line" style="width: 75%; margin-top: 0.5rem"></div>
+            </div>
+        `;
+    }
+
+    try {
+        const res = await fetch('/api/sessions');
+        const data = await res.json();
+
+        // Calculate total session count across all machines
+        const totalSessions = (data.local?.session_count || 0) +
+            (data.machines?.reduce((sum, m) => sum + (m.session_count || 0), 0) || 0);
+
+        if (totalSessions === 0) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-icon">📭</div>
+                    <div class="empty-title">No sessions running</div>
+                    <div class="empty-description">Create a session to get started with AgentWire</div>
+                    <div class="empty-action">
+                        <a href="#" class="empty-link" onclick="toggleAction('createSessionGroup'); return false;">Create your first session →</a>
+                    </div>
+                </div>
+            `;
+            if (sessionCountEl) {
+                sessionCountEl.innerHTML = '<span class="count">0</span> active sessions';
+            }
+            return;
+        }
+
+        // Check for activity state transitions across all sessions
+        const allSessions = [
+            ...(data.local?.sessions || []),
+            ...(data.machines?.flatMap(m => m.sessions || []) || [])
+        ];
+        allSessions.forEach(session => {
+            if (session.activity) {
+                checkSessionTransition(session.name, session.activity);
+            }
+        });
+
+        // Update session count in left column
+        if (sessionCountEl) {
+            sessionCountEl.innerHTML =
+                `<span class="count">${totalSessions}</span> active session${totalSessions !== 1 ? 's' : ''}`;
+        }
+
+        // Render hierarchical machine→sessions view
+        const machineCards = [];
+
+        // Render local machine first
+        if (data.local) {
+            machineCards.push(renderMachineCard({
+                id: 'local',
+                host: null,
+                status: 'online',
+                session_count: data.local.session_count,
+                sessions: data.local.sessions || []
+            }, true));
+        }
+
+        // Render remote machines
+        if (data.machines && data.machines.length > 0) {
+            data.machines.forEach(machine => {
+                machineCards.push(renderMachineCard(machine, false));
+            });
+        }
+
+        container.innerHTML = machineCards.join('');
+
+        // Attach event handlers for machine cards and sessions
+        attachMachineEventHandlers(container);
+    } catch (error) {
+        console.error('Failed to load sessions:', error);
+        if (container) {
+            container.innerHTML = `
+                <div class="error-state">
+                    <div class="error-icon">⚠️</div>
+                    <div class="error-title">Failed to load sessions</div>
+                    <div class="error-description">${error.message || 'Unknown error'}</div>
+                </div>
+            `;
+        }
+    }
 }
 
 async function createSession() {
@@ -572,20 +1043,42 @@ async function closeSession(name) {
 // =============================================================================
 
 async function loadMachines() {
-    const res = await fetch('/api/machines');
-    const machines = await res.json();
-    machinesData = machines;  // Store for later use
     const container = document.getElementById('machinesList');
 
-    // Populate the session machine dropdown
-    populateMachineDropdown(machines);
-
-    if (!container) return;
-
-    if (machines.length === 0) {
-        container.innerHTML = '<div style="color:var(--text-muted);font-size:0.8rem;margin-bottom:0.5rem;">No machines available</div>';
-        return;
+    // Show loading state
+    if (container) {
+        container.innerHTML = `
+            <div class="skeleton-machine">
+                <div class="skeleton-line" style="width: 50%"></div>
+            </div>
+            <div class="skeleton-machine">
+                <div class="skeleton-line" style="width: 60%"></div>
+            </div>
+        `;
     }
+
+    try {
+        const res = await fetch('/api/machines');
+        const machines = await res.json();
+        machinesData = machines;  // Store for later use
+
+        // Populate the session machine dropdown
+        populateMachineDropdown(machines);
+
+        if (!container) return;
+
+        if (machines.length === 0) {
+            container.innerHTML = `
+                <div class="empty-state empty-state-small">
+                    <div class="empty-icon-small">🖥️</div>
+                    <div class="empty-title-small">No machines configured</div>
+                    <div class="empty-action">
+                        <a href="#" class="empty-link" onclick="toggleAction('addMachineGroup'); return false;">Add a machine →</a>
+                    </div>
+                </div>
+            `;
+            return;
+        }
 
     container.innerHTML = machines.map(m => `
         <div class="machine-item">
@@ -596,18 +1089,39 @@ async function loadMachines() {
             </div>
             <div>
                 <span class="machine-host">${m.local ? '' : (m.user ? m.user + '@' : '') + m.host}</span>
+                <button class="machine-create" data-machine="${m.id}" title="Create session on ${m.id}">+</button>
                 ${!m.local ? `<button class="machine-remove" data-machine="${m.id}" title="Remove machine">✕</button>` : ''}
             </div>
         </div>
     `).join('');
 
-    // Attach remove handlers
-    container.querySelectorAll('.machine-remove').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            e.preventDefault();
-            removeMachine(btn.dataset.machine);
+        // Attach create session handlers
+        container.querySelectorAll('.machine-create').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                openCreateSessionModal(btn.dataset.machine);
+            });
         });
-    });
+
+        // Attach remove handlers
+        container.querySelectorAll('.machine-remove').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                removeMachine(btn.dataset.machine);
+            });
+        });
+    } catch (error) {
+        console.error('Failed to load machines:', error);
+        if (container) {
+            container.innerHTML = `
+                <div class="error-state error-state-small">
+                    <div class="error-icon-small">⚠️</div>
+                    <div class="error-title-small">Failed to load machines</div>
+                    <div class="error-description-small">${error.message || 'Unknown error'}</div>
+                </div>
+            `;
+        }
+    }
 }
 
 async function addMachine() {
@@ -1122,6 +1636,7 @@ function bindEventListeners() {
 
 export function init() {
     bindEventListeners();
+    loadExpandedSessions();
     loadSoundNotificationPreference();
     loadSessions();
     loadMachines();
