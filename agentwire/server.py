@@ -6,14 +6,18 @@ Multi-room voice web interface for AI coding agents.
 
 import asyncio
 import base64
+import fcntl
 import json
 import logging
+import os
+import pty
 import re
 import shlex
 import ssl
 import struct
 import subprocess
 import tempfile
+import termios
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -488,6 +492,7 @@ class AgentWireServer:
         await ws.prepare(request)
 
         proc = None
+        master_fd = None
         tmux_to_ws_task = None
         ws_to_tmux_task = None
 
@@ -498,40 +503,90 @@ class AgentWireServer:
 
             # Build tmux attach command
             if machine:
-                # Remote session via SSH
-                cmd = ["ssh", machine, "tmux", "attach", "-t", session_name]
+                # Remote session via SSH with PTY allocation
+                cmd = ["ssh", "-t", machine, "tmux", "attach", "-t", session_name]
+                logger.info(f"[Terminal] Attaching to {room_name}: {' '.join(cmd)}")
+
+                # For remote, use subprocess with PTY via ssh -t
+                proc = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdin=asyncio.subprocess.PIPE,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
             else:
-                # Local session
+                # Local session - use PTY
                 cmd = ["tmux", "attach", "-t", session_name]
+                logger.info(f"[Terminal] Attaching to {room_name}: {' '.join(cmd)}")
 
-            logger.info(f"[Terminal] Attaching to {room_name}: {' '.join(cmd)}")
+                # Create PTY for local tmux attach
+                master_fd, slave_fd = pty.openpty()
 
-            # Spawn tmux attach process
-            proc = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdin=asyncio.subprocess.PIPE,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
+                # Spawn process with slave PTY as stdin/stdout/stderr
+                proc = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdin=slave_fd,
+                    stdout=slave_fd,
+                    stderr=slave_fd,
+                    preexec_fn=os.setsid,  # Create new session
+                )
+
+                # Close slave fd in parent - child keeps it open
+                os.close(slave_fd)
+
+                # Make master fd non-blocking for async reads
+                os.set_blocking(master_fd, False)
 
             # Task: Forward tmux stdout → WebSocket
             async def forward_tmux_to_ws():
                 """Read from tmux and send to WebSocket."""
+                loop = asyncio.get_event_loop()
                 try:
                     while True:
-                        data = await proc.stdout.read(8192)
-                        if not data:
-                            break
-                        if not ws.closed:
-                            await ws.send_bytes(data)
+                        if master_fd is not None:
+                            # Local: read from PTY master
+                            # Use add_reader for non-blocking FD reads
+                            read_event = asyncio.Event()
+
+                            def on_readable():
+                                read_event.set()
+
+                            loop.add_reader(master_fd, on_readable)
+                            try:
+                                await read_event.wait()
+                                try:
+                                    data = os.read(master_fd, 8192)
+                                except OSError:
+                                    break
+                            finally:
+                                loop.remove_reader(master_fd)
+
+                            if not data:
+                                break
+                            if not ws.closed:
+                                await ws.send_bytes(data)
+                        else:
+                            # Remote: read from subprocess stdout
+                            data = await proc.stdout.read(8192)
+                            if not data:
+                                break
+                            if not ws.closed:
+                                await ws.send_bytes(data)
                 except asyncio.CancelledError:
                     logger.debug(f"[Terminal] tmux→ws task cancelled for {room_name}")
                 except Exception as e:
                     logger.error(f"[Terminal] Error forwarding tmux→ws for {room_name}: {e}")
+                finally:
+                    if master_fd is not None:
+                        try:
+                            loop.remove_reader(master_fd)
+                        except Exception:
+                            pass
 
             # Task: Forward WebSocket → tmux stdin
             async def forward_ws_to_tmux():
                 """Read from WebSocket and write to tmux stdin."""
+                loop = asyncio.get_event_loop()
                 try:
                     async for msg in ws:
                         if msg.type == web.WSMsgType.TEXT:
@@ -542,9 +597,14 @@ class AgentWireServer:
                                 if msg_type == "input":
                                     # Terminal input from browser
                                     input_data = payload.get("data", "")
-                                    if input_data and proc.stdin:
-                                        proc.stdin.write(input_data.encode())
-                                        await proc.stdin.drain()
+                                    if input_data:
+                                        if master_fd is not None:
+                                            # Local: write to PTY master
+                                            os.write(master_fd, input_data.encode())
+                                        elif proc.stdin:
+                                            # Remote: write to subprocess stdin
+                                            proc.stdin.write(input_data.encode())
+                                            await proc.stdin.drain()
 
                                 elif msg_type == "resize":
                                     # Terminal resize
@@ -552,20 +612,15 @@ class AgentWireServer:
                                     rows = payload.get("rows", 24)
                                     logger.debug(f"[Terminal] Resize {room_name} to {cols}x{rows}")
 
-                                    # Send tmux resize-window command
-                                    resize_cmd = f"tmux resize-window -t {session_name} -x {cols} -y {rows}\n"
-                                    if machine:
-                                        # Remote: use SSH
+                                    if master_fd is not None:
+                                        # Local: use TIOCSWINSZ ioctl to resize PTY
+                                        winsize = struct.pack("HHHH", rows, cols, 0, 0)
+                                        fcntl.ioctl(master_fd, termios.TIOCSWINSZ, winsize)
+                                    else:
+                                        # Remote: send tmux resize-window command
+                                        resize_cmd = f"tmux resize-window -t {session_name} -x {cols} -y {rows}\n"
                                         resize_proc = await asyncio.create_subprocess_exec(
                                             "ssh", machine, "sh", "-c", resize_cmd,
-                                            stdout=asyncio.subprocess.DEVNULL,
-                                            stderr=asyncio.subprocess.DEVNULL,
-                                        )
-                                        await resize_proc.wait()
-                                    else:
-                                        # Local: run directly
-                                        resize_proc = await asyncio.create_subprocess_shell(
-                                            resize_cmd,
                                             stdout=asyncio.subprocess.DEVNULL,
                                             stderr=asyncio.subprocess.DEVNULL,
                                         )
@@ -641,6 +696,13 @@ class AgentWireServer:
                         await task
                     except asyncio.CancelledError:
                         pass
+
+            # Close PTY master fd if used
+            if master_fd is not None:
+                try:
+                    os.close(master_fd)
+                except Exception as e:
+                    logger.debug(f"[Terminal] Error closing master fd: {e}")
 
         return ws
 
