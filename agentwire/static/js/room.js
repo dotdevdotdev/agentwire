@@ -552,24 +552,36 @@ function switchToMode(mode) {
     if (elements.terminalTab) elements.terminalTab.classList.toggle('active', mode === 'terminal');
 
     // Hide all mode content
-    if (elements.ambient) elements.ambient.style.display = 'none';
-    if (elements.output) elements.output.style.display = 'none';
+    if (elements.ambient) {
+        elements.ambient.style.display = 'none';
+        elements.ambient.classList.remove('ambient-default');
+    }
+    if (elements.output) {
+        elements.output.style.display = 'none';
+        elements.output.classList.remove('ambient-default');
+    }
     if (elements.terminalModeContent) elements.terminalModeContent.style.display = 'none';
 
     // Show selected mode content
     switch (mode) {
         case 'ambient':
-            if (elements.ambient) elements.ambient.style.display = '';
+            if (elements.ambient) {
+                elements.ambient.style.display = '';
+                elements.ambient.classList.add('ambient-default');
+            }
             if (elements.aiBubbleContainer) elements.aiBubbleContainer.style.display = '';
             if (elements.userBubbleContainer) elements.userBubbleContainer.style.display = '';
+            if (elements.output) elements.output.classList.add('ambient-default');
             document.body.classList.remove('monitor-mode');
             break;
 
         case 'monitor':
             if (elements.output) {
-                elements.output.style.display = '';
+                elements.output.style.display = 'block';
+                elements.output.classList.remove('ambient-default');
                 setTimeout(() => output.scrollToBottom(), 50);
             }
+            if (elements.ambient) elements.ambient.classList.add('ambient-default');
             if (elements.aiBubbleContainer) elements.aiBubbleContainer.style.display = 'none';
             if (elements.userBubbleContainer) elements.userBubbleContainer.style.display = 'none';
             document.body.classList.add('monitor-mode');
