@@ -416,6 +416,14 @@ async function suggestBranchName() {
             increment++;
         }
 
+        branchInput.value = `${base}--${increment}`;  // e.g., "jan-3-2026--1"
+    } catch (e) {
+        console.error('Branch name suggestion failed:', e);
+        // Fallback: just use base with --1
+        branchInput.value = `${base}--1`;
+    }
+}
+
 // Track which sessions are expanded (for showing details)
 let expandedSessions = new Set();
 
@@ -541,12 +549,6 @@ function renderSessionCard(session) {
             </div>
         </div>
     `;
-}
-
-        console.error('Branch name suggestion failed:', e);
-        // Fallback: just use base with --1
-        branchInput.value = `${base}--1`;
-    }
 }
 
 function hideGitOptions() {
