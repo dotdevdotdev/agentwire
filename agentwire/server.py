@@ -541,7 +541,7 @@ class AgentWireServer:
                 # Default to 80x24 if browser hasn't sent resize yet
                 winsize = struct.pack("HHHH", 24, 80, 0, 0)
                 fcntl.ioctl(master_fd, termios.TIOCSWINSZ, winsize)
-                logger.debug(f"[Terminal] Set initial PTY size to 80x24")
+                logger.info(f"[Terminal] Set initial PTY size to 80x24 (fd={master_fd})")
 
             # Task: Forward tmux stdout → WebSocket
             async def forward_tmux_to_ws():
@@ -554,11 +554,12 @@ class AgentWireServer:
                     """Called when PTY master FD has data to read."""
                     try:
                         data = os.read(master_fd, 8192)
+                        logger.info(f"[Terminal] on_readable callback: read {len(data) if data else 0} bytes")
                         if data:
                             # Schedule putting data in queue from event loop
                             asyncio.create_task(data_queue.put(data))
                     except OSError as e:
-                        logger.debug(f"[Terminal] PTY read error: {e}")
+                        logger.info(f"[Terminal] PTY read error: {e}")
                         # Signal EOF
                         asyncio.create_task(data_queue.put(None))
 
@@ -567,16 +568,19 @@ class AgentWireServer:
                         # Local: register reader once for PTY master
                         loop.add_reader(master_fd, on_readable)
                         reader_registered = True
-                        logger.debug(f"[Terminal] Registered PTY reader for {room_name}")
+                        logger.info(f"[Terminal] Registered PTY reader for {room_name} (fd={master_fd})")
 
                     while True:
                         if master_fd is not None:
                             # Local: read from queue populated by on_readable
                             data = await data_queue.get()
                             if data is None:  # EOF signal
+                                logger.info(f"[Terminal] Received EOF from PTY for {room_name}")
                                 break
+                            logger.info(f"[Terminal] Read {len(data)} bytes from PTY for {room_name}")
                             if not ws.closed:
                                 await ws.send_bytes(data)
+                                logger.info(f"[Terminal] Sent {len(data)} bytes to WebSocket for {room_name}")
                         else:
                             # Remote: read from subprocess stdout
                             data = await proc.stdout.read(8192)
@@ -592,7 +596,7 @@ class AgentWireServer:
                     if master_fd is not None and reader_registered:
                         try:
                             loop.remove_reader(master_fd)
-                            logger.debug(f"[Terminal] Unregistered PTY reader for {room_name}")
+                            logger.info(f"[Terminal] Unregistered PTY reader for {room_name}")
                         except Exception:
                             pass
 
