@@ -840,6 +840,10 @@ body {
 }
 
 /* Terminal mode: hide text input and mic button, keep actions menu */
+.terminal-mode .floating-controls {
+    justify-content: flex-end;
+}
+
 .terminal-mode .text-input-wrapper {
     display: none;
 }
