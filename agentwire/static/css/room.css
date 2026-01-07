@@ -1292,7 +1292,7 @@ body {
     padding: 1rem 2rem;
     font-size: 1.1rem;
     background: var(--primary);
-    color: white;
+    color: var(--primary-foreground);
     border: none;
     border-radius: 8px;
     cursor: pointer;
