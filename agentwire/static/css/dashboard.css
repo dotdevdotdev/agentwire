@@ -1092,10 +1092,6 @@
     padding: 0;  /* Remove padding, let header/details control it */
 }
 
-.machine-sessions .session-card:hover {
-    background: var(--bg-hover);     /* Level 3: hover state */
-}
-
 /* Last session in a machine group */
 .machine-sessions .session-card:last-child {
     margin-bottom: 0;
