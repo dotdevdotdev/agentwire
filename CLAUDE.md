@@ -911,6 +911,76 @@ uv run test-damage-control.py bash "rm -rf /" --expect-blocked
 
 ---
 
+## Voice Layer
+
+AgentWire provides TTS via MCP server (no installation needed per session).
+
+### Available MCP Tools
+
+| Tool | Parameters | Description |
+|------|------------|-------------|
+| `speak` | `text` (required), `voice` (optional) | Speak text via TTS |
+| `list_voices` | None | List available voices |
+| `set_voice` | `name` (required) | Set default voice for session |
+
+### Setup
+
+```bash
+# One-time setup
+agentwire skills install  # Registers MCP server
+
+# Start daemon (provides TTS routing)
+agentwire daemon start
+```
+
+### How It Works
+
+**Auto-detection and routing:**
+1. Daemon auto-detects calling session (via PID → tmux mapping)
+2. Routes to portal API if room exists (for browser broadcasting)
+3. Falls back to configured TTS backend from config.yaml
+4. No AGENTWIRE_ROOM env var needed
+
+**Daemon commands:**
+
+```bash
+agentwire daemon start     # Start daemon in background
+agentwire daemon stop      # Stop daemon
+agentwire daemon status    # Check if running
+agentwire daemon restart   # Restart daemon
+agentwire daemon logs      # View daemon logs
+```
+
+**Example usage in Claude Code:**
+
+```
+# Claude can now use these tools directly:
+speak("Task complete, check the output")
+speak("Building the project", voice="bashbunni")
+
+# List available voices
+voices = list_voices()
+
+# Set default voice for this session
+set_voice("bashbunni")
+```
+
+### Deprecation Notice
+
+**say/remote-say scripts are deprecated.** Use MCP tools instead.
+
+**Why MCP is better:**
+- No PATH installation issues
+- No AGENTWIRE_ROOM env var needed
+- Works without portal running (local TTS fallback)
+- Better error messages (not silent failures)
+- Auto-discovered by Claude Code
+- No manual configuration per session
+
+**Migration:** See `docs/MIGRATION-MCP.md` for migration guide.
+
+---
+
 ## Skills (Session Orchestration)
 
 Skills in `skills/` provide Claude Code integration:

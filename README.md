@@ -345,6 +345,40 @@ PreToolUse hooks intercept Bash, Edit, and Write operations before execution:
 
 All decisions are logged to `~/.agentwire/logs/damage-control/` for audit trails.
 
+## Voice Integration
+
+AgentWire provides native voice capabilities to Claude Code via MCP:
+
+```bash
+# One-time setup
+agentwire skills install  # Registers MCP server
+
+# Start daemon (provides TTS routing)
+agentwire daemon start
+
+# Now all Claude sessions can use:
+# - speak(text, voice=None)
+# - list_voices()
+# - set_voice(name)
+```
+
+The daemon auto-detects which session is calling and routes TTS appropriately:
+- **Portal API** - Broadcasts to browser if room exists
+- **Configured backend** - Uses TTS backend from config.yaml
+- **No AGENTWIRE_ROOM needed** - Session detection is automatic
+
+**Available daemon commands:**
+
+```bash
+agentwire daemon start     # Start daemon in background
+agentwire daemon stop      # Stop daemon
+agentwire daemon status    # Check if running
+agentwire daemon restart   # Restart daemon
+agentwire daemon logs      # View daemon logs
+```
+
+**Deprecation:** say/remote-say scripts are deprecated. Use MCP tools instead. See `docs/MIGRATION-MCP.md` for migration guide.
+
 ## TTS Setup
 
 TTS requires a GPU machine running the Chatterbox server:
