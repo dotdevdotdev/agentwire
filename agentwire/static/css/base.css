@@ -14,17 +14,25 @@
     --primary-glow: rgba(0, 221, 0, 0.4);
     --primary-subtle: rgba(0, 221, 0, 0.15);
 
-    /* Backgrounds - 5-level gradient from black to card */
+    /* Backgrounds - 5-level gradient from black (page) to card (darkest element) */
     --bg-base: #000;           /* Level 0: Pure black (page background) */
-    --bg-subtle: #020202;      /* Level 1: 20% towards card */
-    --bg-muted: #040404;       /* Level 2: 40% towards card */
-    --bg-elevated: #060606;    /* Level 3: 60% towards card */
-    --bg-card: #0a0a0a;        /* Level 4: Card background */
+    --bg-level-1: #0a0a0a;     /* Level 1: Darkest - primary cards */
+    --bg-level-2: #060606;     /* Level 2: Second - nested items */
+    --bg-level-3: #040404;     /* Level 3: Third - hovers */
+    --bg-level-4: #020202;     /* Level 4: Lightest - subtle highlights */
+
+    /* Semantic aliases for common use cases */
+    --bg-card: var(--bg-level-1);
+    --bg-nested: var(--bg-level-2);
+    --bg-hover: var(--bg-level-3);
+    --bg-subtle: var(--bg-level-4);
 
     /* Legacy aliases for compatibility */
     --bg-dark: var(--bg-base);
     --bg-mid: var(--bg-card);
-    --bg-light: var(--bg-elevated);
+    --bg-light: var(--bg-level-2);
+    --bg-muted: var(--bg-level-3);
+    --bg-elevated: var(--bg-level-2);
 
     /* Text */
     --text-primary: #E8EEF2;
