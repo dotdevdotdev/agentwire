@@ -881,9 +881,13 @@ async function loadSessions() {
 
     try {
         const res = await fetch('/api/sessions');
-        const sessions = await res.json();
+        const data = await res.json();
 
-        if (sessions.length === 0) {
+        // Calculate total session count across all machines
+        const totalSessions = (data.local?.session_count || 0) +
+            (data.machines?.reduce((sum, m) => sum + (m.session_count || 0), 0) || 0);
+
+        if (totalSessions === 0) {
             container.innerHTML = `
                 <div class="empty-state">
                     <div class="empty-icon">📭</div>
@@ -900,30 +904,48 @@ async function loadSessions() {
             return;
         }
 
-    // Check for activity state transitions and play notification sound
-    sessions.forEach(session => {
-        if (session.activity) {
-            checkSessionTransition(session.name, session.activity);
-        }
-    });
-
-    // Update session count in left column
-    if (sessionCountEl) {
-        sessionCountEl.innerHTML =
-            `<span class="count">${sessions.length}</span> active session${sessions.length !== 1 ? 's' : ''}`;
-    }
-
-        // Render sessions using the new nested card format
-        container.innerHTML = sessions.map(s => renderSessionCard(s)).join('');
-
-        // Attach close handlers to the new close buttons
-        container.querySelectorAll('.session-close-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                e.preventDefault();
-                e.stopPropagation(); // Prevent triggering session expansion
-                closeSession(btn.dataset.session);
-            });
+        // Check for activity state transitions across all sessions
+        const allSessions = [
+            ...(data.local?.sessions || []),
+            ...(data.machines?.flatMap(m => m.sessions || []) || [])
+        ];
+        allSessions.forEach(session => {
+            if (session.activity) {
+                checkSessionTransition(session.name, session.activity);
+            }
         });
+
+        // Update session count in left column
+        if (sessionCountEl) {
+            sessionCountEl.innerHTML =
+                `<span class="count">${totalSessions}</span> active session${totalSessions !== 1 ? 's' : ''}`;
+        }
+
+        // Render hierarchical machine→sessions view
+        const machineCards = [];
+
+        // Render local machine first
+        if (data.local) {
+            machineCards.push(renderMachineCard({
+                id: 'local',
+                host: null,
+                status: 'online',
+                session_count: data.local.session_count,
+                sessions: data.local.sessions || []
+            }, true));
+        }
+
+        // Render remote machines
+        if (data.machines && data.machines.length > 0) {
+            data.machines.forEach(machine => {
+                machineCards.push(renderMachineCard(machine, false));
+            });
+        }
+
+        container.innerHTML = machineCards.join('');
+
+        // Attach event handlers for machine cards and sessions
+        attachMachineEventHandlers(container);
     } catch (error) {
         console.error('Failed to load sessions:', error);
         if (container) {
