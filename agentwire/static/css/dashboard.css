@@ -1276,3 +1276,129 @@
     font-size: 0.8rem;
     color: var(--text-muted);
 }
+
+/* =============================================================================
+   Nested Session Cards (Hierarchical View)
+   ============================================================================= */
+
+.session-card.nested {
+    background: var(--bg-dark);
+    border: 1px solid var(--border);
+    padding: 0;
+    margin-bottom: var(--space-xs);
+    display: block;
+}
+
+.session-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: var(--space-md);
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.2s;
+}
+
+.session-header:hover {
+    background: var(--bg-mid);
+}
+
+.session-toggle {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    flex-shrink: 0;
+    width: 14px;
+    transition: transform 0.2s;
+}
+
+.session-name-text {
+    font-weight: 600;
+    color: var(--text-primary);
+    font-size: 1rem;
+    flex: 1;
+}
+
+.session-details {
+    padding: 0 var(--space-md) var(--space-md) var(--space-md);
+    margin-left: calc(14px + var(--space-sm)); /* Align with session name */
+    border-top: 1px solid var(--border);
+    animation: slideDown 0.2s ease-out;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.session-detail-row {
+    display: flex;
+    gap: var(--space-sm);
+    margin-top: var(--space-sm);
+    font-size: 0.9rem;
+}
+
+.detail-label {
+    color: var(--text-muted);
+    font-weight: 500;
+    min-width: 60px;
+    flex-shrink: 0;
+}
+
+.detail-value {
+    color: var(--text-primary);
+    word-break: break-all;
+}
+
+.detail-value.active {
+    color: var(--primary);
+    font-weight: 600;
+}
+
+.detail-value.idle {
+    color: var(--text-muted);
+}
+
+.session-actions {
+    display: flex;
+    gap: var(--space-sm);
+    margin-top: var(--space-md);
+}
+
+.session-btn {
+    padding: var(--space-xs) var(--space-md);
+    background: var(--primary);
+    color: var(--primary-foreground);
+    border: none;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-weight: 600;
+    text-decoration: none;
+    transition: opacity 0.2s;
+    display: inline-block;
+}
+
+.session-btn:hover {
+    opacity: 0.9;
+}
+
+.session-close-btn {
+    padding: var(--space-xs) var(--space-md);
+    background: transparent;
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.session-close-btn:hover {
+    background: var(--destructive);
+    color: var(--destructive-foreground);
+    border-color: var(--destructive);
+}
