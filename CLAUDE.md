@@ -943,20 +943,28 @@ Other skills commands:
 
 ## Portal Features
 
-### Room UI Controls
+### Portal Modes
 
-The room page header provides device and voice controls:
+The portal provides three distinct modes for interacting with Claude Code sessions. All modes can work simultaneously - you can switch between them without disconnecting.
 
-| Control | Purpose |
-|---------|---------|
-| Mode toggle | Switch between ambient (orb) and terminal view |
-| Mic selector | Choose audio input device (saved to localStorage) |
-| Speaker selector | Choose audio output device (Chrome/Edge only) |
-| Voice selector | TTS voice for this room (saved to rooms.json) |
+#### Ambient Mode
 
-### Orb States
+Voice-first, minimal UI focused on conversational interaction.
 
-The ambient mode orb shows the current interaction state:
+**Features:**
+- Animated orb visualization showing session state
+- Push-to-talk voice input
+- TTS audio playback
+- AskUserQuestion popups
+- Permission modals (for normal/restricted sessions)
+
+**Use for:**
+- Hands-free interaction
+- Casual queries and conversation
+- Voice-driven workflows
+- Monitoring session activity at a glance
+
+**State indicators:**
 
 | State | Color | Meaning |
 |-------|-------|---------|
@@ -966,7 +974,124 @@ The ambient mode orb shows the current interaction state:
 | Generating | Blue | TTS generating voice |
 | Speaking | Green | Playing audio response |
 
-The portal auto-detects session activity - if any output appears (even from manual commands), it switches to Processing. Returns to Ready after 10s of inactivity.
+#### Monitor Mode
+
+Read-only terminal output with text input for sending prompts.
+
+**Features:**
+- Live terminal output via `tmux capture-pane` polling
+- Text input area for sending prompts
+- AskUserQuestion popups
+- Permission modals with diff preview
+- Multiline input support (Enter to send, Shift+Enter for newline)
+
+**Use for:**
+- Observing Claude work in real-time
+- Sending text prompts without voice
+- Guided interaction with popups and modals
+- Reading session output without full terminal features
+
+**How it works:**
+- Polls `tmux capture-pane` every 500ms for output
+- Sends input via `tmux send-keys`
+- One-way display (read-only, not a real terminal)
+- Works even when Terminal mode is connected
+
+#### Terminal Mode
+
+Full interactive terminal via xterm.js attached to tmux session.
+
+**Features:**
+- Real terminal emulation (xterm.js)
+- Connected via `tmux attach` over WebSocket
+- Full readline, vim, tab completion support
+- Bidirectional input/output
+- Hardware acceleration (WebGL when available)
+- Clickable URLs (via xterm-addon-web-links)
+- Auto-resize on browser window changes
+- Terminal size shown in status (e.g., "Connected (120x40)")
+
+**Use for:**
+- Real development work
+- Using vim, emacs, or other TUI editors
+- Interactive commands (Python REPL, database shells)
+- Full shell features (tab completion, command history)
+- When Monitor mode's read-only view isn't enough
+
+**Activation:**
+1. Click Terminal tab
+2. Click "Activate Interactive Terminal" button
+3. Terminal connects via WebSocket to tmux session
+4. Terminal stays connected even when switching to other modes
+
+**Keyboard shortcuts** (only active when Terminal tab visible):
+
+| Shortcut | Action |
+|----------|--------|
+| Cmd/Ctrl+K | Clear terminal (sends `clear` command) |
+| Cmd/Ctrl+D | Disconnect terminal |
+
+**Copy/paste:**
+- Cmd/Ctrl+C, Cmd/Ctrl+V work natively
+- Middle-click paste on Linux supported
+- No UI hints shown (relies on standard browser behavior)
+
+**Theme:**
+- Automatically matches portal theme (dark/light)
+- Updates when portal theme changes
+
+**Desktop-only:**
+- Terminal mode disabled on mobile/tablet devices
+- Shows message: "Terminal mode requires desktop browser"
+
+**Connection states:**
+
+| State | Indicator | Meaning |
+|-------|-----------|---------|
+| Connected | 🟢 Green | Active connection to tmux session |
+| Connecting | 🟡 Yellow | WebSocket establishing connection |
+| Disconnected | 🔴 Red | Connection lost or not started |
+| Error | ⚠️ Amber | Connection failed, reconnect available |
+
+**Error handling:**
+- Shows user-friendly error messages
+- Provides "Reconnect" button on failure
+- Gracefully handles session termination
+- Cleans up WebSocket on disconnect
+
+#### Simultaneous Operation
+
+**All three modes work together:**
+
+1. **Monitor + Terminal** - Monitor polling continues while Terminal is connected. Both see the same session output.
+2. **Voice + Terminal** - Can use voice input in Ambient mode while Terminal mode shows the terminal.
+3. **Local tmux + Portal** - Your local `tmux attach` works alongside both Monitor and Terminal modes. All attachments see the same session.
+
+**Input from any mode appears in all modes:**
+- Type in Monitor text input → appears in Terminal
+- Type in Terminal → appears in Monitor output
+- Voice prompt in Ambient → appears in both Monitor and Terminal
+
+**Why this works:**
+- Monitor uses `tmux capture-pane` (read-only, doesn't interfere)
+- Terminal uses `tmux attach` (one of many possible attachments)
+- tmux allows multiple simultaneous attachments
+- All modes read from the same tmux session
+
+### Room UI Controls
+
+The room page header provides device and voice controls:
+
+| Control | Purpose |
+|---------|---------|
+| Mode tabs | Switch between Ambient, Monitor, and Terminal modes |
+| Mic selector | Choose audio input device (saved to localStorage) |
+| Speaker selector | Choose audio output device (Chrome/Edge only) |
+| Voice selector | TTS voice for this room (saved to rooms.json) |
+
+**Mode persistence:** Last selected mode is remembered per room in localStorage. Reloading the page restores your previous mode.
+
+**Activity detection:** The portal auto-detects session activity - if any output appears (even from manual commands), the orb switches to Processing state. Returns to Ready after 10s of inactivity.
 
 ### Image Attachments
 
@@ -1162,6 +1287,8 @@ Voices are stored in `~/.agentwire/voices/` and synced across portal config.
 
 ## Architecture
 
+### System Overview
+
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │  Device (phone/tablet/laptop)                               │
@@ -1173,7 +1300,8 @@ Voices are stored in `~/.agentwire/voices/` and synced across portal config.
 ┌─────────────────────────────────────────────────────────────┐
 │  AgentWire Portal (agentwire-portal tmux session)           │
 │  ├── HTTP routes (dashboard, room pages)                    │
-│  ├── WebSocket (output streaming, TTS audio)                │
+│  ├── WebSocket /ws/output/{room} (Monitor mode polling)     │
+│  ├── WebSocket /ws/terminal/{room} (Terminal mode attach)   │
 │  ├── /transcribe (STT)                                      │
 │  ├── /send/{room} (prompt forwarding)                       │
 │  └── /api/say/{room} (TTS broadcast)                        │
@@ -1182,8 +1310,91 @@ Voices are stored in `~/.agentwire/voices/` and synced across portal config.
               ┌───────────────┴───────────────┐
               │                               │
     Local tmux sessions            Remote via SSH
-    (send-keys, capture-pane)      (session@machine)
+    (send-keys, capture-pane,      (session@machine)
+     tmux attach subprocess)
 ```
+
+### Three-Mode Architecture
+
+#### Ambient Mode
+- **Input:** Voice (push-to-talk) → STT → text → tmux send-keys
+- **Output:** WebSocket streaming → orb state updates
+- **Interaction:** Modals for AskUserQuestion, permissions
+
+#### Monitor Mode
+- **Input:** Text area → `/send/{room}` HTTP → tmux send-keys
+- **Output:** Polling (`tmux capture-pane` every 500ms) → WebSocket → display
+- **Interaction:** Same modals as Ambient mode
+
+#### Terminal Mode
+- **Input:** xterm.js → WebSocket (`/ws/terminal/{room}`) → tmux attach stdin
+- **Output:** tmux attach stdout → WebSocket → xterm.js
+- **Bidirectional:** Full duplex communication over single WebSocket
+- **Resize:** Browser resize → WebSocket message → `tmux resize-window`
+
+### WebSocket Flow for Terminal Mode
+
+```
+Browser (xterm.js)              Portal (server.py)              tmux session
+─────────────────              ──────────────────              ────────────
+
+1. User clicks "Activate Terminal"
+   │
+   ├─[WebSocket connect]──────>│
+   │                            ├─[spawn subprocess]──────────>│
+   │                            │  tmux attach -t session      │
+   │                            │                               │
+2. Send terminal input          │                               │
+   │                            │                               │
+   ├─[WS: {type:'input'}]──────>│                               │
+   │                            ├─[write to stdin]────────────>│
+   │                            │                               │
+3. Receive terminal output      │                               │
+   │                            │<──[read from stdout]──────────┤
+   │<──[WS: binary data]────────┤                               │
+   │                            │                               │
+4. Resize terminal              │                               │
+   │                            │                               │
+   ├─[WS: {type:'resize'}]─────>│                               │
+   │                            ├─[tmux resize-window]────────>│
+   │                            │                               │
+5. Close terminal               │                               │
+   │                            │                               │
+   ├─[WS disconnect]──────────>│                               │
+   │                            ├─[kill subprocess]────────────>│
+   │                            │  (detaches from tmux)         │
+```
+
+**Key implementation details:**
+
+1. **Subprocess management:** Portal spawns `tmux attach` as asyncio subprocess with stdin/stdout pipes
+2. **Bidirectional forwarding:** Two concurrent tasks:
+   - `tmux stdout → WebSocket` (reads output, sends to browser)
+   - `WebSocket → tmux stdin` (receives input, writes to tmux)
+3. **Graceful cleanup:** On WebSocket close, subprocess is terminated, tmux session detaches cleanly
+4. **No interference:** Monitor mode's `capture-pane` polling runs independently, doesn't affect Terminal WebSocket
+5. **Multiple attachments:** tmux allows simultaneous attachments - local terminal, Terminal mode, and Monitor mode all work together
+
+### Known Limitations
+
+**Terminal Mode:**
+- **Desktop-only:** Terminal mode requires a desktop browser with keyboard input. Mobile/tablet devices show a message indicating desktop is required.
+- **WebGL fallback:** WebGL acceleration may not be available on older browsers or certain configurations. Terminal automatically falls back to canvas rendering.
+- **Copy/paste on mobile:** While Terminal is disabled on mobile, copy/paste behavior may vary across browsers even on desktop.
+- **Very rapid output:** Extremely rapid output (10,000+ lines/second) may cause temporary slowdown while xterm.js processes the data.
+- **Remote latency:** Remote sessions via SSH may experience higher latency in Terminal mode compared to local sessions.
+
+**Monitor Mode:**
+- **Read-only:** Monitor mode displays output via polling (`tmux capture-pane`). It shows a snapshot updated every 500ms, not true real-time scrolling like Terminal mode.
+- **No terminal features:** Tab completion, readline editing, and TUI applications (like vim) won't work in Monitor mode. Use Terminal mode for these.
+
+**Ambient Mode:**
+- **Voice accuracy:** STT accuracy depends on the backend (WhisperKit, OpenAI, etc.) and audio quality. Background noise may affect transcription.
+- **Browser audio:** Push-to-talk requires browser microphone permissions and may not work in all environments (e.g., WSL2 without audio passthrough).
+
+**General:**
+- **Session state sync:** When switching modes, there may be a brief delay (< 1 second) before the new mode shows current output.
+- **Local tmux conflicts:** If you manually resize the tmux window via local `tmux attach`, it may temporarily conflict with Terminal mode's auto-resize. Refreshing the Terminal mode connection resolves this.
 
 ### Extending with New Capabilities
 
