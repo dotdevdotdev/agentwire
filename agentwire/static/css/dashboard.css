@@ -80,7 +80,7 @@
 }
 
 .action-group {
-    background: var(--bg-mid);
+    background: var(--bg-card);
     border-radius: var(--radius-md);
     overflow: hidden;
 }
@@ -96,7 +96,7 @@
 }
 
 .action-header:hover {
-    background: var(--bg-light);
+    background: var(--bg-subtle);
 }
 
 .action-header h3 {
@@ -515,17 +515,17 @@
 }
 
 .session-badge.bypass {
-    background: var(--bg-elevated);
+    background: var(--bg-muted);
     color: var(--primary);
 }
 
 .session-badge.prompted {
-    background: var(--bg-elevated);
+    background: var(--bg-muted);
     color: var(--text-muted);
 }
 
 .session-badge.restricted {
-    background: var(--bg-elevated);
+    background: var(--bg-muted);
     color: var(--text-muted);
 }
 
@@ -920,14 +920,14 @@
 
 /* Machine card - distinct from session cards */
 .machine-card {
-    background: var(--bg-mid);
+    background: var(--bg-card);
     border-radius: var(--radius-md);
     overflow: hidden;
     transition: all 0.2s;
 }
 
 .machine-card:hover {
-    background: var(--bg-light);
+    background: var(--bg-elevated);
 }
 
 /* Machine header - clickable for expand/collapse */
@@ -942,7 +942,7 @@
 }
 
 .machine-header:hover {
-    background: var(--bg-elevated);
+    background: var(--bg-subtle);
 }
 
 /* Machine info container (expand icon + status + name + count) */
@@ -1086,12 +1086,12 @@
 .machine-sessions .session-card {
     margin-left: calc(14px + var(--space-sm)); /* Align with machine name (icon width + gap) */
     margin-bottom: var(--space-sm);
-    background: var(--bg-dark);
+    background: var(--bg-subtle);
     border-radius: var(--radius-sm);
 }
 
 .machine-sessions .session-card:hover {
-    background: var(--bg-elevated);
+    background: var(--bg-muted);
 }
 
 /* Last session in a machine group */
@@ -1307,7 +1307,7 @@
    ============================================================================= */
 
 .session-card.nested {
-    background: var(--bg-dark);
+    background: var(--bg-subtle);
     border-radius: var(--radius-sm);
     padding: 0;
     margin-bottom: var(--space-xs);
@@ -1325,7 +1325,7 @@
 }
 
 .session-header:hover {
-    background: var(--bg-mid);
+    background: var(--bg-muted);
 }
 
 .session-toggle {
