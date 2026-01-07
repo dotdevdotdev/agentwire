@@ -1100,7 +1100,8 @@
 }
 
 /* Empty state for machine with no sessions */
-.machine-no-sessions {
+.machine-no-sessions,
+.machine-empty-state {
     margin-left: calc(14px + var(--space-sm));
     padding: var(--space-md);
     color: var(--text-muted);
@@ -1412,16 +1413,52 @@
 
 .session-close-btn {
     padding: var(--space-xs) var(--space-md);
-    background: transparent;
+    background: var(--bg-elevated);
     color: var(--text-muted);
-    border: 1px solid var(--border);
+    border: none;
     border-radius: var(--radius-sm);
     cursor: pointer;
     transition: all 0.2s;
 }
 
 .session-close-btn:hover {
-    background: var(--destructive);
-    color: var(--destructive-foreground);
-    border-color: var(--destructive);
+    background: var(--text-muted);
+    color: var(--bg-dark);
+}
+
+.session-display-name {
+    font-weight: 600;
+    color: var(--text-primary);
+    flex: 1;
+}
+
+.session-open-btn {
+    padding: var(--space-xs) var(--space-md);
+    background: var(--primary);
+    color: #000;
+    border: none;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-weight: 600;
+    text-decoration: none;
+    transition: all 0.2s;
+    display: inline-block;
+}
+
+.session-open-btn:hover {
+    background: var(--primary-dim);
+}
+
+.session-detail-value {
+    color: var(--text-primary);
+    word-break: break-all;
+}
+
+.session-detail-value.active {
+    color: var(--primary);
+    font-weight: 600;
+}
+
+.session-detail-value.idle {
+    color: var(--text-muted);
 }
