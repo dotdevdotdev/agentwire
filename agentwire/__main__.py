@@ -1311,6 +1311,8 @@ def cmd_new(args) -> int:
         room_name = f"{session_name}@{machine_id}"
         create_cmd = (
             f"tmux new-session -d -s {shlex.quote(session_name)} -c {shlex.quote(remote_path)} && "
+            f"tmux send-keys -t {shlex.quote(session_name)} 'cd {shlex.quote(remote_path)}' Enter && "
+            f"sleep 0.1 && "
             f"tmux send-keys -t {shlex.quote(session_name)} 'export AGENTWIRE_ROOM={shlex.quote(room_name)}' Enter && "
             f"sleep 0.1 && "
             f"tmux send-keys -t {shlex.quote(session_name)} 'claude{bypass_flag}' Enter"
@@ -1446,6 +1448,13 @@ def cmd_new(args) -> int:
         ["tmux", "new-session", "-d", "-s", session_name, "-c", str(session_path)],
         check=True
     )
+
+    # Ensure Claude starts in correct directory
+    subprocess.run(
+        ["tmux", "send-keys", "-t", session_name, f"cd {shlex.quote(str(session_path))}", "Enter"],
+        check=True
+    )
+    time.sleep(0.1)
 
     # Set AGENTWIRE_ROOM env var (used by permission hook)
     subprocess.run(
@@ -1956,6 +1965,8 @@ def cmd_recreate(args) -> int:
 
         create_cmd = (
             f"tmux new-session -d -s {shlex.quote(session_name)} -c {shlex.quote(session_path)} && "
+            f"tmux send-keys -t {shlex.quote(session_name)} 'cd {shlex.quote(session_path)}' Enter && "
+            f"sleep 0.1 && "
             f"tmux send-keys -t {shlex.quote(session_name)} 'export AGENTWIRE_ROOM={shlex.quote(room_name)}' Enter && "
             f"sleep 0.1 && "
             f"tmux send-keys -t {shlex.quote(session_name)} 'claude{bypass_flag}' Enter"
@@ -2056,6 +2067,13 @@ def cmd_recreate(args) -> int:
         ["tmux", "new-session", "-d", "-s", session_name, "-c", str(session_path)],
         check=True
     )
+
+    # Ensure Claude starts in correct directory
+    subprocess.run(
+        ["tmux", "send-keys", "-t", session_name, f"cd {shlex.quote(str(session_path))}", "Enter"],
+        check=True
+    )
+    time.sleep(0.1)
 
     subprocess.run(
         ["tmux", "send-keys", "-t", session_name, f"export AGENTWIRE_ROOM={session_name}", "Enter"],
@@ -2203,6 +2221,8 @@ def cmd_fork(args) -> int:
         room_name = f"{target_session}@{machine_id}"
         create_session_cmd = (
             f"tmux new-session -d -s {shlex.quote(target_session)} -c {shlex.quote(target_path)} && "
+            f"tmux send-keys -t {shlex.quote(target_session)} 'cd {shlex.quote(target_path)}' Enter && "
+            f"sleep 0.1 && "
             f"tmux send-keys -t {shlex.quote(target_session)} 'export AGENTWIRE_ROOM={shlex.quote(room_name)}' Enter && "
             f"sleep 0.1 && "
             f"tmux send-keys -t {shlex.quote(target_session)} 'claude{bypass_flag}' Enter"
@@ -2282,6 +2302,13 @@ def cmd_fork(args) -> int:
             ["tmux", "new-session", "-d", "-s", target_session, "-c", str(fork_path)],
             check=True
         )
+
+        # Ensure Claude starts in correct directory
+        subprocess.run(
+            ["tmux", "send-keys", "-t", target_session, f"cd {shlex.quote(str(fork_path))}", "Enter"],
+            check=True
+        )
+        time.sleep(0.1)
 
         subprocess.run(
             ["tmux", "send-keys", "-t", target_session, f"export AGENTWIRE_ROOM={target_session}", "Enter"],
@@ -2389,6 +2416,13 @@ def cmd_fork(args) -> int:
         ["tmux", "new-session", "-d", "-s", target_session, "-c", str(target_path)],
         check=True
     )
+
+    # Ensure Claude starts in correct directory
+    subprocess.run(
+        ["tmux", "send-keys", "-t", target_session, f"cd {shlex.quote(str(target_path))}", "Enter"],
+        check=True
+    )
+    time.sleep(0.1)
 
     subprocess.run(
         ["tmux", "send-keys", "-t", target_session, f"export AGENTWIRE_ROOM={target_session}", "Enter"],

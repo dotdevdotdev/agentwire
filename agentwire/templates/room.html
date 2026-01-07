@@ -17,10 +17,16 @@
                 <div class="status" id="status">connecting...</div>
             </div>
         </div>
+        <div class="header-center">
+            <div class="mode-tabs">
+                <button class="mode-tab active" id="ambientTab" onclick="switchToMode('ambient')">Ambient</button>
+                <button class="mode-tab" id="monitorTab" onclick="switchToMode('monitor')">Monitor</button>
+                <button class="mode-tab disabled" id="terminalTab" onclick="switchToMode('terminal')" title="Terminal mode (coming soon)">Terminal</button>
+            </div>
+        </div>
         <div class="header-right">
             <button class="settings-btn" id="settingsBtn" onclick="toggleSettings()" title="Settings">⚙</button>
             <div class="settings-dropdown" id="settingsDropdown">
-                {{ mode_toggle('modeToggle', 'View', 'toggleMode()') }}
                 {{ device_selector('micSelect', 'Microphone', onchange='updateMic()') }}
                 {{ device_selector('speakerSelect', 'Speaker', onchange='updateSpeaker()') }}
                 <div class="settings-group">
@@ -37,7 +43,7 @@
         </div>
     </div>
 
-    {# Terminal Mode - Output View #}
+    {# Monitor Mode - Output View #}
     {% include 'components/output_view.html' %}
 
     {# Ambient Mode #}
@@ -51,6 +57,20 @@
         <div class="user-bubble-container">
             <div class="user-bubble" id="userBubble"></div>
         </div>
+    </div>
+
+    {# Terminal Mode #}
+    <div class="mode-content terminal-mode-content" style="display: none;">
+        <div class="terminal-activation" id="terminalActivation">
+            <button class="activate-terminal-btn" id="activateTerminal">
+                🖥️ Activate Interactive Terminal
+            </button>
+            <p class="terminal-info">
+                Connect to tmux session for full terminal control (vim, interactive commands, etc.)
+            </p>
+        </div>
+        <div id="terminal" class="terminal-container" style="display: none;"></div>
+        <div class="terminal-status" id="terminalStatus"></div>
     </div>
 
     {# Floating controls (both modes) #}

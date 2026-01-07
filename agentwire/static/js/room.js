@@ -6,7 +6,7 @@
  * - Audio recording and TTS playback
  * - Orb state visualization
  * - Ask modal for user questions
- * - Output view for terminal mode
+ * - Output view for monitor mode
  */
 
 import * as ws from './websocket.js';
@@ -14,6 +14,7 @@ import * as audio from './audio.js';
 import * as orb from './orb.js';
 import * as askModal from './ask-modal.js';
 import * as output from './output.js';
+import { TerminalMode } from './terminal.js';
 
 // ============================================
 // Configuration (set from template)
@@ -40,12 +41,13 @@ const STATES = {
 };
 
 let currentState = STATES.IDLE;
-let isAmbientMode = true;
+let currentMode = 'ambient';  // 'ambient', 'monitor', or 'terminal'
 let textInputOpen = false;
 let processingTimeout = null;
 let pendingAiText = null;
 let pendingImage = null;  // { file, preview, filename }
 let currentQuestion = null;
+let terminalMode = null;  // TerminalMode instance
 
 // ============================================
 // DOM Elements
@@ -92,6 +94,12 @@ function cacheElements() {
     elements.actionsMenu = document.getElementById('actionsMenu');
     elements.exaggeration = document.getElementById('exaggeration');
     elements.cfgWeight = document.getElementById('cfgWeight');
+
+    // Mode tabs and content
+    elements.ambientTab = document.getElementById('ambientTab');
+    elements.monitorTab = document.getElementById('monitorTab');
+    elements.terminalTab = document.getElementById('terminalTab');
+    elements.terminalModeContent = document.querySelector('.terminal-mode-content');
 }
 
 // ============================================
@@ -138,7 +146,7 @@ function handleSessionActivity() {
 // ============================================
 
 function showUserBubble(text) {
-    if (!isAmbientMode || !elements.userBubble) return;
+    if (currentMode !== 'ambient' || !elements.userBubble) return;
     elements.userBubble.textContent = text;
     elements.userBubble.classList.add('visible');
 }
@@ -154,7 +162,7 @@ function cleanText(text) {
 }
 
 function showAiBubble(text) {
-    if (!isAmbientMode || !elements.aiBubble) return;
+    if (currentMode !== 'ambient' || !elements.aiBubble) return;
     elements.aiBubble.textContent = cleanText(text);
     elements.aiBubble.classList.add('visible');
 }
@@ -488,7 +496,7 @@ async function respondToPermission(decision, message = '') {
 function toggleMode() {
     isAmbientMode = !isAmbientMode;
 
-    document.body.classList.toggle('terminal-mode', !isAmbientMode);
+    document.body.classList.toggle('monitor-mode', !isAmbientMode);
 
     if (elements.output) {
         elements.output.classList.remove('ambient-default');
@@ -499,14 +507,14 @@ function toggleMode() {
         elements.ambient.classList.toggle('active', isAmbientMode);
     }
     if (elements.modeToggle) {
-        elements.modeToggle.textContent = isAmbientMode ? 'Switch to Terminal' : 'Switch to Ambient';
+        elements.modeToggle.textContent = isAmbientMode ? 'Switch to Monitor' : 'Switch to Ambient';
     }
     if (elements.settingsDropdown) {
         elements.settingsDropdown.classList.remove('open');
     }
 
-    if (!isAmbientMode) {
-        // Terminal mode
+    if (currentMode !== 'ambient') {
+        // Monitor mode
         if (elements.aiBubbleContainer) elements.aiBubbleContainer.style.display = 'none';
         if (elements.userBubbleContainer) elements.userBubbleContainer.style.display = 'none';
 
@@ -522,6 +530,83 @@ function toggleMode() {
         // Ambient mode
         if (elements.aiBubbleContainer) elements.aiBubbleContainer.style.display = '';
         if (elements.userBubbleContainer) elements.userBubbleContainer.style.display = '';
+    }
+}
+
+/**
+ * Switch to a specific mode: 'ambient', 'monitor', or 'terminal'
+ */
+function switchToMode(mode) {
+    if (currentMode === mode) return;
+
+    console.log('[Mode] Switching from', currentMode, 'to', mode);
+    currentMode = mode;
+
+    // Update legacy flag for backward compatibility
+    isAmbientMode = (mode === 'ambient');
+
+    // Update tab states
+    if (elements.ambientTab) elements.ambientTab.classList.toggle('active', mode === 'ambient');
+    if (elements.monitorTab) elements.monitorTab.classList.toggle('active', mode === 'monitor');
+    if (elements.terminalTab) elements.terminalTab.classList.toggle('active', mode === 'terminal');
+
+    // Hide all mode content
+    if (elements.ambient) elements.ambient.style.display = 'none';
+    if (elements.output) elements.output.style.display = 'none';
+    if (elements.terminalModeContent) elements.terminalModeContent.style.display = 'none';
+
+    // Show selected mode content
+    switch (mode) {
+        case 'ambient':
+            if (elements.ambient) elements.ambient.style.display = '';
+            if (elements.aiBubbleContainer) elements.aiBubbleContainer.style.display = '';
+            if (elements.userBubbleContainer) elements.userBubbleContainer.style.display = '';
+            document.body.classList.remove('monitor-mode');
+            break;
+
+        case 'monitor':
+            if (elements.output) {
+                elements.output.style.display = '';
+                setTimeout(() => output.scrollToBottom(), 50);
+            }
+            if (elements.aiBubbleContainer) elements.aiBubbleContainer.style.display = 'none';
+            if (elements.userBubbleContainer) elements.userBubbleContainer.style.display = 'none';
+            document.body.classList.add('monitor-mode');
+
+            // Open text input in monitor mode
+            textInputOpen = true;
+            if (elements.textToggleBtn) elements.textToggleBtn.classList.add('active');
+            if (elements.textInputExpanded) elements.textInputExpanded.classList.add('open');
+            if (elements.textInputAmbient) {
+                setTimeout(() => elements.textInputAmbient.focus(), 100);
+            }
+            break;
+
+        case 'terminal':
+            if (elements.terminalModeContent) {
+                elements.terminalModeContent.style.display = '';
+            }
+            if (elements.aiBubbleContainer) elements.aiBubbleContainer.style.display = 'none';
+            if (elements.userBubbleContainer) elements.userBubbleContainer.style.display = 'none';
+            document.body.classList.add('monitor-mode');
+
+            // If terminal mode has been activated, show it
+            if (terminalMode && terminalMode.isActivated) {
+                terminalMode.onModeReturn();
+            }
+            break;
+    }
+
+    // Save preference to localStorage
+    try {
+        localStorage.setItem(`agentwire-mode-${ROOM}`, mode);
+    } catch (e) {
+        console.warn('Failed to save mode preference:', e);
+    }
+
+    // Close settings dropdown
+    if (elements.settingsDropdown) {
+        elements.settingsDropdown.classList.remove('open');
     }
 }
 
@@ -913,6 +998,9 @@ export function init(config) {
         customInput: elements.questionCustomInput
     });
 
+    // Initialize terminal mode
+    terminalMode = new TerminalMode(ROOM);
+
     // Connect WebSocket
     ws.connect(ROOM, {
         onOutput: handleOutput,
@@ -927,11 +1015,21 @@ export function init(config) {
     // Bind events
     bindEvents();
 
+    // Load saved mode preference from localStorage
+    try {
+        const savedMode = localStorage.getItem(`agentwire-mode-${ROOM}`);
+        if (savedMode && (savedMode === 'ambient' || savedMode === 'monitor')) {
+            switchToMode(savedMode);
+        }
+    } catch (e) {
+        console.warn('Failed to save mode preference:', e);
+    }
+
     // Populate devices
     populateAudioDevices();
 
     // Export functions for onclick handlers in HTML
-    window.toggleMode = toggleMode;
+    window.switchToMode = switchToMode;
     window.toggleSettings = toggleSettings;
     window.toggleTextInput = toggleTextInput;
     window.sendTextInputAmbient = sendTextInput;
