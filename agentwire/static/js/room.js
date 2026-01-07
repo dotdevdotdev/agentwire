@@ -573,6 +573,7 @@ function switchToMode(mode) {
             if (elements.userBubbleContainer) elements.userBubbleContainer.style.display = '';
             if (elements.output) elements.output.classList.add('ambient-default');
             document.body.classList.remove('monitor-mode');
+            document.body.classList.remove('terminal-mode');
             break;
 
         case 'monitor':
@@ -585,6 +586,7 @@ function switchToMode(mode) {
             if (elements.aiBubbleContainer) elements.aiBubbleContainer.style.display = 'none';
             if (elements.userBubbleContainer) elements.userBubbleContainer.style.display = 'none';
             document.body.classList.add('monitor-mode');
+            document.body.classList.remove('terminal-mode');
 
             // Open text input in monitor mode
             textInputOpen = true;
@@ -601,7 +603,8 @@ function switchToMode(mode) {
             }
             if (elements.aiBubbleContainer) elements.aiBubbleContainer.style.display = 'none';
             if (elements.userBubbleContainer) elements.userBubbleContainer.style.display = 'none';
-            document.body.classList.add('monitor-mode');
+            document.body.classList.remove('monitor-mode');
+            document.body.classList.add('terminal-mode');
 
             // If terminal mode has been activated, show it
             if (terminalMode && terminalMode.isActivated) {

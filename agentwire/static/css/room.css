@@ -833,6 +833,21 @@ body {
     justify-content: center;
 }
 
+.terminal-mode .actions-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Terminal mode: hide text input and mic button, keep actions menu */
+.terminal-mode .text-input-wrapper {
+    display: none;
+}
+
+.terminal-mode .mic-btn {
+    display: none;
+}
+
 .actions-btn:hover {
     background: var(--bg-light);
     color: var(--text-primary);
@@ -1292,7 +1307,7 @@ body {
     padding: 1rem 2rem;
     font-size: 1.1rem;
     background: var(--primary);
-    color: var(--primary-foreground);
+    color: #000;
     border: none;
     border-radius: 8px;
     cursor: pointer;
