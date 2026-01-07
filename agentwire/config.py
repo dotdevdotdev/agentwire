@@ -76,9 +76,13 @@ class ProjectsConfig:
 class TTSConfig:
     """Text-to-speech configuration."""
 
-    backend: str = "chatterbox"  # chatterbox | elevenlabs | none
+    backend: str = "chatterbox"  # chatterbox | runpod | none
     url: str = "http://localhost:8100"
     default_voice: str = "bashbunni"
+    # RunPod serverless configuration
+    runpod_endpoint_id: str = ""
+    runpod_api_key: str = ""
+    runpod_timeout: int = 60
 
 
 @dataclass
@@ -358,6 +362,9 @@ def _dict_to_config(data: dict) -> Config:
         backend=tts_data.get("backend", "chatterbox"),
         url=tts_data.get("url", "http://localhost:8100"),
         default_voice=tts_data.get("default_voice", "bashbunni"),
+        runpod_endpoint_id=tts_data.get("runpod_endpoint_id", ""),
+        runpod_api_key=tts_data.get("runpod_api_key", ""),
+        runpod_timeout=tts_data.get("runpod_timeout", 60),
     )
 
     # STT
