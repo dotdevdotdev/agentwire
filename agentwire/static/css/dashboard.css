@@ -1120,3 +1120,159 @@
         display: none;
     }
 }
+/* =============================================================================
+   Loading States (Skeleton Loaders)
+   ============================================================================= */
+
+.skeleton-session {
+    background: var(--bg-mid);
+    border-radius: var(--radius-md);
+    padding: var(--space-md);
+    margin-bottom: var(--space-sm);
+}
+
+.skeleton-machine {
+    background: var(--bg-light);
+    border-radius: var(--radius-sm);
+    padding: var(--space-sm);
+    margin-bottom: var(--space-xs);
+}
+
+.skeleton-line {
+    height: 1rem;
+    background: linear-gradient(
+        90deg,
+        var(--bg-light) 0%,
+        var(--bg-elevated) 50%,
+        var(--bg-light) 100%
+    );
+    background-size: 200% 100%;
+    border-radius: var(--radius-sm);
+    animation: skeleton-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes skeleton-pulse {
+    0% {
+        background-position: 200% 0;
+    }
+    100% {
+        background-position: -200% 0;
+    }
+}
+
+/* =============================================================================
+   Empty States
+   ============================================================================= */
+
+.empty-state {
+    text-align: center;
+    padding: var(--space-xl) var(--space-md);
+    color: var(--text-muted);
+}
+
+.empty-state-small {
+    padding: var(--space-md) var(--space-sm);
+}
+
+.empty-icon {
+    font-size: 3rem;
+    margin-bottom: var(--space-md);
+    opacity: 0.6;
+}
+
+.empty-icon-small {
+    font-size: 2rem;
+    margin-bottom: var(--space-sm);
+    opacity: 0.6;
+}
+
+.empty-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: var(--space-sm);
+}
+
+.empty-title-small {
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--text-primary);
+    margin-bottom: var(--space-xs);
+}
+
+.empty-description {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    margin-bottom: var(--space-md);
+}
+
+.empty-action {
+    margin-top: var(--space-md);
+}
+
+.empty-link {
+    color: var(--primary);
+    text-decoration: none;
+    font-size: 0.9rem;
+    font-weight: 500;
+    transition: all 0.2s;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-xs);
+}
+
+.empty-link:hover {
+    color: var(--primary);
+    text-decoration: underline;
+}
+
+/* =============================================================================
+   Error States
+   ============================================================================= */
+
+.error-state {
+    text-align: center;
+    padding: var(--space-xl) var(--space-md);
+    color: var(--text-muted);
+}
+
+.error-state-small {
+    padding: var(--space-md) var(--space-sm);
+}
+
+.error-icon {
+    font-size: 3rem;
+    margin-bottom: var(--space-md);
+    opacity: 0.6;
+}
+
+.error-icon-small {
+    font-size: 2rem;
+    margin-bottom: var(--space-sm);
+    opacity: 0.6;
+}
+
+.error-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--error);
+    margin-bottom: var(--space-sm);
+}
+
+.error-title-small {
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--error);
+    margin-bottom: var(--space-xs);
+}
+
+.error-description {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    margin-bottom: var(--space-md);
+}
+
+.error-description-small {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}

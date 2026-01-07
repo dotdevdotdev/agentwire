@@ -141,6 +141,7 @@ class AgentWireServer:
         self.app.router.add_get("/ws/{name:.+}", self.handle_websocket)
         self.app.router.add_get("/ws/terminal/{name:.+}", self.handle_terminal_ws)
         self.app.router.add_get("/api/sessions", self.api_sessions)
+        self.app.router.add_get("/api/machine/{machine_id}/status", self.api_machine_status)
         self.app.router.add_get("/api/check-path", self.api_check_path)
         self.app.router.add_get("/api/check-branches", self.api_check_branches)
         self.app.router.add_post("/api/create", self.api_create_session)
@@ -412,6 +413,53 @@ class AgentWireServer:
         threshold = self.config.server.activity_threshold_seconds
 
         return "active" if time_since_last_output <= threshold else "idle"
+
+    async def _check_machine_status(self, machine_config: dict) -> str:
+        """Check if a remote machine is online via SSH test.
+
+        Args:
+            machine_config: Machine dict with 'host' and optional 'user'
+
+        Returns:
+            "online" if SSH test succeeds, "offline" otherwise
+        """
+        if not machine_config:
+            return "offline"
+
+        host = machine_config.get("host")
+        user = machine_config.get("user")
+
+        if not host:
+            return "offline"
+
+        # Run SSH test in executor to avoid blocking
+        loop = asyncio.get_event_loop()
+        target = f"{user}@{host}" if user else host
+
+        def ssh_test():
+            try:
+                result = subprocess.run(
+                    [
+                        "ssh",
+                        "-o", "ConnectTimeout=2",
+                        "-o", "StrictHostKeyChecking=accept-new",
+                        "-o", "BatchMode=yes",
+                        target,
+                        "echo ok",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=3,
+                )
+                return result.returncode == 0
+            except (subprocess.TimeoutExpired, Exception):
+                return False
+
+        try:
+            is_online = await loop.run_in_executor(None, ssh_test)
+            return "online" if is_online else "offline"
+        except Exception:
+            return "offline"
 
     async def handle_room(self, request: web.Request) -> web.Response:
         """Serve a room page."""
@@ -928,14 +976,23 @@ class AgentWireServer:
     # API Handlers
 
     async def api_sessions(self, request: web.Request) -> web.Response:
-        """List all active sessions."""
+        """List all active sessions grouped by machine."""
         try:
             sessions = self.agent.list_sessions()
             room_configs = self._load_room_configs()
 
-            result = []
+            # Load machines for status checks
+            machines_dict = {}
+            if hasattr(self.agent, 'machines'):
+                for m in self.agent.machines:
+                    machines_dict[m.get('id')] = m
+
+            # Group sessions by machine (None = local)
+            local_sessions = []
+            machine_sessions = {}  # machine_id -> list of sessions
+
             for name in sessions:
-                project, branch, machine = parse_session_name(name)
+                project, branch, machine_id = parse_session_name(name)
 
                 config = room_configs.get(name, {})
 
@@ -945,23 +1002,53 @@ class AgentWireServer:
                 # Calculate activity status from global tracking (works even without active room)
                 activity_status = self._get_global_session_activity(name)
 
-                result.append(
-                    {
-                        "name": name,
-                        "path": path,
-                        "machine": machine,
-                        "voice": config.get("voice", self.config.tts.default_voice),
-                        "type": get_project_type(Path(path)) if Path(path).exists() else "scratch",
-                        "bypass_permissions": config.get("bypass_permissions", True),
-                        "restricted": config.get("restricted", False),
-                        "activity": activity_status,
-                    }
-                )
+                session_data = {
+                    "name": name,
+                    "path": path,
+                    "machine": machine_id,
+                    "voice": config.get("voice", self.config.tts.default_voice),
+                    "type": get_project_type(Path(path)) if Path(path).exists() else "scratch",
+                    "bypass_permissions": config.get("bypass_permissions", True),
+                    "restricted": config.get("restricted", False),
+                    "activity": activity_status,
+                }
+
+                if machine_id is None:
+                    local_sessions.append(session_data)
+                else:
+                    if machine_id not in machine_sessions:
+                        machine_sessions[machine_id] = []
+                    machine_sessions[machine_id].append(session_data)
+
+            # Build machine list with status
+            machines = []
+            for machine_id, sessions_list in machine_sessions.items():
+                machine_config = machines_dict.get(machine_id, {})
+
+                # Check machine status via SSH
+                status = await self._check_machine_status(machine_config)
+
+                machines.append({
+                    "id": machine_id,
+                    "host": machine_config.get("host", machine_id),
+                    "status": status,
+                    "session_count": len(sessions_list),
+                    "sessions": sessions_list,
+                })
+
+            # Return hierarchical structure
+            result = {
+                "local": {
+                    "session_count": len(local_sessions),
+                    "sessions": local_sessions,
+                },
+                "machines": machines,
+            }
 
             return web.json_response(result)
         except Exception as e:
             logger.error(f"Failed to list sessions: {e}")
-            return web.json_response([])
+            return web.json_response({"local": {"session_count": 0, "sessions": []}, "machines": []})
 
     async def api_check_path(self, request: web.Request) -> web.Response:
         """Check if a path exists and is a git repo.

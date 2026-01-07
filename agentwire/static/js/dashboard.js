@@ -170,7 +170,7 @@ function validateSessionName(name) {
 function onSessionNameInput() {
     const nameInput = document.getElementById('sessionName');
     const errorEl = document.getElementById('error');
-    const createBtn = document.querySelector('#createSessionGroup .action-btn');
+    const createBtn = document.querySelector('#createSessionModal .action-btn:not(.secondary)');
 
     const name = nameInput?.value.trim() || '';
     const validation = validateSessionName(name);
@@ -192,15 +192,14 @@ function onSessionNameInput() {
 function onSessionNameChange() {
     const name = document.getElementById('sessionName')?.value.trim() || '';
     const pathInput = document.getElementById('projectPath');
-    const machine = document.getElementById('sessionMachine')?.value || 'local';
 
     // Don't auto-fill if user has manually edited
     if (!pathInput || pathInput.dataset.userEdited === 'true') return;
 
     if (name) {
-        const projectsDir = machine === 'local'
+        const projectsDir = currentMachine === 'local'
             ? '~/projects'
-            : getMachineProjectsDir(machine);
+            : getMachineProjectsDir(currentMachine);
         pathInput.value = `${projectsDir}/${name}`;
         onPathChange();  // Trigger git detection
     } else {
@@ -215,7 +214,6 @@ function onSessionNameChange() {
 
 function onPathChange() {
     const path = document.getElementById('projectPath')?.value.trim() || '';
-    const machine = document.getElementById('sessionMachine')?.value || 'local';
 
     clearTimeout(pathCheckTimeout);
 
@@ -226,7 +224,7 @@ function onPathChange() {
 
     pathCheckTimeout = setTimeout(async () => {
         try {
-            const params = new URLSearchParams({ path, machine });
+            const params = new URLSearchParams({ path, machine: currentMachine });
             const res = await fetch(`/api/check-path?${params}`);
             const data = await res.json();
 
@@ -658,10 +656,19 @@ async function loadMachines() {
             </div>
             <div>
                 <span class="machine-host">${m.local ? '' : (m.user ? m.user + '@' : '') + m.host}</span>
+                <button class="machine-create" data-machine="${m.id}" title="Create session on ${m.id}">+</button>
                 ${!m.local ? `<button class="machine-remove" data-machine="${m.id}" title="Remove machine">✕</button>` : ''}
             </div>
         </div>
     `).join('');
+
+        // Attach create session handlers
+        container.querySelectorAll('.machine-create').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                openCreateSessionModal(btn.dataset.machine);
+            });
+        });
 
         // Attach remove handlers
         container.querySelectorAll('.machine-remove').forEach(btn => {
