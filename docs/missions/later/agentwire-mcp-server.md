@@ -66,12 +66,15 @@ agentwire daemon (background service)
 }
 ```
 
-## Wave 1: Human Actions (BLOCKING)
+## Wave 1: Human Actions (DECISIONS MADE)
 
-- [ ] Decide if daemon should auto-start on boot or manual start
-- [ ] Decide fallback order: Portal → Chatterbox → System, or Chatterbox → Portal → System
-- [ ] Confirm we should deprecate say/remote-say scripts (remove in future version)
-- [ ] Decide if daemon should run one instance globally or per-user
+- [x] Daemon startup: **Manual start** (user runs `agentwire daemon start`)
+- [x] Fallback order: **Daemon → Portal, respecting config.yaml**
+  - Use configured TTS backend (chatterbox/openai/none) as specified in config
+  - Portal API used for room-specific broadcasting (if session detected)
+  - Respect backend setting (don't override with fallbacks)
+- [x] Scripts: **Remove say/remote-say entirely** (clean break, MCP only)
+- [x] Daemon scope: **Per-user** (isolated configs, simpler permissions)
 
 ## Wave 2: Create Daemon Service
 
@@ -355,14 +358,14 @@ class TTSRouter:
         session: str | None
     ) -> TTSResult:
         """
-        Speak text via best available method.
+        Speak text respecting config.yaml backend.
 
-        Fallback order (Wave 1 decision):
-        1. Portal API (if session has room and portal is running)
-        2. Chatterbox direct (if configured)
-        3. System TTS (always available)
+        Routing logic (Wave 1 decision):
+        1. If session detected AND portal running → use portal (broadcasts to browser)
+        2. Otherwise, use configured backend from config.yaml
+        3. Respect user's backend choice (don't override)
         """
-        # Try portal first if we have a session/room
+        # Try portal first if we have a session/room (for browser broadcasting)
         if session:
             try:
                 await self.portal_client.speak(
@@ -372,11 +375,13 @@ class TTSRouter:
                 )
                 return TTSResult(success=True, method="portal")
             except Exception as e:
-                # Portal down or room doesn't exist, try next
+                # Portal down or room doesn't exist, fall through to configured backend
                 pass
 
-        # Try Chatterbox direct
-        if self.config.tts.backend == "chatterbox":
+        # Use configured TTS backend
+        backend = self.config.tts.backend
+
+        if backend == "chatterbox":
             try:
                 await self.chatterbox_client.speak(
                     text=text,
@@ -384,18 +389,22 @@ class TTSRouter:
                 )
                 return TTSResult(success=True, method="chatterbox")
             except Exception as e:
-                # Chatterbox unavailable, try system
-                pass
+                return TTSResult(
+                    success=False,
+                    method="none",
+                    error=f"Chatterbox failed: {e}"
+                )
 
-        # Fallback to system TTS
-        try:
-            self.system_tts.speak(text)
-            return TTSResult(success=True, method="system")
-        except Exception as e:
+        elif backend == "none":
+            # TTS disabled in config
+            return TTSResult(success=True, method="none")
+
+        else:
+            # Unknown or unsupported backend
             return TTSResult(
                 success=False,
                 method="none",
-                error=str(e)
+                error=f"Unknown TTS backend: {backend}"
             )
 ```
 
@@ -439,41 +448,18 @@ class PortalClient:
                 return await response.json()
 ```
 
-### 5.3 System TTS fallback
+### 5.3 Backend clients
 
 **Files:** `agentwire/tts_router.py`
 
-**Purpose:** Use system TTS when nothing else available
+**Chatterbox client** - Direct connection to Chatterbox server (implemented in 5.2 style)
 
-**Implementation:**
-```python
-import platform
-import subprocess
+**Future backends:**
+- OpenAI TTS client (for openai backend)
+- ElevenLabs client (for elevenlabs backend)
+- System TTS client (for system backend)
 
-class SystemTTS:
-    """System TTS using platform-native tools."""
-
-    def speak(self, text: str):
-        """Use system TTS to speak text."""
-        system = platform.system()
-
-        if system == "Darwin":  # macOS
-            subprocess.run(["say", text])
-        elif system == "Linux":
-            # Try espeak or festival
-            try:
-                subprocess.run(["espeak", text])
-            except FileNotFoundError:
-                subprocess.run(["festival", "--tts"], input=text.encode())
-        elif system == "Windows":
-            # PowerShell TTS
-            subprocess.run([
-                "powershell",
-                "-Command",
-                f"Add-Type -AssemblyName System.Speech; "
-                f"(New-Object System.Speech.Synthesis.SpeechSynthesizer).Speak('{text}')"
-            ])
-```
+**Note:** No automatic fallbacks. If configured backend fails, return error. User controls backend via config.yaml.
 
 ## Wave 6: Installation & MCP Registration
 
@@ -520,19 +506,20 @@ async def cmd_daemon_mcp():
     await daemon.start_mcp_only()  # Just MCP, not full daemon
 ```
 
-### 6.3 Deprecation of say/remote-say
+### 6.3 Remove say/remote-say scripts
 
-**Files:** `agentwire/scripts/say`, `agentwire/scripts/remote-say`
+**Files:** `agentwire/scripts/say`, `agentwire/scripts/remote-say`, `agentwire/__main__.py`, `pyproject.toml`
 
-**Migration strategy:**
-- Keep scripts for backwards compatibility (Wave 1 decision)
-- Add deprecation warnings:
-  ```bash
-  #!/bin/bash
-  echo "⚠️  Warning: 'say' script is deprecated. Use MCP 'speak' tool instead." >&2
-  echo "   Install: agentwire skills install" >&2
-  agentwire say "$@"
-  ```
+**Removal strategy (Wave 1 decision - clean break):**
+- Delete `agentwire/scripts/say` and `agentwire/scripts/remote-say`
+- Remove from `pyproject.toml` artifacts
+- Remove installation logic from `cmd_skills_install`
+- Update docs to only mention MCP tools
+
+**Migration path for users:**
+- Existing instructions that use `say "text"` should be updated to use MCP `speak` tool
+- Claude Code auto-discovers speak tool, no instruction changes needed in practice
+- If users have custom scripts calling say/remote-say, they'll get "command not found" and need to update
 
 ## Wave 7: Testing
 
