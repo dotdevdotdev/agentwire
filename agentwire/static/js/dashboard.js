@@ -634,19 +634,16 @@ function renderMachineCard(machine, isLocal = false) {
                 <button class="machine-create-btn" data-machine-id="${machineId}" title="Create session on ${machineName}">+</button>
             </div>`;
 
-    // Sessions container (only if expanded)
-    if (isExpanded) {
-        html += '<div class="machine-sessions">';
+    // Sessions container (always render, toggle visibility)
+    html += `<div class="machine-sessions" style="display: ${isExpanded ? 'block' : 'none'}">`;
 
-        if (sessionCount === 0) {
-            html += '<div class="machine-empty-state">No sessions running on this machine</div>';
-        } else {
-            html += machine.sessions.map(s => renderSessionCard(s, machineId)).join('');
-        }
-
-        html += '</div>';
+    if (sessionCount === 0) {
+        html += '<div class="machine-empty-state">No sessions running on this machine</div>';
+    } else {
+        html += machine.sessions.map(s => renderSessionCard(s, machineId)).join('');
     }
 
+    html += '</div>';
     html += '</div>';
     return html;
 }
@@ -681,6 +678,10 @@ function renderSessionCard(session, machineId) {
     const activityClass = session.activity === 'active' ? 'active' : 'idle';
     const activityIndicator = `<span class="activity-indicator ${activityClass}"></span>`;
 
+    const path = session.path || `~/projects/${displayName}`;
+    const voice = session.voice || DEFAULT_VOICE;
+    const branch = session.branch ? `<div class="session-detail-row">Branch: <span class="session-detail-value">${session.branch}</span></div>` : '';
+
     let html = `
         <div class="session-card ${isExpanded ? 'expanded' : 'collapsed'}">
             <div class="session-header" data-session-name="${session.name}">
@@ -688,16 +689,8 @@ function renderSessionCard(session, machineId) {
                 ${activityIndicator}
                 <span class="session-display-name">${displayName}</span>
                 ${badge}
-            </div>`;
-
-    // Session details (only if expanded)
-    if (isExpanded) {
-        const path = session.path || `~/projects/${displayName}`;
-        const voice = session.voice || DEFAULT_VOICE;
-        const branch = session.branch ? `<div class="session-detail-row">Branch: <span class="session-detail-value">${session.branch}</span></div>` : '';
-
-        html += `
-            <div class="session-details">
+            </div>
+            <div class="session-details" style="display: ${isExpanded ? 'block' : 'none'}">
                 <div class="session-detail-row">Path: <span class="session-detail-value">${path}</span></div>
                 ${branch}
                 <div class="session-detail-row">Voice: <span class="session-detail-value">${voice}</span></div>
@@ -706,10 +699,9 @@ function renderSessionCard(session, machineId) {
                     <a href="/room/${encodeURIComponent(session.name)}" class="session-open-btn">Open Room</a>
                     <button class="session-close-btn" data-session="${session.name}">Close</button>
                 </div>
-            </div>`;
-    }
+            </div>
+        </div>`;
 
-    html += '</div>';
     return html;
 }
 
@@ -725,8 +717,26 @@ function attachMachineEventHandlers(container) {
                 return;
             }
             const machineId = header.dataset.machineId;
-            toggleMachineExpanded(machineId);
-            loadSessions(); // Reload to show/hide sessions
+            const isExpanded = toggleMachineExpanded(machineId);
+
+            // Update DOM directly without reloading
+            const machineCard = header.closest('.machine-card');
+            if (machineCard) {
+                const expandIcon = header.querySelector('.expand-icon');
+                const sessionsContainer = machineCard.querySelector('.machine-sessions');
+
+                if (isExpanded) {
+                    machineCard.classList.remove('collapsed');
+                    machineCard.classList.add('expanded');
+                    if (expandIcon) expandIcon.textContent = '▼';
+                    if (sessionsContainer) sessionsContainer.style.display = 'block';
+                } else {
+                    machineCard.classList.remove('expanded');
+                    machineCard.classList.add('collapsed');
+                    if (expandIcon) expandIcon.textContent = '▶';
+                    if (sessionsContainer) sessionsContainer.style.display = 'none';
+                }
+            }
         });
     });
 
@@ -734,8 +744,26 @@ function attachMachineEventHandlers(container) {
     container.querySelectorAll('.session-header').forEach(header => {
         header.addEventListener('click', (e) => {
             const sessionName = header.dataset.sessionName;
-            toggleSessionExpanded(sessionName);
-            loadSessions(); // Reload to show/hide details
+            const isExpanded = toggleSessionExpanded(sessionName);
+
+            // Update DOM directly without reloading
+            const sessionCard = header.closest('.session-card');
+            if (sessionCard) {
+                const expandIcon = header.querySelector('.expand-icon');
+                const detailsContainer = sessionCard.querySelector('.session-details');
+
+                if (isExpanded) {
+                    sessionCard.classList.remove('collapsed');
+                    sessionCard.classList.add('expanded');
+                    if (expandIcon) expandIcon.textContent = '▼';
+                    if (detailsContainer) detailsContainer.style.display = 'block';
+                } else {
+                    sessionCard.classList.remove('expanded');
+                    sessionCard.classList.add('collapsed');
+                    if (expandIcon) expandIcon.textContent = '▶';
+                    if (detailsContainer) detailsContainer.style.display = 'none';
+                }
+            }
         });
     });
 
