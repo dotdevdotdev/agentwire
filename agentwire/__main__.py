@@ -975,6 +975,36 @@ def cmd_daemon_logs(args) -> int:
     return 0
 
 
+def cmd_daemon_mcp(args) -> int:
+    """Run MCP server on stdio (called by Claude Code).
+    
+    This is the entry point for the AgentWire MCP server when registered
+    with Claude Code. It starts the MCP server on stdio without running
+    the full background daemon.
+    """
+    import asyncio
+    from .session_detector import SessionDetector
+    from .tts_router import TTSRouter
+    from .mcp.server import AgentWireMCPServer
+    from .config import load_config
+    
+    async def run_mcp():
+        # Load configuration
+        config = load_config()
+        
+        # Initialize components
+        session_detector = SessionDetector()
+        tts_router = TTSRouter(config)
+        
+        # Create and run MCP server
+        server = AgentWireMCPServer(session_detector, tts_router)
+        await server.run()
+    
+    asyncio.run(run_mcp())
+    return 0
+
+
+
 # === Say Command ===
 
 def _get_portal_url() -> str:
@@ -3915,137 +3945,6 @@ def get_hooks_source() -> Path:
     raise FileNotFoundError("Could not find hooks directory in package")
 
 
-def get_scripts_source() -> Path:
-    """Get the path to the scripts directory in the installed package."""
-    # First try: scripts directory inside the agentwire package
-    package_dir = Path(__file__).parent
-    scripts_dir = package_dir / "scripts"
-    if scripts_dir.exists():
-        return scripts_dir
-
-    # Fallback: try importlib.resources (for installed packages)
-    try:
-        with importlib.resources.files("agentwire").joinpath("scripts") as p:
-            if p.exists():
-                return Path(p)
-    except (TypeError, FileNotFoundError):
-        pass
-
-    raise FileNotFoundError("Could not find scripts directory in package")
-
-
-def detect_bin_directory() -> Path:
-    """Detect the appropriate bin directory for script installation.
-
-    Returns the bin directory in this order of preference:
-    1. pyenv shims directory (if using pyenv)
-    2. ~/.local/bin (user installation)
-    3. /usr/local/bin (system installation, requires sudo)
-    """
-    # Check if we're using pyenv
-    pyenv_root = os.environ.get("PYENV_ROOT")
-    if pyenv_root:
-        # Get current Python version
-        try:
-            result = subprocess.run(
-                ["pyenv", "version-name"],
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-            version = result.stdout.strip()
-            pyenv_bin = Path(pyenv_root) / "versions" / version / "bin"
-            if pyenv_bin.exists():
-                return pyenv_bin
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            pass
-
-    # Check if we're in a virtual environment
-    venv_bin = os.environ.get("VIRTUAL_ENV")
-    if venv_bin:
-        venv_bin_path = Path(venv_bin) / "bin"
-        if venv_bin_path.exists():
-            return venv_bin_path
-
-    # Default to user bin directory
-    user_bin = Path.home() / ".local" / "bin"
-    user_bin.mkdir(parents=True, exist_ok=True)
-    return user_bin
-
-
-def install_scripts(force: bool = False, copy: bool = False) -> bool:
-    """Install say and remote-say shell scripts.
-
-    Returns True if scripts were installed/updated, False if skipped.
-    """
-    try:
-        scripts_source = get_scripts_source()
-    except FileNotFoundError:
-        print("  Warning: scripts directory not found, skipping script installation")
-        return False
-
-    bin_dir = detect_bin_directory()
-
-    scripts_to_install = ["say", "remote-say"]
-    scripts_installed = []
-    scripts_skipped = []
-
-    for script_name in scripts_to_install:
-        source_script = scripts_source / script_name
-        if not source_script.exists():
-            print(f"  Warning: {script_name} not found in package, skipping")
-            continue
-
-        target_script = bin_dir / script_name
-
-        # Check if already installed
-        file_updated = False
-        if target_script.exists():
-            if target_script.is_symlink():
-                current_target = target_script.resolve()
-                if current_target == source_script.resolve() and not force:
-                    scripts_skipped.append(script_name)
-                    continue
-                else:
-                    target_script.unlink()
-                    file_updated = True
-            elif not force:
-                scripts_skipped.append(script_name)
-                continue
-            else:
-                target_script.unlink()
-                file_updated = True
-        else:
-            file_updated = True
-
-        # Create symlink (preferred) or copy
-        if file_updated or not target_script.exists():
-            if copy:
-                shutil.copy2(source_script, target_script)
-            else:
-                target_script.symlink_to(source_script)
-            # Make executable
-            target_script.chmod(0o755)
-            scripts_installed.append(script_name)
-
-    if scripts_installed:
-        print(f"Installed scripts to {bin_dir}: {', '.join(scripts_installed)}")
-
-        # Check if bin_dir is in PATH
-        path_dirs = os.environ.get("PATH", "").split(os.pathsep)
-        if str(bin_dir) not in path_dirs:
-            print(f"\n  Warning: {bin_dir} is not in your PATH")
-            print(f"  Add to your shell profile (~/.bashrc or ~/.zshrc):")
-            print(f'    export PATH="{bin_dir}:$PATH"')
-
-        return True
-    elif scripts_skipped:
-        print(f"Scripts already installed: {', '.join(scripts_skipped)}")
-        return False
-
-    return False
-
-
 def register_hook_in_settings() -> bool:
     """Register the permission hook in Claude's settings.json.
 
@@ -4215,15 +4114,31 @@ def cmd_skills_install(args) -> int:
     if hook_installed:
         print(f"Installed permission hook to {CLAUDE_HOOKS_DIR / 'agentwire-permission.sh'}")
 
-    # Install say/remote-say scripts
-    scripts_installed = install_scripts(force=args.force, copy=args.copy)
+    # Register MCP server
+    print("
+Registering AgentWire MCP server...")
+    try:
+        subprocess.run(
+            ["claude", "mcp", "add", "--scope", "user", "agentwire", "agentwire", "daemon", "mcp"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        print("AgentWire MCP server registered!")
+        print("Available tools: speak, list_voices, set_voice")
+    except subprocess.CalledProcessError as e:
+        print(f"Warning: Failed to register MCP server: {e.stderr}", file=sys.stderr)
+        print("You can manually register with: claude mcp add --scope user agentwire agentwire daemon mcp")
+    except FileNotFoundError:
+        print("Warning: 'claude' command not found. Install Claude Code first.", file=sys.stderr)
+        print("See: https://claude.ai/download")
 
-    print("\nClaude Code skills installed. Available commands:")
+    print("
+Claude Code skills installed. Available commands:")
     print("  /sessions, /send, /output, /spawn, /new, /kill, /status, /jump")
     if hook_installed:
-        print("\nPermission hook installed for normal session support.")
-    if scripts_installed:
-        print("\nVoice commands installed: say, remote-say")
+        print("
+Permission hook installed for normal session support.")
     return 0
 
 
@@ -4741,6 +4656,12 @@ def main() -> int:
     daemon_logs = daemon_subparsers.add_parser("logs", help="Show daemon logs")
     daemon_logs.add_argument("-n", "--lines", type=int, default=50, help="Number of lines to show (default: 50)")
     daemon_logs.set_defaults(func=cmd_daemon_logs)
+
+    # daemon mcp (runs MCP server on stdio - called by Claude Code)
+    daemon_mcp = daemon_subparsers.add_parser(
+        "mcp", help="Run MCP server on stdio (for Claude Code MCP integration)"
+    )
+    daemon_mcp.set_defaults(func=cmd_daemon_mcp)
 
     # === tunnels command group ===
     tunnels_parser = subparsers.add_parser("tunnels", help="Manage SSH tunnels for service routing")
