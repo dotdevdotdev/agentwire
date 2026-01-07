@@ -974,9 +974,12 @@ class AgentWireServer:
                     machine_sessions[machine_id].append(session_data)
 
             # Build machine list with status
+            # Include ALL configured machines, even if they have no sessions
             machines = []
-            for machine_id, sessions_list in machine_sessions.items():
+            all_machine_ids = set(machines_dict.keys()) | set(machine_sessions.keys())
+            for machine_id in all_machine_ids:
                 machine_config = machines_dict.get(machine_id, {})
+                sessions_list = machine_sessions.get(machine_id, [])
 
                 # Check machine status via SSH
                 status = await self._check_machine_status(machine_config)
