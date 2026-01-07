@@ -18,7 +18,7 @@ class TTSResult:
     """Result of a TTS routing attempt."""
 
     success: bool
-    method: Literal["portal", "chatterbox", "none"]
+    method: Literal["portal", "local", "chatterbox", "none"]
     error: Optional[str] = None
 
 
@@ -50,7 +50,7 @@ class PortalClient:
         return f"https://{host}:{port}"
 
     async def speak(self, text: str, voice: Optional[str], room: str) -> dict:
-        """Send TTS request to portal API.
+        """Send TTS request to portal API for browser broadcasting.
 
         Args:
             text: Text to speak
@@ -65,7 +65,34 @@ class PortalClient:
         """
         url = f"{self.base_url}/api/say/{room}"
 
-        async with aiohttp.ClientSession() as session:
+        timeout = aiohttp.ClientTimeout(total=30)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.post(
+                url,
+                json={"text": text, "voice": voice},
+                ssl=False,  # Self-signed certs
+            ) as response:
+                response.raise_for_status()
+                return await response.json()
+
+    async def speak_local(self, text: str, voice: Optional[str], room: str) -> dict:
+        """Send TTS request to portal API for local speaker playback.
+
+        Args:
+            text: Text to speak
+            voice: TTS voice name (optional)
+            room: Room name for context
+
+        Returns:
+            API response JSON
+
+        Raises:
+            aiohttp.ClientError: If request fails
+        """
+        url = f"{self.base_url}/api/local-tts/{room}"
+
+        timeout = aiohttp.ClientTimeout(total=30)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.post(
                 url,
                 json={"text": text, "voice": voice},
@@ -113,12 +140,12 @@ class ChatterboxClient:
 
 
 class TTSRouter:
-    """Route TTS requests to available backends with fallback.
+    """Route TTS requests to available backends with connection-aware logic.
 
-    Routing logic (from Wave 1 decisions):
-    1. If session detected AND portal running → use portal (broadcasts to browser)
-    2. Otherwise, use configured backend from config.yaml
-    3. Respect user's backend choice (don't override with fallbacks)
+    Routing logic (connection-aware):
+    1. If session detected AND portal has connections → portal (browser playback)
+    2. If session detected AND portal has no connections → local (speaker playback)
+    3. If no session → chatterbox (direct TTS backend)
     """
 
     def __init__(self, config: Config):
@@ -126,10 +153,32 @@ class TTSRouter:
         self.portal_client = PortalClient(config)
         self.chatterbox_client = ChatterboxClient(config)
 
+    async def _check_portal_connections(self, session: str) -> bool:
+        """Check if portal has active browser connections for a session.
+
+        Args:
+            session: Room/session name
+
+        Returns:
+            True if portal has connections, False otherwise
+        """
+        url = f"{self.portal_client.base_url}/api/rooms/{session}/connections"
+
+        try:
+            timeout = aiohttp.ClientTimeout(total=3)
+            async with aiohttp.ClientSession(timeout=timeout) as http_session:
+                async with http_session.get(url, ssl=False) as response:
+                    response.raise_for_status()
+                    data = await response.json()
+                    return data.get("has_connections", False)
+        except Exception:
+            # On any error (timeout, connection refused, etc.), assume no connections
+            return False
+
     async def speak(
         self, text: str, voice: Optional[str], session: Optional[str]
     ) -> TTSResult:
-        """Speak text via appropriate TTS backend.
+        """Speak text via appropriate TTS backend with connection-aware routing.
 
         Args:
             text: Text to speak
@@ -139,19 +188,29 @@ class TTSRouter:
         Returns:
             TTSResult with success status and method used
         """
-        # Try portal first if we have a session/room (for browser broadcasting)
-        if session:
+        # Connection-aware routing
+        if session and await self._check_portal_connections(session):
+            # Route to portal browser playback
             try:
                 await self.portal_client.speak(text=text, voice=voice, room=session)
                 return TTSResult(success=True, method="portal")
-            except Exception:
-                # Portal down or room doesn't exist, fall through to configured backend
-                pass
+            except Exception as e:
+                return TTSResult(
+                    success=False, method="none", error=f"Portal speak failed: {e}"
+                )
 
-        # Use configured TTS backend
-        backend = self.config.tts.backend
+        elif session:
+            # Session exists but no connections - route to local speaker playback
+            try:
+                await self.portal_client.speak_local(text=text, voice=voice, room=session)
+                return TTSResult(success=True, method="local")
+            except Exception as e:
+                return TTSResult(
+                    success=False, method="none", error=f"Local TTS failed: {e}"
+                )
 
-        if backend == "chatterbox":
+        else:
+            # No session - use chatterbox directly
             try:
                 await self.chatterbox_client.speak(text=text, voice=voice)
                 return TTSResult(success=True, method="chatterbox")
@@ -159,13 +218,3 @@ class TTSRouter:
                 return TTSResult(
                     success=False, method="none", error=f"Chatterbox failed: {e}"
                 )
-
-        elif backend == "none":
-            # TTS disabled in config
-            return TTSResult(success=True, method="none")
-
-        else:
-            # Unknown or unsupported backend
-            return TTSResult(
-                success=False, method="none", error=f"Unknown TTS backend: {backend}"
-            )
