@@ -1,5 +1,11 @@
 # Migration Guide: say/remote-say → MCP Tools
 
+> **DEPRECATED:** The daemon-based MCP server approach described in this guide has been removed as part of the TTS architecture cleanup. This guide is preserved for historical reference only.
+>
+> **Current status:** MCP integration needs a new implementation that doesn't rely on a background daemon. Use `say`/`remote-say` shell commands for voice capabilities until MCP is re-implemented.
+
+---
+
 > Moving from shell scripts to native MCP server integration for voice capabilities.
 
 ## Overview

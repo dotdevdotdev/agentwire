@@ -876,135 +876,6 @@ def cmd_tts_status(args) -> int:
         return 1
 
 
-# === Daemon Commands ===
-
-
-def cmd_daemon_start(args) -> int:
-    """Start AgentWire daemon in background."""
-    session_name = "agentwire-daemon"
-
-    # Check if already running
-    if tmux_session_exists(session_name):
-        print(f"Daemon already running in tmux session '{session_name}'")
-        return 0
-
-    # Create logs directory
-    log_dir = CONFIG_DIR / "logs"
-    log_dir.mkdir(parents=True, exist_ok=True)
-    log_file = log_dir / "daemon.log"
-
-    # Start daemon in tmux with output redirected to log
-    cmd = f"python -m agentwire.daemon 2>&1 | tee -a {log_file}"
-
-    result = subprocess.run(
-        ["tmux", "new-session", "-d", "-s", session_name, cmd],
-        capture_output=True,
-        text=True,
-    )
-
-    if result.returncode != 0:
-        print(f"Failed to start daemon: {result.stderr}", file=sys.stderr)
-        return 1
-
-    print(f"Daemon started in tmux session '{session_name}'")
-    print(f"  Logs: {log_file}")
-    print(f"  Attach: tmux attach -t {session_name}")
-    return 0
-
-
-def cmd_daemon_stop(args) -> int:
-    """Stop AgentWire daemon."""
-    session_name = "agentwire-daemon"
-
-    if not tmux_session_exists(session_name):
-        print("Daemon is not running.")
-        return 1
-
-    # Send graceful shutdown signal (Ctrl+C)
-    subprocess.run(["tmux", "send-keys", "-t", session_name, "C-c"])
-    time.sleep(1)
-
-    # Force kill if still running
-    if tmux_session_exists(session_name):
-        subprocess.run(["tmux", "kill-session", "-t", session_name])
-
-    print("Daemon stopped.")
-    return 0
-
-
-def cmd_daemon_status(args) -> int:
-    """Check daemon status."""
-    session_name = "agentwire-daemon"
-
-    if tmux_session_exists(session_name):
-        print(f"Daemon is running in tmux session '{session_name}'")
-        print(f"  Attach: tmux attach -t {session_name}")
-        return 0
-    else:
-        print("Daemon is not running.")
-        print("  Start: agentwire daemon start")
-        return 1
-
-
-def cmd_daemon_restart(args) -> int:
-    """Restart AgentWire daemon."""
-    print("Restarting daemon...")
-
-    # Stop if running
-    cmd_daemon_stop(args)
-
-    # Wait a moment
-    time.sleep(1)
-
-    # Start again
-    return cmd_daemon_start(args)
-
-
-def cmd_daemon_logs(args) -> int:
-    """Show daemon logs."""
-    log_file = CONFIG_DIR / "logs" / "daemon.log"
-
-    if not log_file.exists():
-        print("No daemon logs found.")
-        print(f"  Expected: {log_file}")
-        return 1
-
-    # Use tail to show logs
-    lines = args.lines if hasattr(args, "lines") else 50
-    subprocess.run(["tail", f"-n{lines}", str(log_file)])
-    return 0
-
-
-def cmd_daemon_mcp(args) -> int:
-    """Run MCP server on stdio (called by Claude Code).
-    
-    This is the entry point for the AgentWire MCP server when registered
-    with Claude Code. It starts the MCP server on stdio without running
-    the full background daemon.
-    """
-    import asyncio
-    from .session_detector import SessionDetector
-    from .tts_router import TTSRouter
-    from .mcp.server import AgentWireMCPServer
-    from .config import load_config
-    
-    async def run_mcp():
-        # Load configuration
-        config = load_config()
-        
-        # Initialize components
-        session_detector = SessionDetector()
-        tts_router = TTSRouter(config)
-        
-        # Create and run MCP server
-        server = AgentWireMCPServer(session_detector, tts_router)
-        await server.run()
-    
-    asyncio.run(run_mcp())
-    return 0
-
-
-
 # === Say Command ===
 
 def _get_portal_url() -> str:
@@ -4114,24 +3985,6 @@ def cmd_skills_install(args) -> int:
     if hook_installed:
         print(f"Installed permission hook to {CLAUDE_HOOKS_DIR / 'agentwire-permission.sh'}")
 
-    # Register MCP server
-    print("\nRegistering AgentWire MCP server...")
-    try:
-        subprocess.run(
-            ["claude", "mcp", "add", "--scope", "user", "agentwire", "agentwire", "daemon", "mcp"],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        print("AgentWire MCP server registered!")
-        print("Available tools: speak, list_voices, set_voice")
-    except subprocess.CalledProcessError as e:
-        print(f"Warning: Failed to register MCP server: {e.stderr}", file=sys.stderr)
-        print("You can manually register with: claude mcp add --scope user agentwire agentwire daemon mcp")
-    except FileNotFoundError:
-        print("Warning: 'claude' command not found. Install Claude Code first.", file=sys.stderr)
-        print("See: https://claude.ai/download")
-
     print("\nClaude Code skills installed. Available commands:")
     print("  /sessions, /send, /output, /spawn, /new, /kill, /status, /jump")
     if hook_installed:
@@ -4628,37 +4481,6 @@ def main() -> int:
     # tts status
     tts_status = tts_subparsers.add_parser("status", help="Check TTS status")
     tts_status.set_defaults(func=cmd_tts_status)
-
-    # === daemon command group ===
-    daemon_parser = subparsers.add_parser("daemon", help="Manage AgentWire daemon")
-    daemon_subparsers = daemon_parser.add_subparsers(dest="daemon_command")
-
-    # daemon start
-    daemon_start = daemon_subparsers.add_parser("start", help="Start daemon in background")
-    daemon_start.set_defaults(func=cmd_daemon_start)
-
-    # daemon stop
-    daemon_stop = daemon_subparsers.add_parser("stop", help="Stop daemon")
-    daemon_stop.set_defaults(func=cmd_daemon_stop)
-
-    # daemon status
-    daemon_status = daemon_subparsers.add_parser("status", help="Check daemon status")
-    daemon_status.set_defaults(func=cmd_daemon_status)
-
-    # daemon restart
-    daemon_restart = daemon_subparsers.add_parser("restart", help="Restart daemon")
-    daemon_restart.set_defaults(func=cmd_daemon_restart)
-
-    # daemon logs
-    daemon_logs = daemon_subparsers.add_parser("logs", help="Show daemon logs")
-    daemon_logs.add_argument("-n", "--lines", type=int, default=50, help="Number of lines to show (default: 50)")
-    daemon_logs.set_defaults(func=cmd_daemon_logs)
-
-    # daemon mcp (runs MCP server on stdio - called by Claude Code)
-    daemon_mcp = daemon_subparsers.add_parser(
-        "mcp", help="Run MCP server on stdio (for Claude Code MCP integration)"
-    )
-    daemon_mcp.set_defaults(func=cmd_daemon_mcp)
 
     # === tunnels command group ===
     tunnels_parser = subparsers.add_parser("tunnels", help="Manage SSH tunnels for service routing")
