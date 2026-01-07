@@ -414,53 +414,6 @@ class AgentWireServer:
 
         return "active" if time_since_last_output <= threshold else "idle"
 
-    async def _check_machine_status(self, machine_config: dict) -> str:
-        """Check if a remote machine is online via SSH test.
-
-        Args:
-            machine_config: Machine dict with 'host' and optional 'user'
-
-        Returns:
-            "online" if SSH test succeeds, "offline" otherwise
-        """
-        if not machine_config:
-            return "offline"
-
-        host = machine_config.get("host")
-        user = machine_config.get("user")
-
-        if not host:
-            return "offline"
-
-        # Run SSH test in executor to avoid blocking
-        loop = asyncio.get_event_loop()
-        target = f"{user}@{host}" if user else host
-
-        def ssh_test():
-            try:
-                result = subprocess.run(
-                    [
-                        "ssh",
-                        "-o", "ConnectTimeout=2",
-                        "-o", "StrictHostKeyChecking=accept-new",
-                        "-o", "BatchMode=yes",
-                        target,
-                        "echo ok",
-                    ],
-                    capture_output=True,
-                    text=True,
-                    timeout=3,
-                )
-                return result.returncode == 0
-            except (subprocess.TimeoutExpired, Exception):
-                return False
-
-        try:
-            is_online = await loop.run_in_executor(None, ssh_test)
-            return "online" if is_online else "offline"
-        except Exception:
-            return "offline"
-
     async def handle_room(self, request: web.Request) -> web.Response:
         """Serve a room page."""
         name = request.match_info["name"]
@@ -1049,6 +1002,58 @@ class AgentWireServer:
         except Exception as e:
             logger.error(f"Failed to list sessions: {e}")
             return web.json_response({"local": {"session_count": 0, "sessions": []}, "machines": []})
+
+    async def api_machine_status(self, request: web.Request) -> web.Response:
+        """Get status for a specific machine.
+
+        Returns online/offline status and session count for a machine.
+
+        URL params:
+            machine_id: The machine ID to check
+
+        Response:
+            {
+                "status": "online" | "offline",
+                "session_count": <int>
+            }
+        """
+        machine_id = request.match_info["machine_id"]
+
+        try:
+            # Load machines config
+            machines_dict = {}
+            if hasattr(self.agent, 'machines'):
+                for m in self.agent.machines:
+                    machines_dict[m.get('id')] = m
+
+            machine_config = machines_dict.get(machine_id)
+            if not machine_config:
+                return web.json_response(
+                    {"status": "offline", "session_count": 0},
+                    status=404
+                )
+
+            # Check machine status
+            status = await self._check_machine_status(machine_config)
+
+            # Count sessions for this machine
+            sessions = self.agent.list_sessions()
+            session_count = 0
+            for name in sessions:
+                _, _, session_machine = parse_session_name(name)
+                if session_machine == machine_id:
+                    session_count += 1
+
+            return web.json_response({
+                "status": status,
+                "session_count": session_count,
+            })
+        except Exception as e:
+            logger.error(f"Failed to get machine status for {machine_id}: {e}")
+            return web.json_response(
+                {"status": "offline", "session_count": 0},
+                status=500
+            )
 
     async def api_check_path(self, request: web.Request) -> web.Response:
         """Check if a path exists and is a git repo.
