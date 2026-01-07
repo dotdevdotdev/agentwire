@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import aiohttp
 import aiohttp_jinja2
 import jinja2
 from aiohttp import web
@@ -150,6 +151,8 @@ class AgentWireServer:
         self.app.router.add_post("/upload", self.handle_upload)
         self.app.router.add_post("/send/{name:.+}", self.handle_send)
         self.app.router.add_post("/api/say/{name:.+}", self.api_say)
+        self.app.router.add_get("/api/rooms/{name:.+}/connections", self.api_room_connections)
+        self.app.router.add_post("/api/local-tts/{name:.+}", self.api_local_tts)
         self.app.router.add_post("/api/answer/{name:.+}", self.api_answer)
         self.app.router.add_post("/api/room/{name:.+}/recreate", self.api_recreate_session)
         self.app.router.add_post("/api/room/{name:.+}/spawn-sibling", self.api_spawn_sibling)
@@ -1899,6 +1902,139 @@ projects:
         except Exception as e:
             logger.error(f"Say API failed: {e}")
             return web.json_response({"error": str(e)}, status=500)
+
+    async def api_room_connections(self, request: web.Request) -> web.Response:
+        """GET /api/rooms/{room}/connections - Check if room has active browser connections."""
+        name = request.match_info["name"]
+        try:
+            has_connections = False
+            connection_count = 0
+
+            if name in self.rooms:
+                room = self.rooms[name]
+                connection_count = len(room.clients)
+                has_connections = connection_count > 0
+
+            return web.json_response({
+                "has_connections": has_connections,
+                "connection_count": connection_count
+            })
+
+        except Exception as e:
+            logger.error(f"Room connections check failed: {e}")
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def api_local_tts(self, request: web.Request) -> web.Response:
+        """POST /api/local-tts/{room} - Generate TTS and play locally (not to browser)."""
+        name = request.match_info["name"]
+        try:
+            data = await request.json()
+            text = data.get("text", "").strip()
+            voice = data.get("voice")
+
+            if not text:
+                return web.json_response({"error": "No text provided"}, status=400)
+
+            # Get room config for defaults
+            room_config = self._get_room_config(name)
+            if voice is None:
+                voice = room_config.voice
+            exaggeration = room_config.exaggeration
+            cfg_weight = room_config.cfg_weight
+
+            # Get TTS URL using NetworkContext
+            from .network import NetworkContext
+            ctx = NetworkContext.from_config()
+            tts_url = ctx.get_service_url("tts", use_tunnel=True)
+
+            logger.info(f"[{name}] Local TTS: {text[:50]}... (voice={voice})")
+
+            # Generate TTS audio
+            payload = {
+                "text": text,
+                "voice": voice,
+                "exaggeration": exaggeration,
+                "cfg_weight": cfg_weight,
+            }
+
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{tts_url}/tts",
+                    json=payload,
+                    timeout=aiohttp.ClientTimeout(total=30)
+                ) as response:
+                    if response.status != 200:
+                        error_text = await response.text()
+                        logger.error(f"TTS generation failed: {error_text}")
+                        return web.json_response(
+                            {"success": False, "error": f"TTS generation failed: {error_text}"},
+                            status=500
+                        )
+
+                    audio_data = await response.read()
+
+            # Save to temp file
+            temp_file = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+            try:
+                temp_file.write(audio_data)
+                temp_path = temp_file.name
+                temp_file.close()
+
+                # Play audio (platform-specific)
+                import sys
+                if sys.platform == "darwin":
+                    # macOS: use afplay
+                    proc = await asyncio.create_subprocess_exec(
+                        "afplay", temp_path,
+                        stdout=asyncio.subprocess.DEVNULL,
+                        stderr=asyncio.subprocess.DEVNULL
+                    )
+                    await proc.wait()
+                elif sys.platform == "linux":
+                    # Linux: try aplay, paplay, play in order
+                    players = ["aplay", "paplay", "play"]
+                    played = False
+                    for player in players:
+                        try:
+                            proc = await asyncio.create_subprocess_exec(
+                                player, temp_path,
+                                stdout=asyncio.subprocess.DEVNULL,
+                                stderr=asyncio.subprocess.DEVNULL
+                            )
+                            await proc.wait()
+                            played = True
+                            break
+                        except FileNotFoundError:
+                            continue
+
+                    if not played:
+                        logger.warning("No audio player found (tried aplay, paplay, play)")
+                        return web.json_response(
+                            {"success": False, "error": "No audio player available"},
+                            status=500
+                        )
+                else:
+                    logger.warning(f"Local TTS playback not supported on platform: {sys.platform}")
+                    return web.json_response(
+                        {"success": False, "error": f"Platform not supported: {sys.platform}"},
+                        status=500
+                    )
+
+                return web.json_response({"success": True})
+
+            finally:
+                # Clean up temp file
+                Path(temp_path).unlink(missing_ok=True)
+
+        except asyncio.TimeoutError:
+            logger.error(f"TTS generation timeout for: {text[:50]}...")
+            return web.json_response(
+                {"success": False, "error": "TTS generation timeout"},
+                status=500
+            )
+        except Exception as e:
+            logger.error(f"Local TTS API failed: {e}")
+            return web.json_response({"success": False, "error": str(e)}, status=500)
 
     async def api_answer(self, request: web.Request) -> web.Response:
         """POST /api/answer/{room} - Answer an AskUserQuestion prompt."""
