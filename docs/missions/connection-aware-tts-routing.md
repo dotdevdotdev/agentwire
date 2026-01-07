@@ -47,7 +47,7 @@ MCP `speak()` checks portal connection status before routing:
 
 ### Tasks
 
-- [ ] **1.1: Add portal API endpoints**
+- [x] **1.1: Add portal API endpoints**
   - File: `agentwire/server.py`
   - Add `GET /api/rooms/{room}/connections` endpoint
     - Returns: `{"has_connections": bool, "connection_count": int}`
@@ -60,7 +60,7 @@ MCP `speak()` checks portal connection status before routing:
     - Returns: `{"success": bool, "error": Optional[str]}`
     - Reuse logic from `agentwire/__main__.py:_local_say()`
 
-- [ ] **1.2: Update TTSRouter with connection-aware logic**
+- [x] **1.2: Update TTSRouter with connection-aware logic**
   - File: `agentwire/tts_router.py`
   - Add `_check_portal_connections(session: str) -> bool` method
     - Calls `GET /api/rooms/{session}/connections` with 3 second timeout
@@ -77,7 +77,7 @@ MCP `speak()` checks portal connection status before routing:
     ```
   - Update `TTSResult` to distinguish between "portal" and "local" methods
 
-- [ ] **1.3: Update PortalClient for local playback**
+- [x] **1.3: Update PortalClient for local playback**
   - File: `agentwire/tts_router.py`
   - Add `speak_local()` method to `PortalClient`
   - POSTs to `/api/local-tts/{room}` endpoint
@@ -90,7 +90,7 @@ MCP `speak()` checks portal connection status before routing:
 
 ### Tasks
 
-- [ ] **2.1: Update MCP server integration**
+- [x] **2.1: Update MCP server integration**
   - File: `agentwire/mcp/server.py`
   - Verify integration works with updated TTSRouter
   - Test session detection + routing logic
