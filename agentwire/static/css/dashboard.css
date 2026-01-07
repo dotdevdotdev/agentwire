@@ -96,7 +96,7 @@
 }
 
 .action-header:hover {
-    background: var(--bg-subtle);
+    background: var(--bg-subtle);    /* Level 4: subtle highlight */
 }
 
 .action-header h3 {
@@ -515,17 +515,17 @@
 }
 
 .session-badge.bypass {
-    background: var(--bg-muted);
+    background: var(--bg-hover);     /* Level 3: visible but subtle */
     color: var(--primary);
 }
 
 .session-badge.prompted {
-    background: var(--bg-muted);
+    background: var(--bg-hover);     /* Level 3: visible but subtle */
     color: var(--text-muted);
 }
 
 .session-badge.restricted {
-    background: var(--bg-muted);
+    background: var(--bg-hover);     /* Level 3: visible but subtle */
     color: var(--text-muted);
 }
 
@@ -920,14 +920,14 @@
 
 /* Machine card - distinct from session cards */
 .machine-card {
-    background: var(--bg-card);
+    background: var(--bg-card);      /* Level 1: darkest */
     border-radius: var(--radius-md);
     overflow: hidden;
     transition: all 0.2s;
 }
 
 .machine-card:hover {
-    background: var(--bg-elevated);
+    background: var(--bg-hover);     /* Level 3: hover state */
 }
 
 /* Machine header - clickable for expand/collapse */
@@ -942,7 +942,7 @@
 }
 
 .machine-header:hover {
-    background: var(--bg-subtle);
+    background: var(--bg-subtle);    /* Level 4: subtle highlight */
 }
 
 /* Machine info container (expand icon + status + name + count) */
@@ -1086,12 +1086,12 @@
 .machine-sessions .session-card {
     margin-left: calc(14px + var(--space-sm)); /* Align with machine name (icon width + gap) */
     margin-bottom: var(--space-sm);
-    background: var(--bg-subtle);
+    background: var(--bg-nested);    /* Level 2: nested item */
     border-radius: var(--radius-sm);
 }
 
 .machine-sessions .session-card:hover {
-    background: var(--bg-muted);
+    background: var(--bg-hover);     /* Level 3: hover state */
 }
 
 /* Last session in a machine group */
@@ -1307,7 +1307,7 @@
    ============================================================================= */
 
 .session-card.nested {
-    background: var(--bg-subtle);
+    background: var(--bg-nested);    /* Level 2: nested item */
     border-radius: var(--radius-sm);
     padding: 0;
     margin-bottom: var(--space-xs);
@@ -1325,7 +1325,7 @@
 }
 
 .session-header:hover {
-    background: var(--bg-muted);
+    background: var(--bg-hover);     /* Level 3: hover state */
 }
 
 .session-toggle {
