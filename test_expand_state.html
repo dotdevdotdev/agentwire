@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Expand State Management Test</title>
+    <style>
+        body { font-family: monospace; padding: 20px; }
+        .test { margin: 10px 0; padding: 10px; border: 1px solid #ccc; }
+        .pass { background: #d4edda; }
+        .fail { background: #f8d7da; }
+        pre { background: #f5f5f5; padding: 10px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>Expand/Collapse State Management Tests</h1>
+    <div id="results"></div>
+
+    <script type="module">
+        // Copy the expand/collapse state management functions here for testing
+        const STORAGE_KEY_EXPAND_STATE = 'agentwire:dashboard:expandedState';
+
+        function getExpandedState() {
+            const stored = localStorage.getItem(STORAGE_KEY_EXPAND_STATE);
+            if (!stored) {
+                return {
+                    machines: { local: true },
+                    sessions: {}
+                };
+            }
+            try {
+                return JSON.parse(stored);
+            } catch (e) {
+                console.error('Failed to parse expand state:', e);
+                return {
+                    machines: { local: true },
+                    sessions: {}
+                };
+            }
+        }
+
+        function setExpandedState(state) {
+            try {
+                localStorage.setItem(STORAGE_KEY_EXPAND_STATE, JSON.stringify(state));
+            } catch (e) {
+                console.error('Failed to save expand state:', e);
+            }
+        }
+
+        function isMachineExpanded(machineId) {
+            const state = getExpandedState();
+            if (state.machines[machineId] === undefined) {
+                return machineId === 'local';
+            }
+            return state.machines[machineId];
+        }
+
+        function toggleMachineExpanded(machineId) {
+            const state = getExpandedState();
+            const currentState = isMachineExpanded(machineId);
+            state.machines[machineId] = !currentState;
+            setExpandedState(state);
+            return state.machines[machineId];
+        }
+
+        function isSessionExpanded(sessionName) {
+            const state = getExpandedState();
+            return state.sessions[sessionName] === true;
+        }
+
+        function toggleSessionExpanded(sessionName) {
+            const state = getExpandedState();
+            const currentState = isSessionExpanded(sessionName);
+            state.sessions[sessionName] = !currentState;
+            setExpandedState(state);
+            return state.sessions[sessionName];
+        }
+
+        function cleanupExpandedState(machines, sessions) {
+            const state = getExpandedState();
+            let modified = false;
+
+            const validMachineIds = new Set(machines.map(m => m.id));
+            validMachineIds.add('local');
+
+            for (const machineId in state.machines) {
+                if (!validMachineIds.has(machineId)) {
+                    delete state.machines[machineId];
+                    modified = true;
+                }
+            }
+
+            const validSessionNames = new Set(sessions.map(s => s.name));
+
+            for (const sessionName in state.sessions) {
+                if (!validSessionNames.has(sessionName)) {
+                    delete state.sessions[sessionName];
+                    modified = true;
+                }
+            }
+
+            if (modified) {
+                setExpandedState(state);
+            }
+        }
+
+        // Test runner
+        const results = document.getElementById('results');
+        let testCount = 0;
+        let passCount = 0;
+
+        function test(name, fn) {
+            testCount++;
+            try {
+                fn();
+                results.innerHTML += `<div class="test pass">✓ ${name}</div>`;
+                passCount++;
+            } catch (e) {
+                results.innerHTML += `<div class="test fail">✗ ${name}<pre>${e.message}\n${e.stack}</pre></div>`;
+            }
+        }
+
+        function assert(condition, message) {
+            if (!condition) {
+                throw new Error(message || 'Assertion failed');
+            }
+        }
+
+        // Clear localStorage before tests
+        localStorage.removeItem(STORAGE_KEY_EXPAND_STATE);
+
+        // Run tests
+        test('Default state: local machine is expanded', () => {
+            assert(isMachineExpanded('local'), 'Local should be expanded by default');
+        });
+
+        test('Default state: remote machines are collapsed', () => {
+            assert(!isMachineExpanded('gpu-server'), 'Remote machines should be collapsed by default');
+        });
+
+        test('Default state: sessions are collapsed', () => {
+            assert(!isSessionExpanded('my-session'), 'Sessions should be collapsed by default');
+        });
+
+        test('Toggle machine: local can be collapsed', () => {
+            const newState = toggleMachineExpanded('local');
+            assert(!newState, 'Local should toggle to collapsed');
+            assert(!isMachineExpanded('local'), 'Local should remain collapsed');
+        });
+
+        test('Toggle machine: remote can be expanded', () => {
+            const newState = toggleMachineExpanded('gpu-server');
+            assert(newState, 'Remote should toggle to expanded');
+            assert(isMachineExpanded('gpu-server'), 'Remote should remain expanded');
+        });
+
+        test('Toggle session: can be expanded', () => {
+            const newState = toggleSessionExpanded('test-session');
+            assert(newState, 'Session should toggle to expanded');
+            assert(isSessionExpanded('test-session'), 'Session should remain expanded');
+        });
+
+        test('Toggle session: can be collapsed', () => {
+            const newState = toggleSessionExpanded('test-session');
+            assert(!newState, 'Session should toggle to collapsed');
+            assert(!isSessionExpanded('test-session'), 'Session should remain collapsed');
+        });
+
+        test('State persists across page reloads', () => {
+            toggleMachineExpanded('machine1');
+            toggleSessionExpanded('session1');
+
+            // Simulate reload by creating new state object
+            const stored = localStorage.getItem(STORAGE_KEY_EXPAND_STATE);
+            const parsed = JSON.parse(stored);
+
+            assert(parsed.machines.machine1 === true, 'Machine state should persist');
+            assert(parsed.sessions.session1 === true, 'Session state should persist');
+        });
+
+        test('Cleanup removes deleted machines', () => {
+            // Add some machine states
+            toggleMachineExpanded('machine-to-delete');
+            toggleMachineExpanded('machine-to-keep');
+
+            // Cleanup with only machine-to-keep
+            cleanupExpandedState(
+                [{ id: 'machine-to-keep' }],
+                []
+            );
+
+            const state = getExpandedState();
+            assert(state.machines['machine-to-delete'] === undefined, 'Deleted machine should be removed');
+            assert(state.machines['machine-to-keep'] !== undefined, 'Kept machine should remain');
+        });
+
+        test('Cleanup removes deleted sessions', () => {
+            // Add some session states
+            toggleSessionExpanded('session-to-delete');
+            toggleSessionExpanded('session-to-keep');
+
+            // Cleanup with only session-to-keep
+            cleanupExpandedState(
+                [],
+                [{ name: 'session-to-keep' }]
+            );
+
+            const state = getExpandedState();
+            assert(state.sessions['session-to-delete'] === undefined, 'Deleted session should be removed');
+            assert(state.sessions['session-to-keep'] !== undefined, 'Kept session should remain');
+        });
+
+        test('Cleanup always preserves local machine', () => {
+            cleanupExpandedState([], []);
+            const state = getExpandedState();
+            // Local should remain in the state even if not in machines list
+            assert(isMachineExpanded('local') === false, 'Local should still return a value (collapsed from earlier test)');
+        });
+
+        // Display summary
+        results.innerHTML += `<div class="test" style="margin-top: 20px; font-weight: bold;">
+            ${passCount}/${testCount} tests passed
+        </div>`;
+
+        if (passCount === testCount) {
+            results.innerHTML += `<div class="test pass">All tests passed! ✓</div>`;
+        }
+
+        // Show current state
+        results.innerHTML += `<div class="test">
+            <strong>Current localStorage state:</strong>
+            <pre>${localStorage.getItem(STORAGE_KEY_EXPAND_STATE)}</pre>
+        </div>`;
+    </script>
+</body>
+</html>
