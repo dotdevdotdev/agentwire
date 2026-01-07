@@ -1084,10 +1084,12 @@
 
 /* Session card within machine - indented */
 .machine-sessions .session-card {
+    display: block;  /* Override old flex layout */
     margin-left: calc(14px + var(--space-sm)); /* Align with machine name (icon width + gap) */
     margin-bottom: var(--space-sm);
     background: var(--bg-nested);    /* Level 2: nested item */
     border-radius: var(--radius-sm);
+    padding: 0;  /* Remove padding, let header/details control it */
 }
 
 .machine-sessions .session-card:hover {
@@ -1318,6 +1320,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
+    width: 100%;
     padding: var(--space-md);
     cursor: pointer;
     user-select: none;
@@ -1395,8 +1398,10 @@
 }
 
 .session-details {
+    width: 100%;
     padding: 0 var(--space-md) var(--space-md) var(--space-md);
     animation: slideDown 0.2s ease-out;
+    box-sizing: border-box;
 }
 
 /* Session details table */
