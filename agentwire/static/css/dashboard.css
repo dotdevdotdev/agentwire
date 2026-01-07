@@ -1317,7 +1317,7 @@
 .session-header {
     display: flex;
     align-items: center;
-    gap: var(--space-sm);
+    justify-content: space-between;
     padding: var(--space-md);
     cursor: pointer;
     user-select: none;
@@ -1326,6 +1326,57 @@
 
 .session-header:hover {
     background: var(--bg-hover);     /* Level 3: hover state */
+}
+
+.session-header-left {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    flex: 1;
+}
+
+.session-header-right {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+    flex-shrink: 0;
+}
+
+/* Session action buttons (goto, close) */
+.session-action-btn {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: var(--space-xs);
+    font-size: 1.1rem;
+    border-radius: var(--radius-sm);
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
+    width: 28px;
+    height: 28px;
+}
+
+.session-action-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.session-action-btn.goto-btn {
+    font-size: 1.2rem;
+    font-weight: bold;
+}
+
+.session-action-btn.goto-btn:hover {
+    color: var(--primary);
+}
+
+.session-action-btn.close-btn:hover {
+    color: var(--error);
+    background: rgba(248, 113, 113, 0.1);
 }
 
 .session-toggle {
@@ -1345,8 +1396,46 @@
 
 .session-details {
     padding: 0 var(--space-md) var(--space-md) var(--space-md);
-    margin-left: calc(14px + var(--space-sm)); /* Align with session name */
     animation: slideDown 0.2s ease-out;
+}
+
+/* Session details table */
+.session-details-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+.session-details-table td {
+    padding: var(--space-sm) 0;
+    border-bottom: 1px solid var(--bg-hover);
+}
+
+.session-details-table tr:last-child td {
+    border-bottom: none;
+}
+
+.session-details-table .detail-key {
+    width: 33%;
+    color: var(--text-muted);
+    font-weight: 500;
+    vertical-align: top;
+    padding-right: var(--space-md);
+}
+
+.session-details-table .detail-value {
+    width: 67%;
+    color: var(--text-primary);
+    word-break: break-all;
+}
+
+.session-details-table .detail-value.active {
+    color: var(--primary);
+    font-weight: 600;
+}
+
+.session-details-table .detail-value.idle {
+    color: var(--text-muted);
 }
 
 @keyframes slideDown {
@@ -1360,105 +1449,8 @@
     }
 }
 
-.session-detail-row {
-    display: flex;
-    gap: var(--space-sm);
-    margin-top: var(--space-sm);
-    font-size: 0.9rem;
-}
-
-.detail-label {
-    color: var(--text-muted);
-    font-weight: 500;
-    min-width: 60px;
-    flex-shrink: 0;
-}
-
-.detail-value {
-    color: var(--text-primary);
-    word-break: break-all;
-}
-
-.detail-value.active {
-    color: var(--primary);
-    font-weight: 600;
-}
-
-.detail-value.idle {
-    color: var(--text-muted);
-}
-
-.session-actions {
-    display: flex;
-    gap: var(--space-sm);
-    margin-top: var(--space-md);
-}
-
-.session-btn {
-    padding: var(--space-xs) var(--space-md);
-    background: var(--primary);
-    color: var(--primary-foreground);
-    border: none;
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-    font-weight: 600;
-    text-decoration: none;
-    transition: opacity 0.2s;
-    display: inline-block;
-}
-
-.session-btn:hover {
-    opacity: 0.9;
-}
-
-.session-close-btn {
-    padding: var(--space-xs) var(--space-md);
-    background: var(--bg-elevated);
-    color: var(--text-muted);
-    border: none;
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-    transition: all 0.2s;
-}
-
-.session-close-btn:hover {
-    background: var(--text-muted);
-    color: var(--bg-dark);
-}
-
 .session-display-name {
     font-weight: 600;
     color: var(--text-primary);
     flex: 1;
-}
-
-.session-open-btn {
-    padding: var(--space-xs) var(--space-md);
-    background: var(--primary);
-    color: #000;
-    border: none;
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-    font-weight: 600;
-    text-decoration: none;
-    transition: all 0.2s;
-    display: inline-block;
-}
-
-.session-open-btn:hover {
-    background: var(--primary-dim);
-}
-
-.session-detail-value {
-    color: var(--text-primary);
-    word-break: break-all;
-}
-
-.session-detail-value.active {
-    color: var(--primary);
-    font-weight: 600;
-}
-
-.session-detail-value.idle {
-    color: var(--text-muted);
 }

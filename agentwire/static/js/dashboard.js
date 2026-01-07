@@ -680,25 +680,41 @@ function renderSessionCard(session, machineId) {
 
     const path = session.path || `~/projects/${displayName}`;
     const voice = session.voice || DEFAULT_VOICE;
-    const branch = session.branch ? `<div class="session-detail-row">Branch: <span class="session-detail-value">${session.branch}</span></div>` : '';
+    const branch = session.branch || '';
 
     let html = `
         <div class="session-card ${isExpanded ? 'expanded' : 'collapsed'}">
             <div class="session-header" data-session-name="${session.name}">
-                <span class="expand-icon">${expandIcon}</span>
-                ${activityIndicator}
-                <span class="session-display-name">${displayName}</span>
-                ${badge}
+                <div class="session-header-left">
+                    <span class="expand-icon">${expandIcon}</span>
+                    ${activityIndicator}
+                    <span class="session-display-name">${displayName}</span>
+                    ${badge}
+                </div>
+                <div class="session-header-right">
+                    <a href="/room/${encodeURIComponent(session.name)}" class="session-action-btn goto-btn" title="Go to room">→</a>
+                    <button class="session-action-btn close-btn" data-session="${session.name}" title="Close session">🗑</button>
+                </div>
             </div>
             <div class="session-details" style="display: ${isExpanded ? 'block' : 'none'}">
-                <div class="session-detail-row">Path: <span class="session-detail-value">${path}</span></div>
-                ${branch}
-                <div class="session-detail-row">Voice: <span class="session-detail-value">${voice}</span></div>
-                <div class="session-detail-row">Status: <span class="session-detail-value ${activityClass}">${session.activity || 'idle'}</span></div>
-                <div class="session-actions">
-                    <a href="/room/${encodeURIComponent(session.name)}" class="session-open-btn">Open Room</a>
-                    <button class="session-close-btn" data-session="${session.name}">Close</button>
-                </div>
+                <table class="session-details-table">
+                    <tr>
+                        <td class="detail-key">Path</td>
+                        <td class="detail-value">${path}</td>
+                    </tr>
+                    ${branch ? `<tr>
+                        <td class="detail-key">Branch</td>
+                        <td class="detail-value">${branch}</td>
+                    </tr>` : ''}
+                    <tr>
+                        <td class="detail-key">Voice</td>
+                        <td class="detail-value">${voice}</td>
+                    </tr>
+                    <tr>
+                        <td class="detail-key">Status</td>
+                        <td class="detail-value ${activityClass}">${session.activity || 'idle'}</td>
+                    </tr>
+                </table>
             </div>
         </div>`;
 
@@ -776,8 +792,15 @@ function attachMachineEventHandlers(container) {
         });
     });
 
+    // Session action buttons (prevent event bubbling to header)
+    container.querySelectorAll('.session-action-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation(); // Prevent session toggle
+        });
+    });
+
     // Session close button
-    container.querySelectorAll('.session-close-btn').forEach(btn => {
+    container.querySelectorAll('.close-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation(); // Prevent session toggle
