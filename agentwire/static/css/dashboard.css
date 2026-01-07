@@ -955,8 +955,8 @@
 
 /* Machine create button */
 .machine-create-btn {
-    background: var(--primary);
-    color: #000;
+    background: none;
+    color: var(--primary);
     border: none;
     width: 28px;
     height: 28px;
@@ -972,7 +972,7 @@
 }
 
 .machine-create-btn:hover {
-    background: var(--primary-dim);
+    background: var(--bg-hover);
     transform: scale(1.1);
 }
 
@@ -1373,8 +1373,11 @@
     color: var(--primary);
 }
 
-.session-action-btn.close-btn:hover {
+.session-action-btn.close-btn {
     color: var(--error);
+}
+
+.session-action-btn.close-btn:hover {
     background: rgba(248, 113, 113, 0.1);
 }
 
