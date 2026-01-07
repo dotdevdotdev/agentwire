@@ -493,9 +493,8 @@ class AgentWireServer:
 
         try:
             # Parse session name for local vs remote
-            parsed = parse_session_name(room_name)
-            session_name = parsed["session"]
-            machine = parsed.get("machine")
+            project, branch, machine = parse_session_name(room_name)
+            session_name = f"{project}/{branch}" if branch else project
 
             # Build tmux attach command
             if machine:

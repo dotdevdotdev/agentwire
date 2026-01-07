@@ -51,13 +51,19 @@ export class TerminalMode {
 
     // Create xterm instance with theme matching portal
     const isDark = document.body.classList.contains('dark');
+
+    // Read CSS custom properties for theme colors
+    const styles = getComputedStyle(document.documentElement);
+    const bgDark = styles.getPropertyValue('--bg-dark').trim();
+    const textPrimary = styles.getPropertyValue('--text-primary').trim();
+
     this.term = new Terminal({
       cursorBlink: true,
       fontSize: 14,
       fontFamily: 'Menlo, Monaco, "Courier New", monospace',
       theme: isDark ? {
-        background: '#1e1e1e',
-        foreground: '#d4d4d4',
+        background: bgDark || '#000',
+        foreground: textPrimary || '#E8EEF2',
       } : {
         background: '#ffffff',
         foreground: '#333333',
