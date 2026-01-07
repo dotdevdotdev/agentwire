@@ -287,10 +287,10 @@
 .action-btn {
     width: 100%;
     padding: 0.6rem;
-    background: var(--primary-subtle);
-    border: 1px solid rgba(0, 221, 0, 0.3);
+    background: var(--primary);
+    border: none;
     border-radius: var(--radius-sm);
-    color: var(--primary);
+    color: #000;
     font-size: 0.9rem;
     font-weight: 500;
     cursor: pointer;
@@ -298,8 +298,7 @@
 }
 
 .action-btn:hover {
-    background: rgba(0, 221, 0, 0.25);
-    border-color: var(--primary);
+    background: var(--primary-dim);
 }
 
 .action-btn:disabled {
@@ -308,8 +307,7 @@
 }
 
 .action-btn:disabled:hover {
-    background: var(--primary-subtle);
-    border-color: rgba(0, 221, 0, 0.3);
+    background: var(--primary);
 }
 
 .action-btn.secondary {
@@ -420,7 +418,6 @@
 
 .activity-indicator.active {
     background: var(--primary);
-    box-shadow: 0 0 8px rgba(0, 221, 0, 0.5);
     animation: pulse-active 2s ease-in-out infinite;
 }
 
@@ -433,7 +430,7 @@
     right: -2px;
     bottom: -2px;
     border-radius: 50%;
-    border: 1px solid var(--primary);
+    background: var(--primary);
     opacity: 0;
     animation: ring-pulse 2s ease-in-out infinite;
 }
@@ -518,18 +515,18 @@
 }
 
 .session-badge.bypass {
-    background: rgba(0, 221, 0, 0.15);
+    background: var(--bg-elevated);
     color: var(--primary);
 }
 
 .session-badge.prompted {
-    background: rgba(248, 113, 113, 0.15);
-    color: var(--error);
+    background: var(--bg-elevated);
+    color: var(--text-muted);
 }
 
 .session-badge.restricted {
-    background: rgba(251, 146, 60, 0.15);
-    color: #fb923c;  /* Orange/amber */
+    background: var(--bg-elevated);
+    color: var(--text-muted);
 }
 
 .no-sessions {
@@ -598,7 +595,6 @@
 
 .status-dot.online {
     background: var(--primary);
-    box-shadow: 0 0 4px rgba(0, 221, 0, 0.4);
 }
 
 /* Accessible: Add subtle pulse for online status */
@@ -926,13 +922,12 @@
 .machine-card {
     background: var(--bg-mid);
     border-radius: var(--radius-md);
-    border: 1px solid var(--border);
     overflow: hidden;
     transition: all 0.2s;
 }
 
 .machine-card:hover {
-    border-color: var(--border-light);
+    background: var(--bg-light);
 }
 
 /* Machine header - clickable for expand/collapse */
@@ -947,10 +942,41 @@
 }
 
 .machine-header:hover {
-    background: var(--bg-light);
+    background: var(--bg-elevated);
 }
 
-/* Left side: expand icon + machine name + status */
+/* Machine info container (expand icon + status + name + count) */
+.machine-info {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    flex: 1;
+}
+
+/* Machine create button */
+.machine-create-btn {
+    background: var(--primary);
+    color: #000;
+    border: none;
+    width: 28px;
+    height: 28px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: 1.2rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    flex-shrink: 0;
+}
+
+.machine-create-btn:hover {
+    background: var(--primary-dim);
+    transform: scale(1.1);
+}
+
+/* Left side: expand icon + machine name + status (deprecated - use machine-info) */
 .machine-header-left {
     display: flex;
     align-items: center;
@@ -1005,11 +1031,10 @@
 
 .machine-status-dot.online {
     background: var(--primary);
-    box-shadow: 0 0 6px rgba(0, 221, 0, 0.5);
 }
 
 .machine-status-dot.offline {
-    background: var(--error);
+    background: var(--text-muted);
 }
 
 /* Right side: session count + remove button */
@@ -1061,13 +1086,12 @@
 .machine-sessions .session-card {
     margin-left: calc(14px + var(--space-sm)); /* Align with machine name (icon width + gap) */
     margin-bottom: var(--space-sm);
-    background: var(--bg-light);
-    border: 1px solid var(--border);
+    background: var(--bg-dark);
+    border-radius: var(--radius-sm);
 }
 
 .machine-sessions .session-card:hover {
     background: var(--bg-elevated);
-    border-color: var(--border-light);
 }
 
 /* Last session in a machine group */
@@ -1283,7 +1307,7 @@
 
 .session-card.nested {
     background: var(--bg-dark);
-    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
     padding: 0;
     margin-bottom: var(--space-xs);
     display: block;
@@ -1321,7 +1345,6 @@
 .session-details {
     padding: 0 var(--space-md) var(--space-md) var(--space-md);
     margin-left: calc(14px + var(--space-sm)); /* Align with session name */
-    border-top: 1px solid var(--border);
     animation: slideDown 0.2s ease-out;
 }
 
