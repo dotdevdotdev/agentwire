@@ -42,6 +42,50 @@ body {
     justify-content: space-between;
     align-items: center;
     flex-shrink: 0;
+    gap: 1rem;
+}
+
+.header-center {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.mode-tabs {
+    display: flex;
+    gap: 0.25rem;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.25rem;
+}
+
+.mode-tab {
+    padding: 0.5rem 1.25rem;
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    border-radius: 6px;
+    transition: all 0.2s;
+}
+
+.mode-tab:hover:not(.disabled) {
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+}
+
+.mode-tab.active {
+    background: var(--primary);
+    color: #1a1a1a;
+}
+
+.mode-tab.disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
 }
 
 .header h1 {
@@ -163,7 +207,7 @@ body {
 }
 
 /* ============================================
-   Terminal Mode - Output View
+   Monitor Mode - Output View
    ============================================ */
 
 .output {
@@ -783,7 +827,7 @@ body {
     position: relative;
 }
 
-.terminal-mode .actions-btn {
+.monitor-mode .actions-btn {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1222,4 +1266,140 @@ body {
 .permission-btn.custom:hover {
     background: var(--bg-secondary);
     color: var(--text-primary);
+}
+
+/* ============================================
+   Terminal Mode Styles
+   ============================================ */
+
+.terminal-mode-content {
+    position: relative;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.terminal-activation {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    gap: 1rem;
+}
+
+.activate-terminal-btn {
+    padding: 1rem 2rem;
+    font-size: 1.1rem;
+    background: var(--primary);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: transform 0.2s, opacity 0.2s;
+}
+
+.activate-terminal-btn:hover {
+    transform: translateY(-2px);
+    opacity: 0.9;
+}
+
+.terminal-info {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    text-align: center;
+    max-width: 400px;
+}
+
+.terminal-container {
+    flex: 1;
+    overflow: hidden;
+    padding: 1rem;
+    background: var(--bg-primary);
+}
+
+.terminal-status {
+    padding: 0.75rem 1rem;
+    background: var(--bg-secondary);
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.9rem;
+}
+
+.terminal-status .status-indicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.terminal-status.connecting .status-indicator {
+    background: #f59e0b;
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+.terminal-status.connected .status-indicator {
+    background: #10b981;
+}
+
+.terminal-status.disconnected .status-indicator {
+    background: #6b7280;
+}
+
+.terminal-status.error .status-indicator {
+    background: #ef4444;
+}
+
+.terminal-status.error {
+    color: #ef4444;
+}
+
+.reconnect-btn,
+.close-terminal-btn {
+    padding: 0.4rem 0.8rem;
+    margin-left: auto;
+    font-size: 0.85rem;
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.reconnect-btn:hover,
+.close-terminal-btn:hover {
+    background: var(--bg-secondary);
+}
+
+.reconnect-btn {
+    background: var(--primary);
+    color: white;
+    border: none;
+}
+
+.reconnect-btn:hover {
+    opacity: 0.9;
+}
+
+.terminal-mobile-message {
+    text-align: center;
+    padding: 2rem;
+    color: var(--text-secondary);
+}
+
+.terminal-mobile-message p:first-child {
+    font-size: 1.2rem;
+    margin-bottom: 0.5rem;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
 }

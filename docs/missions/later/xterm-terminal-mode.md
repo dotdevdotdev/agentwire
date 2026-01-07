@@ -529,18 +529,18 @@ States:
 
 ## Completion Criteria
 
-- [ ] Sessions start in correct directory (cd before Claude starts)
-- [ ] "Terminal Mode" renamed to "Monitor Mode" everywhere
-- [ ] Terminal tab shows in mode selector (disabled until activated)
-- [ ] xterm.js libraries loaded
-- [ ] `/ws/terminal/{room}` WebSocket endpoint works
-- [ ] Terminal activation flow works (button → connect → terminal)
-- [ ] Terminal input/output bidirectional
-- [ ] Terminal resize works
-- [ ] Can switch between modes without disconnecting terminal
-- [ ] Monitor and Terminal work simultaneously
-- [ ] Local tmux attach works alongside portal modes
-- [ ] Documentation updated with all three modes
+- [x] Sessions start in correct directory (cd before Claude starts)
+- [x] "Terminal Mode" renamed to "Monitor Mode" everywhere
+- [x] Terminal tab shows in mode selector (disabled until activated)
+- [x] xterm.js libraries loaded
+- [x] `/ws/terminal/{room}` WebSocket endpoint works
+- [x] Terminal activation flow works (button → connect → terminal)
+- [x] Terminal input/output bidirectional
+- [x] Terminal resize works
+- [x] Can switch between modes without disconnecting terminal
+- [x] Monitor and Terminal work simultaneously
+- [x] Local tmux attach works alongside portal modes
+- [x] Documentation updated with all three modes
 
 ## Technical Notes
 

@@ -18,10 +18,12 @@ Push-to-talk voice input from any device to tmux sessions running Claude Code or
 
 ## Features
 
+- **Three Portal Modes** - Ambient (voice + orb), Monitor (read-only terminal), Terminal (full interactive xterm.js) - all work simultaneously
 - **Voice Rooms** - One room per AI agent session (tmux + your agent)
 - **Push-to-Talk** - Hold to speak, release to send transcription
 - **Multiline Input** - Auto-expanding textarea with Enter/Shift+Enter support
 - **TTS Playback** - Agent responses spoken back via browser audio
+- **Interactive Terminal** - Full xterm.js terminal with vim, readline, tab completion (desktop browsers)
 - **Multi-Device** - Access from phone, tablet, laptop on your network
 - **Room Locking** - One person talks at a time per room
 - **Git Worktrees** - Multiple agents work same project in parallel (CLI + UI support)
