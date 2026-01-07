@@ -102,56 +102,17 @@ class PortalClient:
                 return await response.json()
 
 
-class ChatterboxClient:
-    """Client for Chatterbox TTS server.
-
-    Direct connection to Chatterbox for local/remote TTS.
-    """
-
-    def __init__(self, config: Config):
-        self.config = config
-        self.base_url = config.tts.url
-        self.default_voice = config.tts.default_voice
-
-    async def speak(self, text: str, voice: Optional[str]) -> dict:
-        """Send TTS request to Chatterbox server.
-
-        Args:
-            text: Text to speak
-            voice: TTS voice name (optional, falls back to default_voice)
-
-        Returns:
-            API response JSON
-
-        Raises:
-            aiohttp.ClientError: If request fails
-        """
-        url = f"{self.base_url}/tts"
-        voice_to_use = voice or self.default_voice
-
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                url,
-                json={"text": text, "voice": voice_to_use},
-                ssl=False,  # Chatterbox uses HTTP
-            ) as response:
-                response.raise_for_status()
-                return await response.json()
-
-
 class TTSRouter:
     """Route TTS requests to available backends with connection-aware logic.
 
     Routing logic (connection-aware):
     1. If session detected AND portal has connections → portal (browser playback)
     2. If session detected AND portal has no connections → local (speaker playback)
-    3. If no session → chatterbox (direct TTS backend)
     """
 
     def __init__(self, config: Config):
         self.config = config
         self.portal_client = PortalClient(config)
-        self.chatterbox_client = ChatterboxClient(config)
 
     async def _check_portal_connections(self, session: str) -> bool:
         """Check if portal has active browser connections for a session.
@@ -210,11 +171,7 @@ class TTSRouter:
                 )
 
         else:
-            # No session - use chatterbox directly
-            try:
-                await self.chatterbox_client.speak(text=text, voice=voice)
-                return TTSResult(success=True, method="chatterbox")
-            except Exception as e:
-                return TTSResult(
-                    success=False, method="none", error=f"Chatterbox failed: {e}"
-                )
+            # No session - cannot route TTS
+            return TTSResult(
+                success=False, method="none", error="No session detected for TTS routing"
+            )
