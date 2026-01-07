@@ -418,18 +418,43 @@ function selectPermissionMode(element, bypass) {
 // =============================================================================
 
 async function loadSessions() {
-    const res = await fetch('/api/sessions');
-    const sessions = await res.json();
     const container = document.getElementById('sessions');
     const sessionCountEl = document.getElementById('sessionCount');
 
-    if (sessions.length === 0) {
-        container.innerHTML = '<div class="no-sessions">No active sessions. Create one to get started.</div>';
-        if (sessionCountEl) {
-            sessionCountEl.innerHTML = '<span class="count">0</span> active sessions';
-        }
-        return;
+    // Show loading state
+    if (container) {
+        container.innerHTML = `
+            <div class="skeleton-session">
+                <div class="skeleton-line" style="width: 60%"></div>
+                <div class="skeleton-line" style="width: 80%; margin-top: 0.5rem"></div>
+            </div>
+            <div class="skeleton-session">
+                <div class="skeleton-line" style="width: 70%"></div>
+                <div class="skeleton-line" style="width: 75%; margin-top: 0.5rem"></div>
+            </div>
+        `;
     }
+
+    try {
+        const res = await fetch('/api/sessions');
+        const sessions = await res.json();
+
+        if (sessions.length === 0) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-icon">📭</div>
+                    <div class="empty-title">No sessions running</div>
+                    <div class="empty-description">Create a session to get started with AgentWire</div>
+                    <div class="empty-action">
+                        <a href="#" class="empty-link" onclick="toggleAction('createSessionGroup'); return false;">Create your first session →</a>
+                    </div>
+                </div>
+            `;
+            if (sessionCountEl) {
+                sessionCountEl.innerHTML = '<span class="count">0</span> active sessions';
+            }
+            return;
+        }
 
     // Check for activity state transitions and play notification sound
     sessions.forEach(session => {
@@ -444,49 +469,61 @@ async function loadSessions() {
             `<span class="count">${sessions.length}</span> active session${sessions.length !== 1 ? 's' : ''}`;
     }
 
-    container.innerHTML = sessions.map(s => {
-        // Determine badge: restricted > prompted > bypass
-        let badge;
-        if (s.restricted) {
-            badge = '<span class="session-badge restricted">Restricted</span>';
-        } else if (s.bypass_permissions === false) {
-            badge = '<span class="session-badge prompted">Prompted</span>';
-        } else {
-            badge = '<span class="session-badge bypass">Bypass</span>';
-        }
-        // Strip @machine from display name if present (avoid doubling)
-        let displayName = s.name;
-        let machineSuffix = '';
-        if (s.machine && s.name.endsWith('@' + s.machine)) {
-            displayName = s.name.slice(0, -('@' + s.machine).length);
-            machineSuffix = `<span style="color:var(--text-muted);font-weight:normal">@${s.machine}</span>`;
-        } else if (s.machine) {
-            machineSuffix = `<span style="color:var(--text-muted);font-weight:normal">@${s.machine}</span>`;
-        }
-        // Activity indicator
-        const activityClass = s.activity === 'active' ? 'active' : 'idle';
-        const activityIndicator = `<span class="activity-indicator ${activityClass}"></span>`;
+        container.innerHTML = sessions.map(s => {
+            // Determine badge: restricted > prompted > bypass
+            let badge;
+            if (s.restricted) {
+                badge = '<span class="session-badge restricted">Restricted</span>';
+            } else if (s.bypass_permissions === false) {
+                badge = '<span class="session-badge prompted">Prompted</span>';
+            } else {
+                badge = '<span class="session-badge bypass">Bypass</span>';
+            }
+            // Strip @machine from display name if present (avoid doubling)
+            let displayName = s.name;
+            let machineSuffix = '';
+            if (s.machine && s.name.endsWith('@' + s.machine)) {
+                displayName = s.name.slice(0, -('@' + s.machine).length);
+                machineSuffix = `<span style="color:var(--text-muted);font-weight:normal">@${s.machine}</span>`;
+            } else if (s.machine) {
+                machineSuffix = `<span style="color:var(--text-muted);font-weight:normal">@${s.machine}</span>`;
+            }
+            // Activity indicator
+            const activityClass = s.activity === 'active' ? 'active' : 'idle';
+            const activityIndicator = `<span class="activity-indicator ${activityClass}"></span>`;
 
-        return `
-        <div class="session-card">
-            <a href="/room/${encodeURIComponent(s.name)}" style="flex:1;text-decoration:none;color:inherit;">
-                <div class="session-name">${activityIndicator}${displayName}${machineSuffix}${badge}</div>
-                <div class="session-meta">
-                    ${s.path || '~/projects/' + s.name}
-                    <span class="session-voice">• ${s.voice || DEFAULT_VOICE}</span>
-                </div>
-            </a>
-            <button class="session-close" data-session="${s.name}" title="Close session">✕</button>
-        </div>
-    `}).join('');
+            return `
+            <div class="session-card">
+                <a href="/room/${encodeURIComponent(s.name)}" style="flex:1;text-decoration:none;color:inherit;">
+                    <div class="session-name">${activityIndicator}${displayName}${machineSuffix}${badge}</div>
+                    <div class="session-meta">
+                        ${s.path || '~/projects/' + s.name}
+                        <span class="session-voice">• ${s.voice || DEFAULT_VOICE}</span>
+                    </div>
+                </a>
+                <button class="session-close" data-session="${s.name}" title="Close session">✕</button>
+            </div>
+        `}).join('');
 
-    // Attach close handlers
-    container.querySelectorAll('.session-close').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            e.preventDefault();
-            closeSession(btn.dataset.session);
+        // Attach close handlers
+        container.querySelectorAll('.session-close').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                closeSession(btn.dataset.session);
+            });
         });
-    });
+    } catch (error) {
+        console.error('Failed to load sessions:', error);
+        if (container) {
+            container.innerHTML = `
+                <div class="error-state">
+                    <div class="error-icon">⚠️</div>
+                    <div class="error-title">Failed to load sessions</div>
+                    <div class="error-description">${error.message || 'Unknown error'}</div>
+                </div>
+            `;
+        }
+    }
 }
 
 async function createSession() {
@@ -572,20 +609,42 @@ async function closeSession(name) {
 // =============================================================================
 
 async function loadMachines() {
-    const res = await fetch('/api/machines');
-    const machines = await res.json();
-    machinesData = machines;  // Store for later use
     const container = document.getElementById('machinesList');
 
-    // Populate the session machine dropdown
-    populateMachineDropdown(machines);
-
-    if (!container) return;
-
-    if (machines.length === 0) {
-        container.innerHTML = '<div style="color:var(--text-muted);font-size:0.8rem;margin-bottom:0.5rem;">No machines available</div>';
-        return;
+    // Show loading state
+    if (container) {
+        container.innerHTML = `
+            <div class="skeleton-machine">
+                <div class="skeleton-line" style="width: 50%"></div>
+            </div>
+            <div class="skeleton-machine">
+                <div class="skeleton-line" style="width: 60%"></div>
+            </div>
+        `;
     }
+
+    try {
+        const res = await fetch('/api/machines');
+        const machines = await res.json();
+        machinesData = machines;  // Store for later use
+
+        // Populate the session machine dropdown
+        populateMachineDropdown(machines);
+
+        if (!container) return;
+
+        if (machines.length === 0) {
+            container.innerHTML = `
+                <div class="empty-state empty-state-small">
+                    <div class="empty-icon-small">🖥️</div>
+                    <div class="empty-title-small">No machines configured</div>
+                    <div class="empty-action">
+                        <a href="#" class="empty-link" onclick="toggleAction('addMachineGroup'); return false;">Add a machine →</a>
+                    </div>
+                </div>
+            `;
+            return;
+        }
 
     container.innerHTML = machines.map(m => `
         <div class="machine-item">
@@ -601,13 +660,25 @@ async function loadMachines() {
         </div>
     `).join('');
 
-    // Attach remove handlers
-    container.querySelectorAll('.machine-remove').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            e.preventDefault();
-            removeMachine(btn.dataset.machine);
+        // Attach remove handlers
+        container.querySelectorAll('.machine-remove').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                removeMachine(btn.dataset.machine);
+            });
         });
-    });
+    } catch (error) {
+        console.error('Failed to load machines:', error);
+        if (container) {
+            container.innerHTML = `
+                <div class="error-state error-state-small">
+                    <div class="error-icon-small">⚠️</div>
+                    <div class="error-title-small">Failed to load machines</div>
+                    <div class="error-description-small">${error.message || 'Unknown error'}</div>
+                </div>
+            `;
+        }
+    }
 }
 
 async function addMachine() {

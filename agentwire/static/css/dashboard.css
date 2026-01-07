@@ -415,12 +415,27 @@
     border-radius: 50%;
     flex-shrink: 0;
     transition: all 0.3s ease;
+    position: relative;
 }
 
 .activity-indicator.active {
     background: var(--primary);
     box-shadow: 0 0 8px rgba(0, 221, 0, 0.5);
     animation: pulse-active 2s ease-in-out infinite;
+}
+
+/* Accessible: Add ring animation for active state (not just color) */
+.activity-indicator.active::before {
+    content: '';
+    position: absolute;
+    top: -2px;
+    left: -2px;
+    right: -2px;
+    bottom: -2px;
+    border-radius: 50%;
+    border: 1px solid var(--primary);
+    opacity: 0;
+    animation: ring-pulse 2s ease-in-out infinite;
 }
 
 .activity-indicator.idle {
@@ -440,6 +455,21 @@
     50% {
         opacity: 0.7;
         transform: scale(1.15);
+    }
+}
+
+@keyframes ring-pulse {
+    0% {
+        opacity: 0;
+        transform: scale(0.8);
+    }
+    50% {
+        opacity: 0.6;
+        transform: scale(1.4);
+    }
+    100% {
+        opacity: 0;
+        transform: scale(1.6);
     }
 }
 
@@ -562,14 +592,66 @@
     border-radius: 50%;
     display: inline-block;
     margin-right: var(--space-sm);
+    position: relative;
+    flex-shrink: 0;
 }
 
 .status-dot.online {
     background: var(--primary);
+    box-shadow: 0 0 4px rgba(0, 221, 0, 0.4);
+}
+
+/* Accessible: Add subtle pulse for online status */
+.status-dot.online::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    border-radius: 50%;
+    background: var(--primary);
+    opacity: 0.3;
+    animation: dot-pulse 3s ease-in-out infinite;
 }
 
 .status-dot.offline {
     background: var(--error);
+    opacity: 0.6;
+}
+
+/* Accessible: Add cross pattern for offline (not just color) */
+.status-dot.offline::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 6px;
+    height: 1px;
+    background: var(--bg-dark);
+    transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.status-dot.offline::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 6px;
+    height: 1px;
+    background: var(--bg-dark);
+    transform: translate(-50%, -50%) rotate(-45deg);
+}
+
+@keyframes dot-pulse {
+    0%, 100% {
+        transform: scale(1);
+        opacity: 0.3;
+    }
+    50% {
+        transform: scale(1.5);
+        opacity: 0;
+    }
 }
 
 /* =============================================================================
