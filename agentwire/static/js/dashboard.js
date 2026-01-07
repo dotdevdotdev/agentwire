@@ -787,132 +787,6 @@ function attachMachineEventHandlers(container) {
 }
 
 /**
- * Update sessions in place without re-rendering entire DOM
- * @param {HTMLElement} container - Sessions container
- * @param {Object} data - Session data from API
- */
-function updateSessionsInPlace(container, data) {
-    // Update local machine
-    const localMachine = {
-        id: 'local',
-        host: null,
-        status: 'online',
-        session_count: data.local?.session_count || 0,
-        sessions: data.local?.sessions || []
-    };
-    updateMachineCard(container, localMachine, true);
-
-    // Update remote machines
-    const remoteMachines = data.machines || [];
-    remoteMachines.forEach(machine => {
-        updateMachineCard(container, machine, false);
-    });
-
-    // Remove machines that no longer exist
-    const existingMachineIds = ['local', ...remoteMachines.map(m => m.id)];
-    container.querySelectorAll('.machine-card').forEach(card => {
-        const machineId = card.querySelector('.machine-header')?.dataset.machineId;
-        if (machineId && !existingMachineIds.includes(machineId)) {
-            card.remove();
-        }
-    });
-}
-
-/**
- * Update a single machine card in place
- * @param {HTMLElement} container - Sessions container
- * @param {Object} machine - Machine data
- * @param {boolean} isLocal - Whether this is the local machine
- */
-function updateMachineCard(container, machine, isLocal) {
-    const machineId = machine.id || 'local';
-    const existingCard = container.querySelector(`[data-machine-id="${machineId}"]`)?.closest('.machine-card');
-
-    if (!existingCard) {
-        // Machine doesn't exist - add it
-        const newCard = document.createElement('div');
-        newCard.innerHTML = renderMachineCard(machine, isLocal);
-        container.appendChild(newCard.firstElementChild);
-        attachMachineEventHandlers(container);
-        return;
-    }
-
-    // Update session count
-    const sessionCountEl = existingCard.querySelector('.machine-session-count');
-    const sessionCount = machine.sessions?.length || 0;
-    if (sessionCountEl) {
-        sessionCountEl.textContent = `• ${sessionCount} session${sessionCount !== 1 ? 's' : ''}`;
-    }
-
-    // Update status dot
-    const statusDot = existingCard.querySelector('.status-dot');
-    if (statusDot) {
-        statusDot.className = `status-dot ${machine.status || 'online'}`;
-    }
-
-    // Update sessions within this machine
-    const sessionsContainer = existingCard.querySelector('.machine-sessions');
-    if (sessionsContainer) {
-        updateSessionsInMachine(sessionsContainer, machine.sessions || [], machineId);
-    }
-}
-
-/**
- * Update sessions within a machine container
- * @param {HTMLElement} container - Machine sessions container
- * @param {Array} sessions - Session data
- * @param {string} machineId - Machine ID
- */
-function updateSessionsInMachine(container, sessions, machineId) {
-    const sessionNames = sessions.map(s => s.name);
-
-    // Update or add sessions
-    sessions.forEach(session => {
-        const existingCard = container.querySelector(`[data-session-name="${session.name}"]`)?.closest('.session-card');
-
-        if (!existingCard) {
-            // Session doesn't exist - add it
-            const newCard = document.createElement('div');
-            newCard.innerHTML = renderSessionCard(session, machineId);
-            container.appendChild(newCard.firstElementChild);
-            attachMachineEventHandlers(container.parentElement.parentElement);
-            return;
-        }
-
-        // Update activity indicator
-        const activityIndicator = existingCard.querySelector('.activity-indicator');
-        if (activityIndicator) {
-            const activityClass = session.activity === 'active' ? 'active' : 'idle';
-            activityIndicator.className = `activity-indicator ${activityClass}`;
-        }
-
-        // Update status in details
-        const statusValue = existingCard.querySelector('.session-detail-row:has(.session-detail-value) .session-detail-value');
-        if (statusValue && statusValue.textContent.match(/active|idle/)) {
-            const activityClass = session.activity === 'active' ? 'active' : 'idle';
-            statusValue.className = `session-detail-value ${activityClass}`;
-            statusValue.textContent = session.activity || 'idle';
-        }
-    });
-
-    // Remove sessions that no longer exist
-    container.querySelectorAll('.session-card').forEach(card => {
-        const sessionName = card.querySelector('.session-header')?.dataset.sessionName;
-        if (sessionName && !sessionNames.includes(sessionName)) {
-            card.remove();
-        }
-    });
-
-    // Update empty state
-    const emptyState = container.querySelector('.machine-empty-state');
-    if (sessions.length === 0 && !emptyState) {
-        container.innerHTML = '<div class="machine-empty-state">No sessions running on this machine</div>';
-    } else if (sessions.length > 0 && emptyState) {
-        emptyState.remove();
-    }
-}
-
-/**
  * Open create session form with machine pre-selected
  */
 function openCreateSessionForMachine(machineId) {
@@ -1000,39 +874,31 @@ async function loadSessions() {
                 `<span class="count">${totalSessions}</span> active session${totalSessions !== 1 ? 's' : ''}`;
         }
 
-        // Update DOM intelligently (only on first render or if empty)
-        const isFirstRender = !container.querySelector('.machine-card');
+        // Render hierarchical machine→sessions view
+        const machineCards = [];
 
-        if (isFirstRender) {
-            // First render: use innerHTML
-            const machineCards = [];
-
-            // Render local machine first
-            if (data.local) {
-                machineCards.push(renderMachineCard({
-                    id: 'local',
-                    host: null,
-                    status: 'online',
-                    session_count: data.local.session_count,
-                    sessions: data.local.sessions || []
-                }, true));
-            }
-
-            // Render remote machines
-            if (data.machines && data.machines.length > 0) {
-                data.machines.forEach(machine => {
-                    machineCards.push(renderMachineCard(machine, false));
-                });
-            }
-
-            container.innerHTML = machineCards.join('');
-
-            // Attach event handlers for machine cards and sessions
-            attachMachineEventHandlers(container);
-        } else {
-            // Subsequent renders: update in place
-            updateSessionsInPlace(container, data);
+        // Render local machine first
+        if (data.local) {
+            machineCards.push(renderMachineCard({
+                id: 'local',
+                host: null,
+                status: 'online',
+                session_count: data.local.session_count,
+                sessions: data.local.sessions || []
+            }, true));
         }
+
+        // Render remote machines
+        if (data.machines && data.machines.length > 0) {
+            data.machines.forEach(machine => {
+                machineCards.push(renderMachineCard(machine, false));
+            });
+        }
+
+        container.innerHTML = machineCards.join('');
+
+        // Attach event handlers for machine cards and sessions
+        attachMachineEventHandlers(container);
     } catch (error) {
         console.error('Failed to load sessions:', error);
         if (container) {
@@ -1739,12 +1605,9 @@ export function init() {
             console.log('[Dashboard] WebSocket connected - real-time activity updates enabled');
         },
         onDisconnect: () => {
-            console.log('[Dashboard] WebSocket disconnected - falling back to polling');
+            console.log('[Dashboard] WebSocket disconnected');
         }
     });
-
-    // Refresh sessions every 5 seconds (fallback for when WebSocket is down)
-    setInterval(loadSessions, 5000);
 }
 
 // Auto-init on DOMContentLoaded
