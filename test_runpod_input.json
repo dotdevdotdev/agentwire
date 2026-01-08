@@ -1,8 +1,0 @@
-{
-  "input": {
-    "text": "Hello from AgentWire running on RunPod serverless infrastructure! This is a test of the Chatterbox TTS system.",
-    "voice": "bashbunni",
-    "exaggeration": 0.5,
-    "cfg_weight": 0.5
-  }
-}
