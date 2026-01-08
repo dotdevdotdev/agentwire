@@ -37,3 +37,7 @@ Thumbs.db
 
 # Project specific
 *.log
+
+# Test outputs
+test_*.wav
+test_output*.wav
