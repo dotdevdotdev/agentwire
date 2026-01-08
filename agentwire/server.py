@@ -185,6 +185,11 @@ class AgentWireServer:
             "tts": {
                 "backend": self.config.tts.backend,
                 "url": self.config.tts.url,
+                "exaggeration": self.config.tts.exaggeration,
+                "cfg_weight": self.config.tts.cfg_weight,
+                "runpod_endpoint_id": self.config.tts.runpod_endpoint_id,
+                "runpod_api_key": self.config.tts.runpod_api_key,
+                "runpod_timeout": self.config.tts.runpod_timeout,
             },
             "stt": {
                 "backend": self.config.stt.backend,

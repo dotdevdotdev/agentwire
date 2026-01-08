@@ -79,6 +79,9 @@ class TTSConfig:
     backend: str = "chatterbox"  # chatterbox | runpod | none
     url: str = "http://localhost:8100"
     default_voice: str = "bashbunni"
+    # Voice parameters (applies to all backends)
+    exaggeration: float = 0.5
+    cfg_weight: float = 0.5
     # RunPod serverless configuration
     runpod_endpoint_id: str = ""
     runpod_api_key: str = ""
