@@ -37,6 +37,8 @@ Thumbs.db
 
 # Project specific
 *.log
+.env
+.env.*
 
 # Test outputs
 test_*.wav
