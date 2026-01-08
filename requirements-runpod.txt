@@ -1,8 +1,9 @@
-# RunPod Serverless TTS Dependencies
-# Minimal set for TTS generation only (no web server, no portal dependencies)
+# RunPod Load Balancer TTS Dependencies
+# Minimal set for TTS generation with FastAPI HTTP server
 
-# RunPod SDK
-runpod>=1.3.0
+# FastAPI HTTP server
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
 
 # TTS Engine (installed from GitHub)
 git+https://github.com/resemble-ai/chatterbox.git
