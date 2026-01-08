@@ -36,6 +36,17 @@ RUN pip install --no-cache-dir -r requirements-runpod.txt
 # Copy AgentWire source code
 COPY agentwire/ ./agentwire/
 
+# Pre-download Chatterbox model (requires HF_TOKEN)
+# This happens at build time so cold starts are instant
+ARG HF_TOKEN
+ENV HF_TOKEN=${HF_TOKEN}
+ENV HF_HOME=/app/.cache/huggingface
+
+# Download model by importing and calling from_pretrained
+# This caches the model in HF_HOME for runtime use
+RUN python3 -c "from chatterbox.tts_turbo import ChatterboxTurboTTS; ChatterboxTurboTTS.from_pretrained(device='cpu')" || \
+    echo "Warning: Model download failed, will retry at runtime"
+
 # Copy custom voices directory (bundled into image)
 # This should contain WAV files from ~/.agentwire/voices/
 # Build with: docker build --build-context voices=$HOME/.agentwire/voices -f Dockerfile.runpod -t agentwire-tts .
