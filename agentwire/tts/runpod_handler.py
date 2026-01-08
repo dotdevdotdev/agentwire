@@ -94,6 +94,12 @@ async def health():
     return {"status": "healthy"}
 
 
+@app.get("/ping")
+async def ping():
+    """RunPod Load Balancer health check endpoint."""
+    return {"status": "ok"}
+
+
 @app.post("/tts", response_model=TTSResponse)
 async def generate_tts(request: TTSRequest):
     """Generate TTS audio from text.
