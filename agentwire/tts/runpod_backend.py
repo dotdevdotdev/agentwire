@@ -70,6 +70,7 @@ class RunPodTTS(TTSBackend):
         # Build request payload
         payload = {
             "input": {
+                "action": "generate",
                 "text": text,
                 "voice": voice,
                 "exaggeration": exaggeration if exaggeration is not None else self.exaggeration,
@@ -113,18 +114,48 @@ class RunPodTTS(TTSBackend):
             return None
 
     async def get_voices(self) -> list[str]:
-        """Get list of available voices.
+        """Get list of available voices from RunPod endpoint.
 
-        Note: RunPod serverless endpoint doesn't expose a voices endpoint.
-        Voices are bundled into the Docker image and must be configured
-        in AgentWire config.
+        Queries the RunPod endpoint's list_voices action to get all available
+        voices (both bundled and network volume voices).
 
         Returns:
-            Empty list (voices must be configured separately).
+            List of voice names, or empty list if query fails.
         """
-        # RunPod endpoint doesn't expose voices API
-        # Voices are bundled into the Docker image
-        return []
+        session = await self._get_session()
+
+        payload = {"input": {"action": "list_voices"}}
+
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+
+        try:
+            timeout = aiohttp.ClientTimeout(total=10)
+            async with session.post(
+                self.endpoint_url, json=payload, headers=headers, timeout=timeout
+            ) as resp:
+                if resp.status != 200:
+                    return []
+
+                data = await resp.json()
+
+                # Check RunPod status
+                if data.get("status") == "error":
+                    return []
+
+                # Extract output
+                output = data.get("output", {})
+                if "error" in output:
+                    return []
+
+                # Return voices list
+                voices = output.get("voices", [])
+                return voices if isinstance(voices, list) else []
+
+        except aiohttp.ClientError:
+            return []
 
     async def close(self) -> None:
         """Close the aiohttp session."""
