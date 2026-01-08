@@ -1,0 +1,48 @@
+# AgentWire Portal - Web UI and Session Orchestrator
+# Multi-arch: linux/amd64, linux/arm64
+
+FROM python:3.11-slim
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    tmux \
+    git \
+    ssh \
+    jq \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Upgrade pip
+RUN python3 -m pip install --upgrade pip
+
+# Copy package files
+COPY pyproject.toml README.md LICENSE ./
+COPY agentwire/ ./agentwire/
+
+# Install AgentWire package
+RUN pip install --no-cache-dir -e .
+
+# Create directories for volumes
+RUN mkdir -p /root/.agentwire /root/.ssh /projects
+
+# Configure SSH for host.docker.internal (accessing host from container)
+RUN echo "Host host.docker.internal" >> /etc/ssh/ssh_config && \
+    echo "  StrictHostKeyChecking no" >> /etc/ssh/ssh_config && \
+    echo "  UserKnownHostsFile /dev/null" >> /etc/ssh/ssh_config
+
+# Expose portal port
+EXPOSE 8765
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD curl -k -f https://localhost:8765/health || exit 1
+
+# Set environment
+ENV PYTHONUNBUFFERED=1
+
+# Default command
+CMD ["agentwire", "portal", "serve"]

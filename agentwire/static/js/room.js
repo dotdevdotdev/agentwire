@@ -588,13 +588,10 @@ function switchToMode(mode) {
             document.body.classList.add('monitor-mode');
             document.body.classList.remove('terminal-mode');
 
-            // Open text input in monitor mode
+            // Open text input in monitor mode (but don't auto-focus)
             textInputOpen = true;
             if (elements.textToggleBtn) elements.textToggleBtn.classList.add('active');
             if (elements.textInputExpanded) elements.textInputExpanded.classList.add('open');
-            if (elements.textInputAmbient) {
-                setTimeout(() => elements.textInputAmbient.focus(), 100);
-            }
             break;
 
         case 'terminal':

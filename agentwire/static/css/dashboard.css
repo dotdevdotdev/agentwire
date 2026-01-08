@@ -89,10 +89,12 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0.5rem var(--space-sm);
+    padding: var(--space-md) var(--space-sm);
     cursor: pointer;
     user-select: none;
     transition: background 0.2s;
+    /* Minimum 44px touch target height */
+    min-height: 44px;
 }
 
 .action-header:hover {
@@ -100,15 +102,20 @@
 }
 
 .action-header h3 {
-    font-size: 0.95rem;
+    font-size: 1.1rem;
     font-weight: 500;
     color: var(--text-primary);
 }
 
 .action-toggle {
     color: var(--text-muted);
-    font-size: 0.8rem;
+    font-size: 1.2rem;
     transition: transform 0.2s;
+    /* Larger touch target for chevron */
+    min-width: 24px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .action-group.open .action-toggle {
@@ -141,8 +148,10 @@
     padding: var(--space-sm) 0;
     cursor: pointer;
     user-select: none;
-    font-size: 0.85rem;
+    font-size: 1rem;
     color: var(--text-secondary);
+    /* Minimum 44px touch target height */
+    min-height: 44px;
 }
 
 .sub-action-header:hover {
@@ -150,7 +159,7 @@
 }
 
 .sub-action .action-toggle {
-    font-size: 0.7rem;
+    font-size: 1rem;
 }
 
 .sub-action.open .action-toggle {
@@ -408,8 +417,8 @@
 
 /* Activity Indicator */
 .activity-indicator {
-    width: 8px;
-    height: 8px;
+    width: 12px;
+    height: 12px;
     border-radius: 50%;
     flex-shrink: 0;
     transition: all 0.3s ease;
@@ -572,10 +581,16 @@
     border: none;
     color: var(--text-muted);
     cursor: pointer;
-    padding: 0.15rem 0.4rem;
-    font-size: 0.75rem;
+    padding: 0;
+    font-size: 1.4rem;
     border-radius: var(--radius-sm);
     transition: all 0.2s;
+    /* Minimum 44px touch target for accessibility */
+    min-width: 44px;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .machine-remove:hover {
@@ -584,8 +599,8 @@
 }
 
 .status-dot {
-    width: 8px;
-    height: 8px;
+    width: 12px;
+    height: 12px;
     border-radius: 50%;
     display: inline-block;
     margin-right: var(--space-sm);
@@ -622,8 +637,8 @@
     position: absolute;
     top: 50%;
     left: 50%;
-    width: 6px;
-    height: 1px;
+    width: 8px;
+    height: 1.5px;
     background: var(--bg-dark);
     transform: translate(-50%, -50%) rotate(45deg);
 }
@@ -633,8 +648,8 @@
     position: absolute;
     top: 50%;
     left: 50%;
-    width: 6px;
-    height: 1px;
+    width: 8px;
+    height: 1.5px;
     background: var(--bg-dark);
     transform: translate(-50%, -50%) rotate(-45deg);
 }
@@ -1023,8 +1038,8 @@
 }
 
 .machine-status-dot {
-    width: 6px;
-    height: 6px;
+    width: 10px;
+    height: 10px;
     border-radius: 50%;
     flex-shrink: 0;
 }
@@ -1347,16 +1362,19 @@
     border: none;
     color: var(--text-muted);
     cursor: pointer;
-    padding: var(--space-xs);
-    font-size: 1.1rem;
+    padding: 0;
+    font-size: 1.5rem;
     border-radius: var(--radius-sm);
     transition: all 0.2s;
     display: flex;
     align-items: center;
     justify-content: center;
     text-decoration: none;
-    width: 28px;
-    height: 28px;
+    /* Minimum 48px touch target for accessibility */
+    min-width: 48px;
+    min-height: 48px;
+    /* Add spacing between buttons */
+    margin-left: var(--space-xs);
 }
 
 .session-action-btn:hover {
@@ -1365,7 +1383,7 @@
 }
 
 .session-action-btn.goto-btn {
-    font-size: 1.2rem;
+    font-size: 1.6rem;
     font-weight: bold;
 }
 
@@ -1375,8 +1393,8 @@
 
 .session-action-btn.close-btn {
     color: var(--error) !important;
-    font-size: 1.2rem;
-    font-weight: 400;
+    font-size: 1.8rem;
+    font-weight: 300;
     line-height: 1;
 }
 
@@ -1386,11 +1404,14 @@
 }
 
 .session-toggle {
-    font-size: 0.8rem;
+    font-size: 1.2rem;
     color: var(--text-muted);
     flex-shrink: 0;
-    width: 14px;
+    min-width: 24px;
     transition: transform 0.2s;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .session-name-text {

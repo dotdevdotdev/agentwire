@@ -1,47 +1,51 @@
-# AgentWire Docker Compose
-# Supports multiple deployment configurations
-
-version: '3.8'
+# AgentWire Full Stack - Docker Compose
+# Orchestrates Portal + STT + (optional) local TTS
 
 services:
-  # === Portal (Web Server) ===
+  # Portal - Web UI and session orchestrator
   portal:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.portal
+    container_name: agentwire-portal
     ports:
-      - "${AGENTWIRE_PORT:-8765}:8765"
+      - "8765:8765"
     volumes:
-      # Config and certs
-      - ${AGENTWIRE_CONFIG_DIR:-./config}:/root/.agentwire
-      # SSH keys for remote sessions
-      - ${SSH_DIR:-~/.ssh}:/root/.ssh:ro
+      # Config directory (required)
+      - ${HOME}/.agentwire:/root/.agentwire
+      # SSH keys for remote machine access (optional)
+      - ${HOME}/.ssh:/root/.ssh:ro
+      # Projects directory for worktrees (optional)
+      - ${HOME}/projects:/projects
     environment:
-      - AGENTWIRE_SERVER__HOST=0.0.0.0
-      - AGENTWIRE_SERVER__PORT=8765
-      - AGENTWIRE_TTS__URL=${TTS_URL:-http://tts:8100}
-      - AGENTWIRE_STT__BACKEND=${STT_BACKEND:-openai}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      # Override backend URLs to use container services
+      - AGENTWIRE_STT__BACKEND=remote
+      - AGENTWIRE_STT__URL=http://stt:8100
+      - AGENTWIRE_TTS__BACKEND=${TTS_BACKEND:-runpod}  # runpod or chatterbox
+      - AGENTWIRE_TTS__URL=http://tts:8100  # Used if TTS_BACKEND=chatterbox
     depends_on:
-      - tts
+      stt:
+        condition: service_healthy
     networks:
       - agentwire
     restart: unless-stopped
 
-  # === TTS Server (Chatterbox) ===
-  tts:
+  # STT - Speech-to-text service
+  stt:
     build:
       context: .
-      dockerfile: Dockerfile.tts
-    ports:
-      - "${TTS_PORT:-8100}:8100"
-    volumes:
-      # Custom voices
-      - ${VOICES_DIR:-./voices}:/app/voices
-    networks:
-      - agentwire
-    restart: unless-stopped
-    # Uncomment for GPU support:
+      dockerfile: Dockerfile.stt
+      args:
+        # Options: gpu or cpu
+        ARCH: ${STT_ARCH:-cpu}
+        # Options: tiny, base, small, medium, large-v2, large-v3
+        WHISPER_MODEL: ${WHISPER_MODEL:-base}
+    container_name: agentwire-stt
+    environment:
+      - WHISPER_MODEL=${WHISPER_MODEL:-base}
+      - WHISPER_DEVICE=${WHISPER_DEVICE:-cpu}
+      - WHISPER_LANGUAGE=${WHISPER_LANGUAGE:-en}
+    # Uncomment for GPU support (NVIDIA)
     # deploy:
     #   resources:
     #     reservations:
@@ -49,12 +53,38 @@ services:
     #         - driver: nvidia
     #           count: 1
     #           capabilities: [gpu]
+    networks:
+      - agentwire
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8100/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # TTS - Text-to-speech service (optional, local Chatterbox)
+  # Comment out if using RunPod for TTS
+  # tts:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile.runpod
+  #     args:
+  #       HF_TOKEN: ${HF_TOKEN}
+  #     build-context:
+  #       voices: ${HOME}/.agentwire/voices
+  #   container_name: agentwire-tts
+  #   deploy:
+  #     resources:
+  #       reservations:
+  #         devices:
+  #           - driver: nvidia
+  #             count: 1
+  #             capabilities: [gpu]
+  #   networks:
+  #     - agentwire
+  #   restart: unless-stopped
 
 networks:
   agentwire:
     driver: bridge
-
-# === Volume definitions ===
-volumes:
-  config:
-  voices:

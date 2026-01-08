@@ -2,6 +2,7 @@
 
 import json
 import logging
+import os
 import shlex
 import subprocess
 from pathlib import Path
@@ -354,19 +355,34 @@ class TmuxAgent(AgentBackend):
         return True
 
     def list_sessions(self) -> list[str]:
-        """List all tmux sessions (local and remote)."""
+        """List all tmux sessions (from configured machines via SSH)."""
         sessions = []
 
-        # Local sessions
-        result = self._run_local([
-            "tmux", "list-sessions", "-F", "#{session_name}",
-        ])
-        if result.returncode == 0 and result.stdout.strip():
-            sessions.extend(s for s in result.stdout.strip().split("\n") if s)
+        # Check if running in Docker container (portal-only mode)
+        in_container = os.path.exists('/.dockerenv')
+
+        # Only query local tmux if NOT in container
+        # Container is orchestrator-only, all sessions are on remote machines
+        if not in_container:
+            result = self._run_local([
+                "tmux", "list-sessions", "-F", "#{session_name}",
+            ])
+            if result.returncode == 0 and result.stdout.strip():
+                # Add local sessions with hostname as machine ID
+                import socket
+                local_machine_id = socket.gethostname().split('.')[0]
+                for name in result.stdout.strip().split("\n"):
+                    if name:
+                        sessions.append(f"{name}@{local_machine_id}")
 
         # Remote sessions from configured machines
         for machine in self.machines:
             machine_id = machine.get("id", machine.get("host", ""))
+
+            # Skip "local" machine when running on host (prevents duplication)
+            if not in_container and machine_id == "local":
+                continue
+
             cmd = "tmux list-sessions -F '#{session_name}' 2>/dev/null"
             result = self._run_remote(machine, cmd)
             if result.returncode == 0 and result.stdout.strip():

@@ -6,6 +6,7 @@ from typing import Any
 from .base import STTBackend
 from .none import NoSTT
 from .openai import OpenAISTT
+from .remote import RemoteSTT
 from .whispercpp import WhisperCppSTT
 from .whisperkit import WhisperKitSTT
 
@@ -13,6 +14,7 @@ __all__ = [
     "STTBackend",
     "NoSTT",
     "OpenAISTT",
+    "RemoteSTT",
     "WhisperCppSTT",
     "WhisperKitSTT",
     "get_stt_backend",
@@ -38,15 +40,21 @@ def get_stt_backend(config: Any) -> STTBackend:
         backend = getattr(stt_config, "backend", None)
         model_path = getattr(stt_config, "model_path", None)
         language = getattr(stt_config, "language", "en")
+        url = getattr(stt_config, "url", None)
+        timeout = getattr(stt_config, "timeout", 30)
     elif isinstance(config, dict):
         stt_config = config.get("stt", {})
         backend = stt_config.get("backend")
         model_path = stt_config.get("model_path")
         language = stt_config.get("language", "en")
+        url = stt_config.get("url")
+        timeout = stt_config.get("timeout", 30)
     else:
         backend = None
         model_path = None
         language = "en"
+        url = None
+        timeout = 30
 
     # Handle None or "none" backend
     if backend is None or backend == "none":
@@ -66,5 +74,10 @@ def get_stt_backend(config: Any) -> STTBackend:
 
     if backend == "openai":
         return OpenAISTT(language=language)
+
+    if backend == "remote":
+        if not url:
+            raise ValueError("stt.url is required for remote STT backend")
+        return RemoteSTT(url=url, timeout=timeout)
 
     raise ValueError(f"Unknown STT backend: {backend}")

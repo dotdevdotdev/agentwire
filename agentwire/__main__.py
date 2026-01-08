@@ -8,6 +8,7 @@ import json
 import os
 import shlex
 import shutil
+import socket
 import subprocess
 import sys
 import time
@@ -1105,33 +1106,39 @@ def cmd_send(args) -> int:
 
 
 def cmd_list(args) -> int:
-    """List all tmux sessions from local and all registered machines."""
+    """List all tmux sessions from all registered machines."""
     json_mode = getattr(args, 'json', False)
     local_only = getattr(args, 'local', False)
 
     all_sessions = []
 
-    # Get local sessions
-    result = subprocess.run(
-        ["tmux", "list-sessions", "-F", "#{session_name}:#{session_windows}:#{pane_current_path}"],
-        capture_output=True,
-        text=True
-    )
+    # Check if we're running in Docker container (portal-only mode)
+    in_container = os.path.exists('/.dockerenv')
 
+    # Get local sessions (only if not in container)
     local_sessions = []
-    if result.returncode == 0:
-        for line in result.stdout.strip().split("\n"):
-            if line:
-                parts = line.split(":", 2)
-                if len(parts) >= 2:
-                    session_info = {
-                        "name": parts[0],
-                        "windows": int(parts[1]) if parts[1].isdigit() else 1,
-                        "path": parts[2] if len(parts) > 2 else "",
-                        "machine": None,
-                    }
-                    local_sessions.append(session_info)
-                    all_sessions.append(session_info)
+    if not in_container:
+        result = subprocess.run(
+            ["tmux", "list-sessions", "-F", "#{session_name}:#{session_windows}:#{pane_current_path}"],
+            capture_output=True,
+            text=True
+        )
+
+        if result.returncode == 0:
+            for line in result.stdout.strip().split("\n"):
+                if line:
+                    parts = line.split(":", 2)
+                    if len(parts) >= 2:
+                        # Determine local machine ID (hostname or "local")
+                        local_machine_id = socket.gethostname().split('.')[0]
+                        session_info = {
+                            "name": f"{parts[0]}@{local_machine_id}",
+                            "windows": int(parts[1]) if parts[1].isdigit() else 1,
+                            "path": parts[2] if len(parts) > 2 else "",
+                            "machine": local_machine_id,
+                        }
+                        local_sessions.append(session_info)
+                        all_sessions.append(session_info)
 
     # Get remote sessions from all registered machines
     remote_by_machine = {}
@@ -1140,6 +1147,11 @@ def cmd_list(args) -> int:
         for machine in machines:
             machine_id = machine.get("id")
             if not machine_id:
+                continue
+
+            # Skip "local" machine when running on host (not in container)
+            # "local" is for container to reach host via host.docker.internal
+            if not in_container and machine_id == "local":
                 continue
 
             cmd = "tmux list-sessions -F '#{session_name}:#{session_windows}:#{pane_current_path}' 2>/dev/null || echo ''"
@@ -1168,19 +1180,28 @@ def cmd_list(args) -> int:
         return 0
 
     # Text output - grouped by machine
-    if not local_sessions and not any(remote_by_machine.values()):
+    # Combine local and remote sessions into single machine-based view
+    all_machines = {}
+
+    # Add local sessions to machine view
+    for s in local_sessions:
+        machine = s['machine']
+        if machine not in all_machines:
+            all_machines[machine] = []
+        all_machines[machine].append(s)
+
+    # Add remote sessions to machine view
+    for machine_id, sessions in remote_by_machine.items():
+        if machine_id not in all_machines:
+            all_machines[machine_id] = []
+        all_machines[machine_id].extend(sessions)
+
+    if not all_machines:
         print("No sessions running")
         return 0
 
-    # Local sessions
-    if local_sessions:
-        print("LOCAL:")
-        for s in local_sessions:
-            print(f"  {s['name']}: {s['windows']} window(s) ({s['path']})")
-        print()
-
-    # Remote sessions
-    for machine_id, sessions in remote_by_machine.items():
+    # Display all sessions grouped by machine
+    for machine_id, sessions in sorted(all_machines.items()):
         print(f"{machine_id}:")
         if sessions:
             for s in sessions:

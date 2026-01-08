@@ -948,8 +948,7 @@ class AgentWireServer:
                 for m in self.agent.machines:
                     machines_dict[m.get('id')] = m
 
-            # Group sessions by machine (None = local)
-            local_sessions = []
+            # Group sessions by machine (everything is machine-based now)
             machine_sessions = {}  # machine_id -> list of sessions
 
             for name in sessions:
@@ -974,12 +973,10 @@ class AgentWireServer:
                     "activity": activity_status,
                 }
 
-                if machine_id is None:
-                    local_sessions.append(session_data)
-                else:
-                    if machine_id not in machine_sessions:
-                        machine_sessions[machine_id] = []
-                    machine_sessions[machine_id].append(session_data)
+                # All sessions grouped by machine_id (no special "local" section)
+                if machine_id not in machine_sessions:
+                    machine_sessions[machine_id] = []
+                machine_sessions[machine_id].append(session_data)
 
             # Build machine list with status
             # Include ALL configured machines, even if they have no sessions
@@ -1000,19 +997,18 @@ class AgentWireServer:
                     "sessions": sessions_list,
                 })
 
-            # Return hierarchical structure
+            # Sort machines: "local" first, then others alphabetically
+            machines.sort(key=lambda m: (m["id"] != "local", m["id"]))
+
+            # Return machine-based structure (no separate "local" section)
             result = {
-                "local": {
-                    "session_count": len(local_sessions),
-                    "sessions": local_sessions,
-                },
                 "machines": machines,
             }
 
             return web.json_response(result)
         except Exception as e:
             logger.error(f"Failed to list sessions: {e}")
-            return web.json_response({"local": {"session_count": 0, "sessions": []}, "machines": []})
+            return web.json_response({"machines": []})
 
     async def api_machine_status(self, request: web.Request) -> web.Response:
         """Get status for a specific machine.

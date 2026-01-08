@@ -95,6 +95,9 @@ class STTConfig:
     backend: str = field(default_factory=lambda: _default_stt_backend())
     model_path: Path | None = None
     language: str = "en"
+    # Remote STT server configuration
+    url: str = "http://localhost:8100"
+    timeout: int = 30
 
     def __post_init__(self):
         self.model_path = _expand_path(self.model_path)
