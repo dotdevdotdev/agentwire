@@ -1691,6 +1691,7 @@ projects:
             # Convert webm to wav (16kHz mono for Whisper)
             wav_path = webm_path.replace(".webm", ".wav")
             try:
+                logger.info("Converting webm to wav: %s -> %s", webm_path, wav_path)
                 proc = await asyncio.create_subprocess_exec(
                     "ffmpeg", "-i", webm_path,
                     "-ar", "16000", "-ac", "1", "-y", wav_path,
@@ -1704,8 +1705,9 @@ projects:
                     return web.json_response({"error": "Audio conversion failed"})
 
                 # Transcribe the wav file
-                logger.debug("Transcribing %s", wav_path)
+                logger.info("Transcribing %s via %s backend", wav_path, type(self.stt).__name__)
                 text = await self.stt.transcribe(Path(wav_path))
+                logger.info("Transcription result: %s", text)
                 return web.json_response({"text": text})
             finally:
                 Path(webm_path).unlink(missing_ok=True)

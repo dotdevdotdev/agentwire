@@ -78,6 +78,9 @@ def get_stt_backend(config: Any) -> STTBackend:
     if backend == "remote":
         if not url:
             raise ValueError("stt.url is required for remote STT backend")
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"Initializing RemoteSTT with url={url}, timeout={timeout}")
         return RemoteSTT(url=url, timeout=timeout)
 
     raise ValueError(f"Unknown STT backend: {backend}")

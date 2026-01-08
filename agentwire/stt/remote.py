@@ -1,10 +1,13 @@
 """Remote STT backend - connects to STT server via HTTP."""
 
+import logging
 from pathlib import Path
 
 import aiohttp
 
 from .base import STTBackend
+
+logger = logging.getLogger(__name__)
 
 
 class RemoteSTT(STTBackend):
@@ -42,6 +45,7 @@ class RemoteSTT(STTBackend):
             Transcribed text, or None if transcription failed
         """
         if not audio_path.exists():
+            logger.warning("Audio file does not exist: %s", audio_path)
             return None
 
         session = await self._get_session()
@@ -49,6 +53,7 @@ class RemoteSTT(STTBackend):
         try:
             # Read audio file
             audio_data = audio_path.read_bytes()
+            logger.info("Sending %d bytes to %s/transcribe", len(audio_data), self.url)
 
             # Create multipart form data
             data = aiohttp.FormData()
@@ -67,12 +72,19 @@ class RemoteSTT(STTBackend):
                 timeout=timeout
             ) as resp:
                 if resp.status != 200:
+                    logger.error("STT server returned status %d", resp.status)
                     return None
 
                 result = await resp.json()
-                return result.get("text")
+                text = result.get("text")
+                logger.info("Received transcription: %s", text)
+                return text
 
-        except (aiohttp.ClientError, Exception):
+        except aiohttp.ClientError as e:
+            logger.error("STT request failed: %s", e)
+            return None
+        except Exception as e:
+            logger.error("Unexpected error in transcription: %s", e)
             return None
 
     async def close(self) -> None:

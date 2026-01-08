@@ -379,6 +379,8 @@ def _dict_to_config(data: dict) -> Config:
         backend=stt_data.get("backend", _default_stt_backend()),
         model_path=stt_data.get("model_path"),
         language=stt_data.get("language", "en"),
+        url=stt_data.get("url", "http://localhost:8100"),
+        timeout=stt_data.get("timeout", 30),
     )
 
     # Agent
@@ -485,6 +487,12 @@ def load_config(config_path: Optional[Path] = None) -> Config:
 
     # Apply environment variable overrides
     data = _apply_env_overrides(data)
+
+    # Debug logging for STT config
+    import logging
+    logger = logging.getLogger(__name__)
+    if 'stt' in data:
+        logger.info(f"STT config after env overrides: {data['stt']}")
 
     return _dict_to_config(data)
 
