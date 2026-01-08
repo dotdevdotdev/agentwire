@@ -5,6 +5,9 @@
 fastapi>=0.109.0
 uvicorn[standard]>=0.27.0
 
+# Required for agentwire package imports
+aiohttp>=3.9.0
+
 # TTS Engine (installed from GitHub)
 git+https://github.com/resemble-ai/chatterbox.git
 
