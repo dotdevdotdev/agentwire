@@ -159,7 +159,7 @@ async def generate_tts(request: TTSRequest):
 
 
 if __name__ == "__main__":
-    print("Starting FastAPI server on port 8000...")
+    print("Starting FastAPI server on port 80...")
     print(f"Voices directory: {VOICES_DIR}")
     if VOICES_DIR.exists():
         voices = list(VOICES_DIR.glob('*.wav'))
@@ -167,5 +167,5 @@ if __name__ == "__main__":
     else:
         print("Voices directory does not exist!")
 
-    # Start FastAPI server with uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
+    # Start FastAPI server with uvicorn (port 80 for RunPod Load Balancer)
+    uvicorn.run(app, host="0.0.0.0", port=80, log_level="info")
