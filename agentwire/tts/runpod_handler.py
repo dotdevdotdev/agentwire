@@ -11,14 +11,20 @@ RunPod serverless architecture:
 - Custom voices are bundled into the Docker image
 """
 
+print("=" * 60)
+print("AgentWire TTS RunPod Handler Starting...")
+print("=" * 60)
+
 import base64
 import io
 import os
 from pathlib import Path
 
+print("Importing dependencies...")
 import runpod
 import torch
 import torchaudio
+print("Dependencies imported successfully!")
 
 # GPU optimizations
 torch.backends.cudnn.benchmark = True
@@ -35,10 +41,17 @@ def load_model():
     """Load Chatterbox TTS model (runs once on worker startup)."""
     global model
     if model is None:
-        print("Loading Chatterbox Turbo model...")
-        from chatterbox.tts_turbo import ChatterboxTurboTTS
-        model = ChatterboxTurboTTS.from_pretrained(device="cuda")
-        print(f"TTS model loaded! Sample rate: {model.sr}")
+        try:
+            print("Loading Chatterbox Turbo model...")
+            from chatterbox.tts_turbo import ChatterboxTurboTTS
+            print("Chatterbox module imported, creating model...")
+            model = ChatterboxTurboTTS.from_pretrained(device="cuda")
+            print(f"TTS model loaded! Sample rate: {model.sr}")
+        except Exception as e:
+            print(f"ERROR loading model: {e}")
+            import traceback
+            traceback.print_exc()
+            raise
     return model
 
 
@@ -111,5 +124,9 @@ def handler(job):
 
 
 if __name__ == "__main__":
+    print("Starting RunPod serverless worker...")
+    print(f"Voices directory: {VOICES_DIR}")
+    print(f"Voices available: {list(VOICES_DIR.glob('*.wav')) if VOICES_DIR.exists() else 'None'}")
     # Start RunPod serverless worker
     runpod.serverless.start({"handler": handler})
+    print("RunPod worker started!")
