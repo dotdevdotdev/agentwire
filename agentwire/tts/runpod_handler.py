@@ -1,33 +1,31 @@
 #!/usr/bin/env python3
-"""RunPod Load Balancer handler for AgentWire TTS.
+"""RunPod Traditional Serverless handler for AgentWire TTS.
 
-This handler runs on RunPod GPU workers as a FastAPI HTTP server.
-It processes TTS requests directly via HTTP endpoints.
+This handler runs on RunPod GPU workers using the traditional serverless architecture.
+It processes TTS requests via the RunPod queue system.
 
-Load Balancer architecture:
-- FastAPI server listens on port 8000
-- POST /tts endpoint receives: text, voice, exaggeration, cfg_weight
-- Loads Chatterbox TTS model once (cached between requests)
-- Generates audio and returns base64-encoded WAV
+Traditional Serverless architecture:
+- Queue-based requests via RunPod API/SDK
+- Scales to zero when idle (pay-per-use)
+- Job input: {"text": "...", "voice": "dotdev", ...}
+- Job output: {"audio": "base64...", "sample_rate": 24000, "voice": "dotdev"}
 - Custom voices are bundled into the Docker image
+- Model is pre-downloaded during build for instant cold starts
 """
 
 print("=" * 60)
-print("AgentWire TTS RunPod Load Balancer Starting...")
+print("AgentWire TTS RunPod Serverless Starting...")
 print("=" * 60)
 
 import base64
 import io
-import os
 from pathlib import Path
 from typing import Optional
 
 print("Importing dependencies...")
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+import runpod
 import torch
 import torchaudio
-import uvicorn
 
 print("Dependencies imported successfully!")
 
@@ -40,24 +38,6 @@ model = None
 
 # Voices directory - bundled into Docker image
 VOICES_DIR = Path("/voices")
-
-# FastAPI app
-app = FastAPI(title="AgentWire TTS", version="1.0.0")
-
-
-class TTSRequest(BaseModel):
-    """TTS generation request."""
-    text: str
-    voice: Optional[str] = None
-    exaggeration: float = 0.0
-    cfg_weight: float = 0.0
-
-
-class TTSResponse(BaseModel):
-    """TTS generation response."""
-    audio: str  # base64-encoded WAV
-    sample_rate: int
-    voice: Optional[str] = None
 
 
 def load_model():
@@ -78,66 +58,64 @@ def load_model():
     return model
 
 
-@app.get("/")
-async def root():
-    """Health check endpoint."""
-    return {
-        "service": "AgentWire TTS",
-        "status": "ready",
-        "model_loaded": model is not None
-    }
-
-
-@app.get("/health")
-async def health():
-    """Health check endpoint."""
-    return {"status": "healthy"}
-
-
-@app.get("/ping")
-async def ping():
-    """RunPod Load Balancer health check endpoint."""
-    return {"status": "ok"}
-
-
-@app.post("/tts", response_model=TTSResponse)
-async def generate_tts(request: TTSRequest):
-    """Generate TTS audio from text.
+def handler(job):
+    """
+    RunPod serverless handler function.
 
     Args:
-        request: TTSRequest with text, optional voice, exaggeration, cfg_weight
+        job: RunPod job object with job["input"] containing request data
+
+    Expected input format:
+        {
+            "text": str,              # Required: text to synthesize
+            "voice": str,             # Optional: voice name (e.g., "dotdev")
+            "exaggeration": float,    # Optional: default 0.0
+            "cfg_weight": float       # Optional: default 0.0
+        }
 
     Returns:
-        TTSResponse with base64-encoded WAV audio
+        {
+            "audio": str,             # base64-encoded WAV audio
+            "sample_rate": int,       # audio sample rate (24000)
+            "voice": str or None      # voice used (or None if default)
+        }
     """
-    print(f"Received TTS request: text='{request.text[:50]}...', voice={request.voice}")
+    job_input = job["input"]
+
+    # Extract parameters
+    text = job_input.get("text")
+    voice = job_input.get("voice")
+    exaggeration = job_input.get("exaggeration", 0.0)
+    cfg_weight = job_input.get("cfg_weight", 0.0)
+
+    print(f"Received TTS request: text='{text[:50] if text else ''}...', voice={voice}")
 
     # Validate input
-    if not request.text.strip():
-        raise HTTPException(status_code=400, detail="Text cannot be empty")
-
-    # Load model (cached after first request)
-    tts_model = load_model()
-
-    # Resolve voice file if specified
-    audio_prompt_path = None
-    if request.voice:
-        voice_path = VOICES_DIR / f"{request.voice}.wav"
-        if not voice_path.exists():
-            raise HTTPException(
-                status_code=404,
-                detail=f"Voice '{request.voice}' not found. Available voices: {[p.stem for p in VOICES_DIR.glob('*.wav')]}"
-            )
-        audio_prompt_path = str(voice_path)
+    if not text or not text.strip():
+        return {"error": "Text cannot be empty"}
 
     try:
+        # Load model (cached after first request)
+        tts_model = load_model()
+
+        # Resolve voice file if specified
+        audio_prompt_path = None
+        if voice:
+            voice_path = VOICES_DIR / f"{voice}.wav"
+            if not voice_path.exists():
+                available_voices = [p.stem for p in VOICES_DIR.glob('*.wav')]
+                return {
+                    "error": f"Voice '{voice}' not found. Available voices: {available_voices}"
+                }
+            audio_prompt_path = str(voice_path)
+
         # Generate TTS
-        print(f"Generating TTS with model (exaggeration={request.exaggeration}, cfg_weight={request.cfg_weight})...")
+        print(f"Generating TTS with model (exaggeration={exaggeration}, cfg_weight={cfg_weight})...")
         wav = tts_model.generate(
-            request.text,
+            text,
             audio_prompt_path=audio_prompt_path,
-            exaggeration=request.exaggeration,
-            cfg_weight=request.cfg_weight,
+            exaggeration=exaggeration,
+            cfg_weight=cfg_weight,
         )
 
         # Convert to WAV bytes
@@ -151,21 +129,21 @@ async def generate_tts(request: TTSRequest):
 
         print(f"TTS generation complete! Audio size: {len(audio_bytes)} bytes")
 
-        return TTSResponse(
-            audio=audio_b64,
-            sample_rate=tts_model.sr,
-            voice=request.voice,
-        )
+        return {
+            "audio": audio_b64,
+            "sample_rate": tts_model.sr,
+            "voice": voice,
+        }
 
     except Exception as e:
         print(f"ERROR during TTS generation: {e}")
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+        return {"error": str(e)}
 
 
 if __name__ == "__main__":
-    print("Starting FastAPI server on port 80...")
+    print("Starting RunPod serverless worker...")
     print(f"Voices directory: {VOICES_DIR}")
     if VOICES_DIR.exists():
         voices = list(VOICES_DIR.glob('*.wav'))
@@ -173,5 +151,5 @@ if __name__ == "__main__":
     else:
         print("Voices directory does not exist!")
 
-    # Start FastAPI server with uvicorn (port 80 for RunPod Load Balancer)
-    uvicorn.run(app, host="0.0.0.0", port=80, log_level="info")
+    # Start RunPod serverless worker
+    runpod.serverless.start({"handler": handler})

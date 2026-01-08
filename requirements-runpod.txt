@@ -1,12 +1,8 @@
-# RunPod Load Balancer TTS Dependencies
-# Minimal set for TTS generation with FastAPI HTTP server
+# RunPod Traditional Serverless TTS Dependencies
+# Minimal set for TTS generation with queue-based serverless
 
-# FastAPI HTTP server
-fastapi>=0.109.0
-uvicorn[standard]>=0.27.0
-
-# Required for agentwire package imports
-aiohttp>=3.9.0
+# RunPod SDK for traditional serverless
+runpod>=1.0.0
 
 # TTS Engine (installed from GitHub)
 git+https://github.com/resemble-ai/chatterbox.git
