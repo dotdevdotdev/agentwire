@@ -1310,7 +1310,8 @@ AgentWire TTS can run on RunPod serverless infrastructure instead of a local GPU
 | **No GPU required** | Run TTS on cloud GPUs (RTX 3090, A100, etc.) |
 | **Pay per use** | Only charged when generating audio (~$0.0004/sec on RTX 3090) |
 | **Auto-scaling** | Scales to zero when idle, spins up on demand |
-| **Custom voices** | Voice clones are bundled into Docker image |
+| **Custom voices** | Bundle voices in Docker image OR upload dynamically via network volumes |
+| **Network volumes** | Persistent storage for voice clones without rebuilding Docker image |
 
 ### Prerequisites
 
@@ -1411,22 +1412,68 @@ RunPod serverless pricing (as of 2024):
 | **Maintenance** | Manual updates | Automatic via Docker rebuild |
 | **Scaling** | Fixed capacity | Auto-scales to demand |
 
-### Updating Voice Clones
+### Voice Management
 
-When you add new voices to `~/.agentwire/voices/`:
+AgentWire supports two methods for managing voices on RunPod:
 
-1. Rebuild and push Docker image:
+#### Option 1: Network Volume (Recommended)
+
+Upload voices dynamically without rebuilding the Docker image using RunPod's network volumes:
+
+**Setup:**
+1. Create a network volume in RunPod dashboard
+2. Attach it to your serverless endpoint (auto-mounts at `/runpod-volume/`)
+3. Upload voices via the API:
+
+```python
+import base64
+import requests
+from pathlib import Path
+
+# Read voice file
+voice_path = Path("~/.agentwire/voices/bashbunni.wav").expanduser()
+audio_bytes = voice_path.read_bytes()
+audio_b64 = base64.b64encode(audio_bytes).decode('utf-8')
+
+# Upload to network volume
+response = requests.post(
+    f"https://api.runpod.ai/v2/{endpoint_id}/runsync",
+    json={
+        "input": {
+            "action": "upload_voice",
+            "voice_name": "bashbunni",
+            "audio_base64": audio_b64
+        }
+    },
+    headers={"Authorization": f"Bearer {api_key}"},
+    timeout=300
+)
+```
+
+**Voice lookup hierarchy:**
+1. Bundled voices in `/voices/` (baked into Docker image)
+2. Network voices in `/runpod-volume/` (persistent, uploadable)
+
+See `upload_bashbunni.py` and `test_tiny_tina.py` for complete examples.
+
+#### Option 2: Bundled Voices (Docker Image)
+
+Bundle voices into the Docker image (requires rebuild for updates):
+
+1. Add voices to `~/.agentwire/voices/`
+2. Rebuild and push Docker image:
    ```bash
    ./scripts/deploy-runpod.sh
    ```
-
-2. Restart portal to reload config:
+3. Restart portal to reload config:
    ```bash
    agentwire portal stop
    agentwire portal start
    ```
 
-Voice clones are bundled into the Docker image, so updating requires rebuilding.
+**When to use bundled vs network volumes:**
+- **Bundled**: Voices you'll always need (e.g., default voice)
+- **Network volume**: Dynamic voices, testing, user-uploaded voices
 
 ### Troubleshooting
 
