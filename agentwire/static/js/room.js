@@ -989,6 +989,36 @@ function bindEvents() {
 }
 
 // ============================================
+// Orchestrator Mode
+// ============================================
+
+/**
+ * Apply UI enhancements for orchestrator sessions.
+ * Emphasizes voice controls and conversational interaction.
+ */
+function applyOrchestratorMode() {
+    // Add orchestrator class to body for CSS targeting
+    document.body.classList.add('orchestrator-mode');
+
+    // Make mic button more prominent (increase size via CSS class)
+    if (elements.micBtn) {
+        elements.micBtn.classList.add('orchestrator-mic');
+    }
+
+    // Add visual hint on first load (localStorage check)
+    const hintShown = localStorage.getItem('agentwire-orchestrator-hint-shown');
+    if (!hintShown) {
+        // Show subtle hint emphasizing voice interaction
+        setTimeout(() => {
+            if (elements.micBtn) {
+                elements.micBtn.style.animation = 'pulse-hint 2s ease-in-out 3';
+            }
+        }, 1000);
+        localStorage.setItem('agentwire-orchestrator-hint-shown', 'true');
+    }
+}
+
+// ============================================
 // Initialization
 // ============================================
 
@@ -997,6 +1027,11 @@ export function init(config) {
     IS_SYSTEM_SESSION = config.isSystemSession || false;
 
     cacheElements();
+
+    // Apply orchestrator mode UI enhancements
+    if (config.role === 'orchestrator') {
+        applyOrchestratorMode();
+    }
 
     // Initialize modules
     orb.init(elements.orb, elements.orbRing, elements.stateLabel);

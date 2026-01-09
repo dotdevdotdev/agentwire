@@ -1115,6 +1115,136 @@ Claude (or users) can trigger TTS by running shell commands in sessions. See "Vo
 
 ---
 
+## Orchestrator-Worker Pattern
+
+AgentWire supports an **orchestrator-worker pattern** using Claude Code's built-in Task tool for spawning subagents. This pattern separates conversational coordination (orchestrator) from code execution (workers).
+
+### When to Use Orchestrator Sessions
+
+Use orchestrator sessions when:
+- You want voice-first interaction without seeing code diffs
+- You're coordinating complex multi-step work
+- You need to spawn multiple parallel workers
+- You want natural conversation ABOUT the work, not technical details
+
+**Default behavior:** All sessions created via `agentwire new` are orchestrator sessions by default.
+
+### How It Works
+
+**Orchestrator sessions:**
+- Load with `--context ~/.agentwire/roles/orchestrator.md`
+- Use voice (remote-say) for all user communication
+- Spawn worker agents via Task tool for execution work
+- Blocked from file operations (Edit, Write, Read, Glob, Grep) via hooks
+- Only use: Task, Bash(agentwire/remote-say), AskUserQuestion
+
+**Worker agents (Task subagents):**
+- Spawned via orchestrator using Task tool
+- Receive role instructions via `@~/.agentwire/roles/worker.md` in prompt
+- Have full Claude Code capabilities including Task for subagents
+- Follow `~/.claude/rules/` patterns (parallel execution, missions)
+- Return factual results, no explanatory text
+- Blocked from user interaction (AskUserQuestion, remote-say, say)
+
+### Example Conversation Flow
+
+```
+User (voice): "Add authentication to the API"
+
+Orchestrator (voice): "I'm spawning a worker to implement that"
+  [Spawns Task subagent with prompt:]
+  "Implement JWT authentication endpoints. Follow @~/.agentwire/roles/worker.md"
+
+Worker (Task subagent):
+  - Edits auth.py, routes.py, middleware.py in parallel
+  - Runs tests
+  - Returns: "Done, 3 files changed. Tests passing."
+
+Orchestrator (voice): "Authentication is complete, all tests passing"
+```
+
+### Task Tool Usage
+
+Orchestrators spawn workers using Claude Code's Task tool:
+
+```python
+Task(
+  subagent_type="general-purpose",
+  description="Implement authentication",
+  prompt="Implement JWT auth endpoints. Follow @~/.agentwire/roles/worker.md for output style."
+)
+```
+
+Workers can spawn their own subagents for parallel work:
+
+```python
+# Worker spawning 3 subagents for parallel file edits
+Task(..., prompt="Update auth middleware")
+Task(..., prompt="Update auth routes")
+Task(..., prompt="Update auth tests")
+```
+
+### Role Files
+
+**Orchestrator role** (`~/.agentwire/roles/orchestrator.md`):
+- Emphasizes Task tool for spawning workers
+- Voice-first conversational style
+- Documents available tools (Task, Bash, AskUserQuestion only)
+
+**Worker role** (`~/.agentwire/roles/worker.md`):
+- Emphasizes autonomous execution
+- Factual, minimal output style
+- Documents full tool access including Task for subagents
+- References ~/.claude/rules/ for best practices inheritance
+
+Both role files are automatically created during `agentwire skills install`.
+
+### Common Patterns
+
+**Single worker for focused work:**
+```
+User: "Fix the login bug"
+Orchestrator spawns 1 worker → fixes bug → reports back
+```
+
+**Multiple workers for parallel work:**
+```
+User: "Add authentication"
+Orchestrator spawns 3 workers in parallel:
+  - Frontend: Login UI
+  - Backend: Auth endpoints
+  - Tests: Integration tests
+All return results → orchestrator summarizes
+```
+
+**Worker spawning subagents:**
+```
+Worker needs to update 5 files
+→ Spawns 5 subagents in parallel (Claude Code pattern)
+→ Subagents edit independently
+→ Worker reports "Done, 5 files changed"
+```
+
+### Troubleshooting
+
+**Issue:** Orchestrator tries to edit files directly
+- **Cause:** Hooks not installed or not blocking properly
+- **Fix:** Run `agentwire skills install` to register hooks
+
+**Issue:** Worker asks user questions
+- **Cause:** Worker hooks not blocking AskUserQuestion
+- **Fix:** Check `~/.claude/settings.json` has worker hooks registered
+
+**Issue:** Orchestrator doesn't use voice
+- **Cause:** Missing remote-say in prompts or role file not loaded
+- **Fix:** Verify session created with orchestrator role
+
+**Issue:** Worker output is too verbose
+- **Cause:** Worker not following role instructions
+- **Fix:** Ensure Task prompt includes `@~/.agentwire/roles/worker.md`
+
+---
+
 ## Skills (Session Orchestration)
 
 Skills in `skills/` provide Claude Code integration:

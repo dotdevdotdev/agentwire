@@ -13,7 +13,7 @@
         <div class="header-left">
             <a href="/" class="header-brand"><img src="/static/logo-green.jpeg" alt="" class="header-logo">AgentWire</a>
             <div>
-                <h1>{{ room_name }}{% if config.machine %}<span style="color:var(--text-muted);font-weight:normal">@{{ config.machine }}</span>{% endif %}</h1>
+                <h1>{{ room_name }}{% if config.machine %}<span style="color:var(--text-muted);font-weight:normal">@{{ config.machine }}</span>{% endif %}{% if config.role %}<span class="room-role-badge room-role-{{ config.role }}">{{ config.role|title }}</span>{% endif %}</h1>
                 <div class="status" id="status">connecting...</div>
             </div>
         </div>
@@ -125,7 +125,8 @@
 <script>
     window.ROOM_CONFIG = {
         room: '{{ room_name }}',
-        isSystemSession: {{ is_system_session_js }}
+        isSystemSession: {{ is_system_session_js }},
+        role: {% if config.role %}'{{ config.role }}'{% else %}null{% endif %}
     };
 </script>
 <script type="module" src="/static/js/room.js"></script>

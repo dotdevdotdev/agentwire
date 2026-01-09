@@ -83,6 +83,7 @@ class RoomConfig:
     claude_session_id: str | None = None  # Claude Code session UUID for forking
     bypass_permissions: bool = True  # Default True for backwards compat with existing sessions
     restricted: bool = False  # Restricted mode: only say/remote-say allowed
+    role: str | None = None  # Session role: "orchestrator", "worker", or None
 
 
 @dataclass
@@ -286,6 +287,7 @@ class AgentWireServer:
                 claude_session_id=cfg.get("claude_session_id"),
                 bypass_permissions=cfg.get("bypass_permissions", True),  # Default True
                 restricted=cfg.get("restricted", False),  # Default False
+                role=cfg.get("role"),  # Session role: "orchestrator", "worker", or None
             )
         return RoomConfig(voice=self.config.tts.default_voice)
 

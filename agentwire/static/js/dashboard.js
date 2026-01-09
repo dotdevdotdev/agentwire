@@ -658,14 +658,25 @@ function renderSessionCard(session, machineId) {
     const isExpanded = isSessionExpanded(session.name);
     const expandIcon = isExpanded ? '▼' : '▶';
 
-    // Determine badge: restricted > prompted > bypass
-    let badge;
-    if (session.restricted) {
-        badge = '<span class="session-badge restricted">Restricted</span>';
-    } else if (session.bypass_permissions === false) {
-        badge = '<span class="session-badge prompted">Prompted</span>';
-    } else {
-        badge = '<span class="session-badge bypass">Bypass</span>';
+    // Determine badges: role badge first, then permission badge
+    let badges = '';
+
+    // Role badge (orchestrator takes precedence)
+    if (session.role === 'orchestrator') {
+        badges += '<span class="session-badge orchestrator">Orchestrator</span>';
+    } else if (session.role === 'worker') {
+        badges += '<span class="session-badge worker">Worker</span>';
+    }
+
+    // Permission badge (only show if not orchestrator - they're always bypass)
+    if (session.role !== 'orchestrator') {
+        if (session.restricted) {
+            badges += '<span class="session-badge restricted">Restricted</span>';
+        } else if (session.bypass_permissions === false) {
+            badges += '<span class="session-badge prompted">Prompted</span>';
+        } else {
+            badges += '<span class="session-badge bypass">Bypass</span>';
+        }
     }
 
     // Strip @machine from display name if present (avoid doubling)
@@ -689,7 +700,7 @@ function renderSessionCard(session, machineId) {
                     <span class="expand-icon">${expandIcon}</span>
                     ${activityIndicator}
                     <span class="session-display-name">${displayName}</span>
-                    ${badge}
+                    ${badges}
                 </div>
                 <div class="session-header-right">
                     <a href="/room/${encodeURIComponent(session.name)}" class="session-action-btn goto-btn" title="Go to room">→</a>

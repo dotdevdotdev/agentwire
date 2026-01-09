@@ -525,6 +525,18 @@
   margin-left: var(--space-sm);
 }
 
+.session-badge.orchestrator {
+  background: var(--primary);
+  color: var(--bg-dark);
+  font-weight: 600;
+}
+
+.session-badge.worker {
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
 .session-badge.bypass {
   background: var(--bg-hover); /* Level 3: visible but subtle */
   color: var(--primary);

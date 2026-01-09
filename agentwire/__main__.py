@@ -1330,13 +1330,15 @@ def cmd_new(args) -> int:
         bypass_flag = "" if not bypass_permissions else " --dangerously-skip-permissions"
         # AGENTWIRE_ROOM must include @machine so portal can find room config
         room_name = f"{session_name}@{machine_id}"
+        # Add role context (default to orchestrator)
+        context_flag = " --context ~/.agentwire/roles/orchestrator.md"
         create_cmd = (
             f"tmux new-session -d -s {shlex.quote(session_name)} -c {shlex.quote(remote_path)} && "
             f"tmux send-keys -t {shlex.quote(session_name)} 'cd {shlex.quote(remote_path)}' Enter && "
             f"sleep 0.1 && "
             f"tmux send-keys -t {shlex.quote(session_name)} 'export AGENTWIRE_ROOM={shlex.quote(room_name)}' Enter && "
             f"sleep 0.1 && "
-            f"tmux send-keys -t {shlex.quote(session_name)} 'claude{bypass_flag}' Enter"
+            f"tmux send-keys -t {shlex.quote(session_name)} 'claude{bypass_flag}{context_flag}' Enter"
         )
 
         result = _run_remote(machine_id, create_cmd)
@@ -1356,7 +1358,11 @@ def cmd_new(args) -> int:
                 pass
 
         room_key = f"{session_name}@{machine_id}"
-        room_config = {"bypass_permissions": bypass_permissions, "restricted": restricted}
+        room_config = {
+            "bypass_permissions": bypass_permissions,
+            "restricted": restricted,
+            "role": "orchestrator"  # Default to orchestrator for all sessions
+        }
         # Add voice from template if specified
         if template and template.voice:
             room_config["voice"] = template.voice
@@ -1497,10 +1503,13 @@ def cmd_new(args) -> int:
     else:
         bypass_permissions = not (no_bypass_arg or restricted)
 
+    # Build claude command with role context
+    claude_cmd = "claude"
     if bypass_permissions:
-        claude_cmd = "claude --dangerously-skip-permissions"
-    else:
-        claude_cmd = "claude"
+        claude_cmd += " --dangerously-skip-permissions"
+
+    # Add role context (default to orchestrator)
+    claude_cmd += " --context ~/.agentwire/roles/orchestrator.md"
 
     subprocess.run(
         ["tmux", "send-keys", "-t", session_name, claude_cmd, "Enter"],
@@ -1519,7 +1528,11 @@ def cmd_new(args) -> int:
         except Exception:
             pass
 
-    room_config = {"bypass_permissions": bypass_permissions, "restricted": restricted}
+    room_config = {
+        "bypass_permissions": bypass_permissions,
+        "restricted": restricted,
+        "role": "orchestrator"  # Default to orchestrator for all sessions
+    }
     # Add voice from template if specified
     if template and template.voice:
         room_config["voice"] = template.voice
@@ -4553,7 +4566,34 @@ def main() -> int:
     list_parser.set_defaults(func=cmd_list)
 
     # === new command (top-level) ===
-    new_parser = subparsers.add_parser("new", help="Create new Claude Code session")
+    new_parser = subparsers.add_parser(
+        "new",
+        help="Create orchestrator session (voice-first, spawns workers via Task tool)",
+        description="""Create a new orchestrator Claude Code session.
+
+Orchestrator sessions:
+  - Load with --context ~/.agentwire/roles/orchestrator.md
+  - Use voice (remote-say) for user communication
+  - Spawn worker agents via Task tool for execution
+  - Blocked from file operations (orchestrators coordinate, workers execute)
+
+Examples:
+  agentwire new -s myproject              # Local orchestrator
+  agentwire new -s api/feature            # Worktree orchestrator
+  agentwire new -s ml@gpu-server          # Remote orchestrator
+  agentwire new -s api -t code-review     # With template
+
+Worker agents (Task subagents):
+  - Spawned by orchestrator via Task tool
+  - Receive role via @~/.agentwire/roles/worker.md in prompt
+  - Have full Claude Code capabilities including Task for subagents
+  - Follow ~/.claude/rules/ patterns (parallel execution, missions)
+  - Return factual results, no explanatory text
+
+See CLAUDE.md "Orchestrator-Worker Pattern" for details.
+        """,
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     new_parser.add_argument("-s", "--session", required=True, help="Session name (project, project/branch, or project/branch@machine)")
     new_parser.add_argument("-p", "--path", help="Working directory (default: ~/projects/<name>)")
     new_parser.add_argument("-t", "--template", help="Apply session template (from ~/.agentwire/templates/)")

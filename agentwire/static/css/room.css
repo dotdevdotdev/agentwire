@@ -91,6 +91,28 @@ body {
 .header h1 {
     font-size: 1.25rem;
     color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.room-role-badge {
+    font-size: 0.7rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.room-role-badge.room-role-orchestrator {
+    background: var(--primary);
+    color: var(--bg-dark);
+}
+
+.room-role-badge.room-role-worker {
+    background: var(--bg-hover);
+    color: var(--text-secondary);
 }
 
 .header a {
@@ -1421,4 +1443,37 @@ body {
     50% {
         opacity: 0.5;
     }
+}
+
+/* ============================================
+   Orchestrator Mode Enhancements
+   ============================================ */
+
+/* Make mic button larger and more prominent for orchestrator sessions */
+.orchestrator-mode .mic-btn.orchestrator-mic {
+    width: 70px;
+    height: 70px;
+    font-size: 1.75rem;
+}
+
+/* Pulse hint animation for first-time users */
+@keyframes pulse-hint {
+    0%, 100% {
+        transform: scale(1);
+        box-shadow: 0 4px 20px var(--primary-glow);
+    }
+    50% {
+        transform: scale(1.15);
+        box-shadow: 0 8px 40px var(--primary-glow);
+    }
+}
+
+/* Orchestrator ambient mode - emphasize conversational feel */
+.orchestrator-mode .ambient {
+    /* Add subtle visual cue that this is voice-first */
+}
+
+.orchestrator-mode .orb-container {
+    /* Orb slightly larger for orchestrator sessions */
+    transform: scale(1.05);
 }

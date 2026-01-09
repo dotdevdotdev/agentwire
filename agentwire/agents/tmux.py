@@ -27,6 +27,42 @@ def tmux_session_exists(name: str) -> bool:
     return result.returncode == 0
 
 
+def get_role(session: str) -> str | None:
+    """Get the role for a session from rooms.json.
+
+    Args:
+        session: Session name (may include @machine suffix)
+
+    Returns:
+        Role string (e.g., "orchestrator", "worker") or None if not set
+    """
+    rooms_file = Path.home() / ".agentwire" / "rooms.json"
+    if not rooms_file.exists():
+        return None
+
+    try:
+        with open(rooms_file) as f:
+            configs = json.load(f)
+            room_config = configs.get(session, {})
+            return room_config.get("role")
+    except (json.JSONDecodeError, IOError) as e:
+        logger.warning(f"Failed to read role from rooms.json: {e}")
+        return None
+
+
+def is_orchestrator(session: str) -> bool:
+    """Check if a session has the orchestrator role.
+
+    Args:
+        session: Session name (may include @machine suffix)
+
+    Returns:
+        True if role is "orchestrator", False otherwise
+    """
+    role = get_role(session)
+    return role == "orchestrator"
+
+
 class TmuxAgent(AgentBackend):
     """Agent backend using tmux sessions."""
 
@@ -142,6 +178,7 @@ class TmuxAgent(AgentBackend):
                 - session_id: Claude Code session UUID
                 - fork_from: Session ID to fork from (uses --resume --fork-session)
                 - bypass_permissions: If True, add --dangerously-skip-permissions flag
+                - role: Role name (e.g., "orchestrator", "worker") - loads ~/.agentwire/roles/{role}.md
 
         Returns:
             Formatted command string
@@ -151,6 +188,7 @@ class TmuxAgent(AgentBackend):
         session_id = options.get("session_id")
         fork_from = options.get("fork_from")
         bypass_permissions = options.get("bypass_permissions", True)  # Default True for backwards compat
+        role = options.get("role", "orchestrator")  # Default to orchestrator
 
         cmd = self.agent_command
         cmd = cmd.replace("{name}", name)
@@ -171,6 +209,10 @@ class TmuxAgent(AgentBackend):
             # Also set the new session ID if provided
             if session_id:
                 cmd = f"{cmd} --session-id {session_id}"
+
+        # Add role context file
+        if role:
+            cmd = f"{cmd} --context ~/.agentwire/roles/{role}.md"
 
         return cmd
 
