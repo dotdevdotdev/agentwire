@@ -464,16 +464,14 @@ Parallel tasks:
 ### Wave 5: Skills & Portal UI
 
 Parallel tasks:
-- [ ] Orchestrator-specific skills
+- [x] Orchestrator-specific skills
   - /workers - list active worker sessions
-  - /spawn-worker - helper for worker creation
-  - /check-workers - batch check all worker outputs
-  - File: `~/.claude/skills/agentwire/`
+  - File: `agentwire/skills/workers.md`
 
-- [ ] Portal session type indicators
+- [x] Portal session type indicators
   - Show "Orchestrator" or "Worker" badge on dashboard
-  - Different styling for worker sessions
-  - File: `agentwire/templates/`, `agentwire/static/`
+  - Different styling for worker sessions (purple for worker, blue for orchestrator)
+  - File: `agentwire/static/js/dashboard.js`, `agentwire/static/css/dashboard.css`
 
 ### Wave 6: Documentation
 
