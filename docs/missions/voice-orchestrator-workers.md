@@ -451,15 +451,15 @@ Parallel tasks:
 ### Wave 4: Tool Enforcement
 
 Parallel tasks:
-- [ ] Orchestrator tool blocking
+- [x] Orchestrator tool blocking
   - Block Edit, Write, Read, Glob, Grep via `--disallowedTools`
   - Block non-agentwire bash commands via PreToolUse hook
-  - File: Hook scripts or settings.json
+  - File: `agentwire/hooks/session-type-bash-hook.py`
 
-- [ ] Worker tool blocking
+- [x] Worker tool blocking
   - Block AskUserQuestion via `--disallowedTools`
   - Block remote-say/say bash commands via PreToolUse hook
-  - File: Hook scripts or settings.json
+  - File: `agentwire/hooks/session-type-bash-hook.py`
 
 ### Wave 5: Skills & Portal UI
 
