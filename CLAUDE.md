@@ -108,9 +108,10 @@ agentwire tts serve        # Run in foreground (for debugging)
 agentwire tts stop         # Stop TTS server
 agentwire tts status       # Check TTS status
 
-# Voice
-agentwire say "Hello"      # Speak text locally
-agentwire say --room api "Done"  # Send TTS to room
+# Voice (smart routing: browser if connected, local if not)
+agentwire say "Hello"              # Auto-detect room from env/tmux
+agentwire say "Hello" -v voice     # Specify voice
+agentwire say "Hello" -r room      # Specify room explicitly
 
 # Voice input (push-to-talk recording)
 agentwire listen                      # Toggle recording (start/stop)
@@ -1268,18 +1269,42 @@ uv run test-damage-control.py bash "rm -rf /" --expect-blocked
 
 ## Voice Layer
 
-AgentWire provides TTS via command-based voice output (say/remote-say). The stdio-based MCP server code exists in `agentwire/mcp/` but is not currently wired to a CLI entry point.
+AgentWire provides TTS via the unified `agentwire say` command with smart audio routing.
 
-### Voice Commands (say/remote-say)
-
-Claude (or users) can trigger TTS by running shell commands in sessions:
+### Voice Command
 
 ```bash
-say "Hello world"           # Local: plays via system audio
-remote-say "Task complete"  # Remote: POSTs to portal, streams to browser
+agentwire say "Hello world"              # Smart routing (see below)
+agentwire say "Message" -v bashbunni     # Specify voice
+agentwire say "Message" -r myroom        # Specify room explicitly
 ```
 
-These are real executables installed by `agentwire skills install`. See the Portal Features section for details on how they work.
+**Smart Audio Routing:**
+
+1. **Determine room** - Uses `--room` arg, `AGENTWIRE_ROOM` env var, or current tmux session name
+2. **Check portal connections** - Queries portal for active browser connections in that room
+3. **Route audio:**
+   - If browser connected → Send to portal (plays on browser/tablet)
+   - If no connections → Generate locally (plays via system audio)
+
+This means if you're using the portal on your tablet downstairs, voice output goes there. If you're at your Mac directly, it plays locally.
+
+**TTS Backends:**
+
+| Backend | Config | Description |
+|---------|--------|-------------|
+| `runpod` | `tts.backend: "runpod"` | RunPod serverless (recommended, no local GPU needed) |
+| `chatterbox` | `tts.backend: "chatterbox"` | Local Chatterbox server (requires CUDA GPU) |
+
+**Shell Aliases:**
+
+For convenience in Claude Code sessions, create shell aliases:
+
+```bash
+# In ~/.bashrc or ~/.zshrc
+alias say='agentwire say'
+alias remote-say='agentwire say'  # Both now use smart routing
+```
 
 ---
 
@@ -1502,28 +1527,29 @@ The text input area supports multiline messages with auto-resize:
 
 The textarea starts as a single line and dynamically expands up to 10 lines before scrolling. This provides a natural typing experience for both quick single-line messages and longer multi-paragraph prompts.
 
-### Voice Commands (say/remote-say)
+### Voice Output
 
-Claude (or users) can trigger TTS by running actual shell commands:
+Claude (or users) can trigger TTS using the unified `agentwire say` command:
 
 ```bash
-say "Hello world"           # Local: plays via system audio
-remote-say "Task complete"  # Remote: POSTs to portal, streams to browser
+agentwire say "Hello world"          # Smart routing to browser or local
+agentwire say "Message" -v voice     # Specify voice
+agentwire say "Message" -r room      # Specify room
 ```
 
-**How it works:** These are real executables (not pattern matching on terminal output).
+**How it works:**
 
-- `say` - Uses `agentwire say` to generate TTS locally and play via system speakers
-- `remote-say` - POSTs to portal API, broadcasts TTS audio to connected browser clients
+1. Command detects room from `--room`, `AGENTWIRE_ROOM` env var, or tmux session name
+2. Checks if portal has active browser connections for that room
+3. If connected → Sends to portal (plays on browser/tablet)
+4. If not connected → Generates locally and plays via system audio
 
-**Room detection for remote-say:**
-1. Uses `AGENTWIRE_ROOM` env var (set automatically when session is created)
-2. Falls back to tmux session name if not set
-3. For remote sessions, `AGENTWIRE_ROOM` includes `@machine` suffix (e.g., `myproject@dotdev-pc`)
+**Room detection priority:**
+1. `--room` argument (explicit)
+2. `AGENTWIRE_ROOM` env var (set automatically when session is created)
+3. Current tmux session name (if running in tmux)
 
-**Portal URL for remote machines:** `remote-say` reads the portal URL from `~/.agentwire/portal_url`.
-
-This command-based approach is more reliable than parsing terminal output, which is noisy (typing echoes, ANSI codes, mixed input/output).
+**For remote sessions:** `AGENTWIRE_ROOM` includes `@machine` suffix (e.g., `myproject@dotdev-pc`)
 
 TTS audio includes 300ms silence padding to prevent first-syllable cutoff.
 
@@ -2046,7 +2072,7 @@ This command-based approach is more reliable than pattern-matching terminal outp
 - Works consistently across local and remote sessions
 
 **Current capabilities using this pattern:**
-- `say/remote-say` → TTS audio playback
+- `agentwire say` → TTS audio playback (smart routing to browser or local)
 - `agentwire send` → Send prompts to sessions
 - Image uploads → `@/path` references in messages
 

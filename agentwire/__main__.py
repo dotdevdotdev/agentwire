@@ -963,8 +963,193 @@ def _get_portal_url() -> str:
     return direct_url.replace("http://", "https://")
 
 
+def _get_current_tmux_session() -> str | None:
+    """Get the current tmux session name, if running inside tmux."""
+    # Check if we're in tmux
+    if not os.environ.get("TMUX"):
+        return None
+
+    try:
+        result = subprocess.run(
+            ["tmux", "display-message", "-p", "#S"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip() or None
+    except Exception:
+        pass
+
+    return None
+
+
+def _check_portal_connections(room: str, portal_url: str) -> bool:
+    """Check if portal has active browser connections for a room.
+
+    Returns True if there are connections (audio should go to portal).
+    Returns False if no connections or portal unreachable (play locally).
+    """
+    import urllib.request
+    import ssl
+
+    try:
+        # Create SSL context that doesn't verify (self-signed certs)
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+
+        req = urllib.request.Request(
+            f"{portal_url}/api/rooms/{room}/connections",
+            headers={"Accept": "application/json"},
+        )
+
+        with urllib.request.urlopen(req, context=ctx, timeout=5) as response:
+            result = json.loads(response.read().decode())
+            return result.get("has_connections", False)
+
+    except Exception:
+        # Portal not reachable or error - fall back to local
+        return False
+
+
+def _local_say_runpod(
+    text: str,
+    voice: str,
+    exaggeration: float,
+    cfg_weight: float,
+    tts_config: dict,
+) -> int:
+    """Generate TTS via RunPod API and play locally.
+
+    Works with runpod backend - calls the API directly.
+    Falls back to chatterbox HTTP if that's the backend.
+    """
+    import urllib.request
+    import tempfile
+    import base64
+
+    backend = tts_config.get("backend", "none")
+
+    if backend == "runpod":
+        return _local_say_runpod_api(text, voice, exaggeration, cfg_weight, tts_config)
+    elif backend == "chatterbox":
+        # Use the old HTTP-based local TTS
+        from .network import NetworkContext
+        ctx = NetworkContext.from_config()
+        tts_url = ctx.get_service_url("tts", use_tunnel=True)
+        return _local_say(text, voice, exaggeration, cfg_weight, tts_url)
+    else:
+        print(f"TTS backend '{backend}' not supported for local playback", file=sys.stderr)
+        return 1
+
+
+def _local_say_runpod_api(
+    text: str,
+    voice: str,
+    exaggeration: float,
+    cfg_weight: float,
+    tts_config: dict,
+) -> int:
+    """Generate TTS via RunPod serverless API and play locally."""
+    import urllib.request
+    import tempfile
+    import base64
+
+    endpoint_id = tts_config.get("runpod_endpoint_id", "")
+    api_key = tts_config.get("runpod_api_key", "")
+    timeout = tts_config.get("runpod_timeout", 60)
+
+    if not endpoint_id or not api_key:
+        print("RunPod backend requires runpod_endpoint_id and runpod_api_key in config", file=sys.stderr)
+        return 1
+
+    endpoint_url = f"https://api.runpod.ai/v2/{endpoint_id}/runsync"
+
+    payload = {
+        "input": {
+            "action": "generate",
+            "text": text,
+            "voice": voice,
+            "exaggeration": exaggeration,
+            "cfg_weight": cfg_weight,
+        }
+    }
+
+    try:
+        data = json.dumps(payload).encode()
+        req = urllib.request.Request(
+            endpoint_url,
+            data=data,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {api_key}",
+            },
+        )
+
+        with urllib.request.urlopen(req, timeout=timeout) as response:
+            result = json.loads(response.read().decode())
+
+            # Check RunPod status
+            if result.get("status") == "error":
+                print(f"RunPod error: {result.get('error', 'Unknown error')}", file=sys.stderr)
+                return 1
+
+            # Extract output
+            output = result.get("output", {})
+            if "error" in output:
+                print(f"TTS error: {output['error']}", file=sys.stderr)
+                return 1
+
+            # Decode base64 audio
+            audio_b64 = output.get("audio", "")
+            if not audio_b64:
+                print("No audio returned from TTS", file=sys.stderr)
+                return 1
+
+            audio_data = base64.b64decode(audio_b64)
+
+        # Save to temp file and play
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+            f.write(audio_data)
+            temp_path = f.name
+
+        # Play audio (cross-platform)
+        if sys.platform == "darwin":
+            subprocess.run(["afplay", temp_path], check=True)
+        elif sys.platform == "linux":
+            # Try various players
+            for player in ["aplay", "paplay", "play"]:
+                try:
+                    subprocess.run([player, temp_path], check=True)
+                    break
+                except FileNotFoundError:
+                    continue
+        else:
+            print(f"Audio saved to: {temp_path}")
+            return 0
+
+        # Clean up
+        Path(temp_path).unlink(missing_ok=True)
+        return 0
+
+    except urllib.error.URLError as e:
+        print(f"RunPod API not reachable: {e}", file=sys.stderr)
+        return 1
+    except Exception as e:
+        print(f"TTS failed: {e}", file=sys.stderr)
+        return 1
+
+
 def cmd_say(args) -> int:
-    """Generate TTS audio and play it."""
+    """Generate TTS audio and play it.
+
+    Smart routing:
+    1. Determine room (--room, AGENTWIRE_ROOM env var, or tmux session name)
+    2. Check if portal has browser connections for that room
+    3. If connections exist → send to portal (plays on browser/tablet)
+    4. If no connections → generate locally and play via system audio
+    """
     text = " ".join(args.text) if args.text else ""
 
     if not text:
@@ -973,22 +1158,24 @@ def cmd_say(args) -> int:
 
     config = load_config()
     tts_config = config.get("tts", {})
-    voice = args.voice or tts_config.get("default_voice", "default")
-    exaggeration = args.exaggeration or tts_config.get("exaggeration", 0.5)
-    cfg_weight = args.cfg or tts_config.get("cfg_weight", 0.5)
+    voice = args.voice or tts_config.get("default_voice", "bashbunni")
+    exaggeration = args.exaggeration if args.exaggeration is not None else tts_config.get("exaggeration", 0.5)
+    cfg_weight = args.cfg if args.cfg is not None else tts_config.get("cfg_weight", 0.5)
 
-    # Check if this is a remote session (room specified)
-    if args.room:
-        # Use remote-say: POST to portal
+    # Determine room name
+    room = args.room or os.environ.get("AGENTWIRE_ROOM") or _get_current_tmux_session()
+
+    # Try portal first if we have a room
+    if room:
         portal_url = _get_portal_url()
-        return _remote_say(text, args.room, portal_url)
+        has_connections = _check_portal_connections(room, portal_url)
 
-    # Local TTS: generate and play via TTS service
-    from .network import NetworkContext
+        if has_connections:
+            # Send to portal - browser will play the audio
+            return _remote_say(text, room, portal_url)
 
-    ctx = NetworkContext.from_config()
-    tts_url = ctx.get_service_url("tts", use_tunnel=True)
-    return _local_say(text, voice, exaggeration, cfg_weight, tts_url)
+    # No portal connections (or no room) - generate locally
+    return _local_say_runpod(text, voice, exaggeration, cfg_weight, tts_config)
 
 
 def _local_say(text: str, voice: str, exaggeration: float, cfg_weight: float, tts_url: str) -> int:
@@ -4778,8 +4965,8 @@ def main() -> int:
     # === say command ===
     say_parser = subparsers.add_parser("say", help="Speak text via TTS")
     say_parser.add_argument("text", nargs="*", help="Text to speak")
-    say_parser.add_argument("--voice", type=str, help="Voice name")
-    say_parser.add_argument("--room", type=str, help="Send to room (remote-say)")
+    say_parser.add_argument("-v", "--voice", type=str, help="Voice name")
+    say_parser.add_argument("-r", "--room", type=str, help="Room name (auto-detected from AGENTWIRE_ROOM or tmux session)")
     say_parser.add_argument("--exaggeration", type=float, help="Voice exaggeration (0-1)")
     say_parser.add_argument("--cfg", type=float, help="CFG weight (0-1)")
     say_parser.set_defaults(func=cmd_say)
