@@ -195,6 +195,47 @@ def stop_recording(session: str, voice_prompt: bool = True) -> int:
         )
         text = result.stdout.strip()
 
+    elif stt_backend == "remote":
+        # Use remote STT server (Docker container)
+        import urllib.request
+        import urllib.parse
+
+        stt_url = config.get("stt", {}).get("url", "http://localhost:8100")
+        transcribe_url = f"{stt_url}/transcribe"
+
+        try:
+            # Read audio file
+            with open(AUDIO_FILE, 'rb') as f:
+                audio_data = f.read()
+
+            # Create multipart form data
+            boundary = '----WebKitFormBoundary' + os.urandom(16).hex()
+            body = (
+                f'--{boundary}\r\n'
+                f'Content-Disposition: form-data; name="file"; filename="audio.wav"\r\n'
+                f'Content-Type: audio/wav\r\n\r\n'
+            ).encode('utf-8') + audio_data + f'\r\n--{boundary}--\r\n'.encode('utf-8')
+
+            # POST to STT server
+            req = urllib.request.Request(
+                transcribe_url,
+                data=body,
+                headers={
+                    'Content-Type': f'multipart/form-data; boundary={boundary}',
+                    'Content-Length': str(len(body))
+                }
+            )
+
+            with urllib.request.urlopen(req, timeout=30) as response:
+                result = json.loads(response.read().decode('utf-8'))
+                text = result.get("text", "")
+
+        except Exception as e:
+            log(f"ERROR: Remote STT failed: {e}")
+            notify(f"Transcription failed: {e}")
+            beep("error")
+            return 1
+
     elif stt_backend == "openai":
         # Use OpenAI Whisper API
         import urllib.request
