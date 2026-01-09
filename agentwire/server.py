@@ -276,8 +276,10 @@ class AgentWireServer:
     def _get_room_config(self, name: str) -> RoomConfig:
         """Get or create room configuration."""
         configs = self._load_room_configs()
-        if name in configs:
-            cfg = configs[name]
+        # Strip @machine suffix for config lookup (rooms.json uses name without suffix)
+        lookup_name = name.split('@')[0] if '@' in name else name
+        if lookup_name in configs:
+            cfg = configs[lookup_name]
             return RoomConfig(
                 voice=cfg.get("voice", self.config.tts.default_voice),
                 exaggeration=cfg.get("exaggeration", 0.5),
