@@ -461,20 +461,24 @@ class AgentWireServer:
         room.clients.add(ws)
         logger.info(f"[{name}] Client connected (total: {len(room.clients)})")
 
-        # Send current output immediately on connect
-        try:
-            output = await asyncio.get_event_loop().run_in_executor(
-                None, lambda: self.agent.get_output(name, lines=100)
-            )
-            if output:
-                room.last_output = output
-                await ws.send_json({"type": "output", "data": output})
-        except Exception as e:
-            logger.debug(f"Initial output fetch failed for {name}: {e}")
+        # Skip tmux polling for special rooms that aren't real sessions
+        is_real_session = name != "dashboard"
 
-        # Start output polling if not running
-        if room.output_task is None or room.output_task.done():
-            room.output_task = asyncio.create_task(self._poll_output(room))
+        # Send current output immediately on connect (if this is a real session)
+        if is_real_session:
+            try:
+                output = await asyncio.get_event_loop().run_in_executor(
+                    None, lambda: self.agent.get_output(name, lines=100)
+                )
+                if output:
+                    room.last_output = output
+                    await ws.send_json({"type": "output", "data": output})
+            except Exception as e:
+                logger.debug(f"Initial output fetch failed for {name}: {e}")
+
+            # Start output polling if not running
+            if room.output_task is None or room.output_task.done():
+                room.output_task = asyncio.create_task(self._poll_output(room))
 
         try:
             async for msg in ws:
@@ -1932,7 +1936,7 @@ projects:
             return web.json_response({"error": str(e)}, status=500)
 
     async def api_local_tts(self, request: web.Request) -> web.Response:
-        """POST /api/local-tts/{room} - Generate TTS and play locally (not to browser)."""
+        """POST /api/local-tts/{room} - Generate TTS and return audio for local playback."""
         name = request.match_info["name"]
         try:
             data = await request.json()
@@ -1949,36 +1953,27 @@ projects:
             exaggeration = room_config.exaggeration
             cfg_weight = room_config.cfg_weight
 
-            # Get TTS URL using NetworkContext
-            from .network import NetworkContext
-            ctx = NetworkContext.from_config()
-            tts_url = ctx.get_service_url("tts", use_tunnel=True)
-
             logger.info(f"[{name}] Local TTS: {text[:50]}... (voice={voice})")
 
-            # Generate TTS audio
-            payload = {
-                "text": text,
-                "voice": voice,
-                "exaggeration": exaggeration,
-                "cfg_weight": cfg_weight,
-            }
+            # Use the TTS backend (handles RunPod, Chatterbox, etc.)
+            if not self.tts:
+                return web.json_response(
+                    {"success": False, "error": "TTS backend not configured"},
+                    status=500
+                )
 
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    f"{tts_url}/tts",
-                    json=payload,
-                    timeout=aiohttp.ClientTimeout(total=30)
-                ) as response:
-                    if response.status != 200:
-                        error_text = await response.text()
-                        logger.error(f"TTS generation failed: {error_text}")
-                        return web.json_response(
-                            {"success": False, "error": f"TTS generation failed: {error_text}"},
-                            status=500
-                        )
+            audio_data = await self.tts.generate(
+                text=text,
+                voice=voice,
+                exaggeration=exaggeration,
+                cfg_weight=cfg_weight,
+            )
 
-                    audio_data = await response.read()
+            if not audio_data:
+                return web.json_response(
+                    {"success": False, "error": "TTS generation returned no audio"},
+                    status=500
+                )
 
             # Save to temp file
             temp_file = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
@@ -2565,11 +2560,15 @@ projects:
     async def speak(self, room_name: str, text: str):
         """Generate TTS audio and send to room clients."""
         if room_name not in self.rooms:
+            logger.warning(f"[{room_name}] speak: room not found")
             return
 
         room = self.rooms[room_name]
         if not room.clients:
+            logger.warning(f"[{room_name}] speak: no clients connected")
             return
+
+        logger.info(f"[{room_name}] speak: {len(room.clients)} client(s) connected")
 
         # Notify clients TTS is starting (include text for display)
         await self._broadcast(room, {"type": "tts_start", "text": text})
@@ -2589,7 +2588,10 @@ projects:
                 audio_data = self._prepend_silence(audio_data, ms=300)
                 # Send base64 encoded audio
                 audio_b64 = base64.b64encode(audio_data).decode()
+                logger.info(f"[{room_name}] Broadcasting audio ({len(audio_b64)} bytes b64)")
                 await self._broadcast(room, {"type": "audio", "data": audio_b64})
+            else:
+                logger.warning(f"[{room_name}] TTS returned no audio data")
 
         except Exception as e:
             logger.error(f"TTS failed for {room_name}: {e}")

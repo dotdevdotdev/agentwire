@@ -1264,7 +1264,8 @@ def _remote_say(text: str, room: str, portal_url: str) -> int:
             headers={"Content-Type": "application/json"},
         )
 
-        with urllib.request.urlopen(req, context=ctx, timeout=30) as response:
+        # 90 second timeout to handle RunPod cold starts
+        with urllib.request.urlopen(req, context=ctx, timeout=90) as response:
             result = json.loads(response.read().decode())
             if result.get("error"):
                 print(f"Error: {result['error']}", file=sys.stderr)

@@ -54,15 +54,21 @@ class TmuxAgent(AgentBackend):
 
         if machines_file:
             machines_path = Path(machines_file).expanduser()
+            logger.info(f"Loading machines from {machines_path}")
             if machines_path.exists():
                 try:
                     with open(machines_path) as f:
                         data = json.load(f)
                         self.machines = data.get("machines", [])
-                        logger.debug(f"Loaded {len(self.machines)} machines from {machines_path}")
+                        machine_ids = [m.get("id") for m in self.machines]
+                        logger.info(f"Loaded {len(self.machines)} machines: {machine_ids}")
                         return
                 except (json.JSONDecodeError, IOError) as e:
                     logger.warning(f"Failed to load machines: {e}")
+            else:
+                logger.warning(f"Machines file not found: {machines_path}")
+        else:
+            logger.info("No machines.file configured - using local tmux only")
 
         self.machines = []
 
@@ -126,8 +132,9 @@ class TmuxAgent(AgentBackend):
             session, machine_id = name.rsplit("@", 1)
             for machine in self.machines:
                 if machine.get("id") == machine_id or machine.get("host") == machine_id:
+                    logger.debug(f"Resolved {name} -> session={session}, machine_id={machine_id}")
                     return session, machine
-            logger.warning(f"Unknown machine: {machine_id}, treating as local")
+            logger.warning(f"Unknown machine: {machine_id} (available: {[m.get('id') for m in self.machines]}), treating as local")
             return name, None
         return name, None
 
