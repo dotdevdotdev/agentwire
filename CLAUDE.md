@@ -1281,13 +1281,28 @@ agentwire say "Message" -r myroom        # Specify room explicitly
 
 **Smart Audio Routing:**
 
-1. **Determine room** - Uses `--room` arg, `AGENTWIRE_ROOM` env var, or current tmux session name
+1. **Determine room** (priority order):
+   - `--room` argument (explicit)
+   - `AGENTWIRE_ROOM` env var (set when session created)
+   - `.agentwire.yml` config file in project directory
+   - Path inference from `~/projects/{room}` or worktrees
+   - Current tmux session name (fallback)
 2. **Check portal connections** - Queries portal for active browser connections in that room
 3. **Route audio:**
    - If browser connected → Send to portal (plays on browser/tablet)
    - If no connections → Generate locally (plays via system audio)
 
 This means if you're using the portal on your tablet downstairs, voice output goes there. If you're at your Mac directly, it plays locally.
+
+**Path Inference Examples:**
+- `~/projects/myapp` → room `myapp`
+- `~/projects/myapp-worktrees/feature` → room `myapp/feature`
+
+**Project Config (optional):**
+Create `.agentwire.yml` in project root when path convention doesn't match:
+```yaml
+room: custom-room-name
+```
 
 **TTS Backends:**
 
