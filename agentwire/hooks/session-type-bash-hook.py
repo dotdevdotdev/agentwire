@@ -26,26 +26,17 @@ import json
 import os
 import re
 import sys
-from pathlib import Path
 
 
 def get_session_type() -> str | None:
-    """Get session type from rooms.json using AGENTWIRE_ROOM env var."""
-    room_name = os.environ.get("AGENTWIRE_ROOM")
-    if not room_name:
-        return None
+    """Get session type from AGENTWIRE_SESSION_TYPE env var.
 
-    rooms_file = Path.home() / ".agentwire" / "rooms.json"
-    if not rooms_file.exists():
-        return None
+    This env var is set by 'agentwire new' when creating sessions with
+    --worker or --orchestrator flags.
 
-    try:
-        with open(rooms_file) as f:
-            rooms = json.load(f)
-        room_config = rooms.get(room_name, {})
-        return room_config.get("type")
-    except Exception:
-        return None
+    Returns: "orchestrator", "worker", or None (no restrictions)
+    """
+    return os.environ.get("AGENTWIRE_SESSION_TYPE")
 
 
 def is_allowed_orchestrator_command(command: str) -> bool:

@@ -22,7 +22,22 @@ from . import cli_safety
 CONFIG_DIR = Path.home() / ".agentwire"
 
 # Session type constants
-ORCHESTRATOR_DISALLOWED_TOOLS = ["Edit", "Write", "Read", "Glob", "Grep", "NotebookEdit"]
+ORCHESTRATOR_DISALLOWED_TOOLS = [
+    # Claude Code file tools
+    "Edit", "Write", "Read", "Glob", "Grep", "NotebookEdit",
+    # MCP filesystem tools (if filesystem MCP server is enabled)
+    "mcp__filesystem__read_file",
+    "mcp__filesystem__read_multiple_files",
+    "mcp__filesystem__write_file",
+    "mcp__filesystem__edit_file",
+    "mcp__filesystem__create_directory",
+    "mcp__filesystem__move_file",
+    "mcp__filesystem__directory_tree",
+    "mcp__filesystem__list_directory",
+    "mcp__filesystem__list_directory_with_sizes",
+    "mcp__filesystem__search_files",
+    "mcp__filesystem__get_file_info",
+]
 WORKER_DISALLOWED_TOOLS = ["AskUserQuestion"]
 
 
@@ -1380,11 +1395,15 @@ def cmd_new(args) -> int:
         claude_cmd = _build_claude_cmd(bypass_permissions, session_type)
         # AGENTWIRE_ROOM must include @machine so portal can find room config
         room_name = f"{session_name}@{machine_id}"
+        # Build env var exports
+        env_exports = f"export AGENTWIRE_ROOM={shlex.quote(room_name)}"
+        if session_type:
+            env_exports += f" && export AGENTWIRE_SESSION_TYPE={session_type}"
         create_cmd = (
             f"tmux new-session -d -s {shlex.quote(session_name)} -c {shlex.quote(remote_path)} && "
             f"tmux send-keys -t {shlex.quote(session_name)} 'cd {shlex.quote(remote_path)}' Enter && "
             f"sleep 0.1 && "
-            f"tmux send-keys -t {shlex.quote(session_name)} 'export AGENTWIRE_ROOM={shlex.quote(room_name)}' Enter && "
+            f"tmux send-keys -t {shlex.quote(session_name)} '{env_exports}' Enter && "
             f"sleep 0.1 && "
             f"tmux send-keys -t {shlex.quote(session_name)} {shlex.quote(claude_cmd)} Enter"
         )
@@ -1536,6 +1555,14 @@ def cmd_new(args) -> int:
         check=True
     )
     time.sleep(0.1)
+
+    # Set AGENTWIRE_SESSION_TYPE env var (used by session-type bash hook)
+    if session_type:
+        subprocess.run(
+            ["tmux", "send-keys", "-t", session_name, f"export AGENTWIRE_SESSION_TYPE={session_type}", "Enter"],
+            check=True
+        )
+        time.sleep(0.1)
 
     # Start Claude (with or without skip-permissions flag)
     # Permission mode: command line overrides template defaults
