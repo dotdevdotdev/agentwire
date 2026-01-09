@@ -4045,7 +4045,7 @@ def register_session_type_hook_in_settings() -> bool:
     session-type restrictions (orchestrator vs worker).
     """
     settings_file = Path.home() / ".claude" / "settings.json"
-    hook_command = "uv run ~/.claude/hooks/session-type-bash-hook.py"
+    hook_command = "uv run ~/.agentwire/hooks/session-type-bash-hook.py"
 
     # Load existing settings or create new
     if settings_file.exists():
@@ -4089,6 +4089,8 @@ def register_session_type_hook_in_settings() -> bool:
 def install_session_type_hook(force: bool = False, copy: bool = False) -> bool:
     """Install the session-type bash hook for Claude Code integration.
 
+    Installs to ~/.agentwire/hooks/ and registers in ~/.claude/settings.json.
+
     Returns True if hook was installed/updated, False if skipped.
     """
     hook_name = "session-type-bash-hook.py"
@@ -4104,10 +4106,11 @@ def install_session_type_hook(force: bool = False, copy: bool = False) -> bool:
         print(f"  Warning: {hook_name} not found in package, skipping")
         return False
 
-    # Create ~/.claude/hooks if it doesn't exist
-    CLAUDE_HOOKS_DIR.mkdir(parents=True, exist_ok=True)
+    # Create ~/.agentwire/hooks if it doesn't exist
+    agentwire_hooks_dir = CONFIG_DIR / "hooks"
+    agentwire_hooks_dir.mkdir(parents=True, exist_ok=True)
 
-    target_hook = CLAUDE_HOOKS_DIR / hook_name
+    target_hook = agentwire_hooks_dir / hook_name
 
     # Check if already installed
     file_updated = False
@@ -4197,7 +4200,7 @@ def cmd_skills_install(args) -> int:
     # Install session-type hook for orchestrator/worker restrictions
     session_hook_installed = install_session_type_hook(force=args.force, copy=args.copy)
     if session_hook_installed:
-        print(f"Installed session-type hook to {CLAUDE_HOOKS_DIR / 'session-type-bash-hook.py'}")
+        print(f"Installed session-type hook to {CONFIG_DIR / 'hooks' / 'session-type-bash-hook.py'}")
 
     print("\nClaude Code skills installed. Available commands:")
     print("  /sessions, /send, /output, /spawn, /new, /kill, /status, /jump")
