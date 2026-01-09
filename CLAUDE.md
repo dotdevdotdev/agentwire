@@ -764,15 +764,21 @@ server:
   port: 8765
 
 tts:
-  backend: "chatterbox"
+  backend: "chatterbox"  # chatterbox | runpod | none
   url: "http://localhost:8100"
   default_voice: "bashbunni"
   voices_dir: "~/.agentwire/voices"  # Where voice clones are stored
+  # For runpod backend:
+  # runpod_endpoint_id: "your_endpoint_id"
+  # runpod_api_key: "your_api_key"
+  # runpod_timeout: 60
 
 stt:
-  backend: "whisperkit"  # whisperkit | whispercpp | openai | none
+  backend: "whisperkit"  # whisperkit | whispercpp | openai | remote | none
   model_path: "~/Library/Application Support/MacWhisper/models/..."
   language: "en"
+  # For remote backend (containerized deployment):
+  # url: "http://stt:8100"
 
 audio:
   input_device: 1  # Audio input device index (use `agentwire init` to select)
@@ -1263,15 +1269,18 @@ uv run test-damage-control.py bash "rm -rf /" --expect-blocked
 
 ## Voice Layer
 
-AgentWire previously provided TTS via MCP server. The daemon-based MCP server implementation has been removed as part of the TTS architecture cleanup.
-
-### Current Status
-
-**Note:** The MCP server entry point was removed along with the daemon infrastructure. MCP integration needs a new implementation that doesn't rely on a background daemon.
+AgentWire provides TTS via command-based voice output (say/remote-say). The stdio-based MCP server code exists in `agentwire/mcp/` but is not currently wired to a CLI entry point.
 
 ### Voice Commands (say/remote-say)
 
-Claude (or users) can trigger TTS by running shell commands in sessions. See "Voice Commands" section below for details.
+Claude (or users) can trigger TTS by running shell commands in sessions:
+
+```bash
+say "Hello world"           # Local: plays via system audio
+remote-say "Task complete"  # Remote: POSTs to portal, streams to browser
+```
+
+These are real executables installed by `agentwire skills install`. See the Portal Features section for details on how they work.
 
 ---
 
@@ -1583,22 +1592,75 @@ When the project path points to a git repo, additional options appear:
 
 ### Portal API
 
+**Core Endpoints:**
+
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
+| `/health` | GET | Health check |
 | `/api/sessions` | GET | List all tmux sessions |
+| `/api/sessions/{name}` | DELETE | Close/kill a session |
+| `/api/sessions/archive` | GET | List archived sessions |
 | `/api/create` | POST | Create new session (accepts machine, worktree, branch) |
 | `/api/check-path` | GET | Check if path exists and is git repo |
 | `/api/check-branches` | GET | Get existing branches matching prefix |
+
+**Room Management:**
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
 | `/api/room/{name}/config` | POST | Update room config (voice, etc.) |
 | `/api/room/{name}/recreate` | POST | Destroy and recreate session with fresh worktree |
 | `/api/room/{name}/spawn-sibling` | POST | Create parallel session in new worktree |
-| `/api/room/{name}/fork` | POST | Fork Claude Code session (preserves conversation context) |
-| `/api/room/{name}/restart-service` | POST | Restart system service (agentwire, portal, TTS) |
+| `/api/room/{name}/fork` | POST | Fork Claude Code session (preserves conversation) |
+| `/api/room/{name}/restart-service` | POST | Restart system service |
+| `/api/rooms/{name}/connections` | GET | Get connection count for room |
+
+**Voice & Input:**
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
 | `/api/say/{name}` | POST | Generate TTS and broadcast to room |
+| `/api/local-tts/{name}` | POST | Generate TTS for local playback |
+| `/api/answer/{name}` | POST | Submit answer to AskUserQuestion |
 | `/api/voices` | GET | List available TTS voices |
 | `/transcribe` | POST | Transcribe audio (multipart form) |
 | `/upload` | POST | Upload image (multipart form) |
 | `/send/{name}` | POST | Send text to session |
+
+**Machine Management:**
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/machines` | GET | List configured machines |
+| `/api/machines` | POST | Add a machine |
+| `/api/machines/{id}` | DELETE | Remove a machine |
+| `/api/machine/{id}/status` | GET | Get machine status |
+
+**Configuration & Templates:**
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/config` | GET | Get current config |
+| `/api/config` | POST | Save config |
+| `/api/config/reload` | POST | Reload config from disk |
+| `/api/templates` | GET | List templates |
+| `/api/templates` | POST | Create template |
+| `/api/templates/{name}` | GET | Get template details |
+| `/api/templates/{name}` | DELETE | Delete template |
+
+**Permission Handling:**
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/permission/{name}` | POST | Submit permission request (from hook) |
+| `/api/permission/{name}/respond` | POST | User responds to permission request |
+
+**WebSocket Endpoints:**
+
+| Endpoint | Purpose |
+|----------|---------|
+| `/ws/{name}` | Main room WebSocket (ambient/monitor modes) |
+| `/ws/terminal/{name}` | Terminal attach WebSocket (xterm.js) |
 
 ---
 
@@ -1874,8 +1936,8 @@ This builds the image and tests the handler without deploying to RunPod.
 ┌─────────────────────────────────────────────────────────────┐
 │  AgentWire Portal (agentwire-portal tmux session)           │
 │  ├── HTTP routes (dashboard, room pages)                    │
-│  ├── WebSocket /ws/output/{room} (Monitor mode polling)     │
-│  ├── WebSocket /ws/terminal/{room} (Terminal mode attach)   │
+│  ├── WebSocket /ws/{room} (ambient/monitor modes)           │
+│  ├── WebSocket /ws/terminal/{room} (terminal mode attach)   │
 │  ├── /transcribe (STT)                                      │
 │  ├── /send/{room} (prompt forwarding)                       │
 │  └── /api/say/{room} (TTS broadcast)                        │
@@ -2225,9 +2287,14 @@ python -c "from agentwire import __version__; print(__version__)"
 | `__main__.py` | CLI entry point, all commands |
 | `server.py` | WebSocket server, HTTP routes, room management |
 | `config.py` | Config dataclass, YAML loading, defaults |
-| `tts/` | TTS backends (chatterbox, none) |
-| `stt/` | STT backends (whisperkit, whispercpp, openai, none) |
+| `tts/` | TTS backends (chatterbox, runpod, none) |
+| `stt/` | STT backends (whisperkit, whispercpp, openai, remote, none) |
 | `agents/` | Agent backends (tmux local/remote) |
+| `mcp/` | MCP server implementation (stdio, not currently wired to CLI) |
 | `templates/` | HTML templates (dashboard, room) |
 | `skills/` | Claude Code skills for orchestration |
+| `worktree.py` | Git worktree management utilities |
+| `tunnels.py` | SSH tunnel management |
+| `tts_router.py` | TTS routing with fallback logic |
+| `session_detector.py` | Session detection for MCP/routing |
 
