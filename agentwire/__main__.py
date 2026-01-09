@@ -984,33 +984,45 @@ def _get_current_tmux_session() -> str | None:
     return None
 
 
-def _check_portal_connections(room: str, portal_url: str) -> bool:
+def _check_portal_connections(room: str, portal_url: str) -> tuple[bool, str]:
     """Check if portal has active browser connections for a room.
 
-    Returns True if there are connections (audio should go to portal).
-    Returns False if no connections or portal unreachable (play locally).
+    Tries both the room name as-is and with @local suffix (for Docker portal).
+
+    Returns:
+        Tuple of (has_connections, actual_room_name)
+        - has_connections: True if there are connections (audio should go to portal)
+        - actual_room_name: The room name that has connections (may include @local)
     """
     import urllib.request
     import ssl
 
-    try:
-        # Create SSL context that doesn't verify (self-signed certs)
-        ctx = ssl.create_default_context()
-        ctx.check_hostname = False
-        ctx.verify_mode = ssl.CERT_NONE
+    # Try room variants: as-is, then with @local suffix (for Docker portal)
+    room_variants = [room]
+    if "@" not in room:
+        room_variants.append(f"{room}@local")
 
-        req = urllib.request.Request(
-            f"{portal_url}/api/rooms/{room}/connections",
-            headers={"Accept": "application/json"},
-        )
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
 
-        with urllib.request.urlopen(req, context=ctx, timeout=5) as response:
-            result = json.loads(response.read().decode())
-            return result.get("has_connections", False)
+    for room_name in room_variants:
+        try:
+            req = urllib.request.Request(
+                f"{portal_url}/api/rooms/{room_name}/connections",
+                headers={"Accept": "application/json"},
+            )
 
-    except Exception:
-        # Portal not reachable or error - fall back to local
-        return False
+            with urllib.request.urlopen(req, context=ctx, timeout=5) as response:
+                result = json.loads(response.read().decode())
+                if result.get("has_connections", False):
+                    return True, room_name
+
+        except Exception:
+            continue
+
+    # No connections found in any variant
+    return False, room
 
 
 def _local_say_runpod(
@@ -1168,11 +1180,12 @@ def cmd_say(args) -> int:
     # Try portal first if we have a room
     if room:
         portal_url = _get_portal_url()
-        has_connections = _check_portal_connections(room, portal_url)
+        has_connections, actual_room = _check_portal_connections(room, portal_url)
 
         if has_connections:
             # Send to portal - browser will play the audio
-            return _remote_say(text, room, portal_url)
+            # Use actual_room which may include @local suffix for Docker portal
+            return _remote_say(text, actual_room, portal_url)
 
     # No portal connections (or no room) - generate locally
     return _local_say_runpod(text, voice, exaggeration, cfg_weight, tts_config)
