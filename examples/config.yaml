@@ -22,7 +22,7 @@ projects:
 
 # === Text-to-Speech ===
 tts:
-  # Backend: chatterbox | elevenlabs | none
+  # Backend: chatterbox | runpod | none
   backend: "chatterbox"
 
   # TTS server URL - can be local or remote

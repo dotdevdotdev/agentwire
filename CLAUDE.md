@@ -768,6 +768,8 @@ tts:
   url: "http://localhost:8100"
   default_voice: "bashbunni"
   voices_dir: "~/.agentwire/voices"  # Where voice clones are stored
+  exaggeration: 0.5      # 0-1, voice expressiveness
+  cfg_weight: 0.5        # 0-1, voice consistency
   # For runpod backend:
   # runpod_endpoint_id: "your_endpoint_id"
   # runpod_api_key: "your_api_key"
@@ -777,11 +779,8 @@ stt:
   backend: "whisperkit"  # whisperkit | whispercpp | openai | remote | none
   model_path: "~/Library/Application Support/MacWhisper/models/..."
   language: "en"
-  # For remote backend (containerized deployment):
+  # For remote STT (Docker/container setup):
   # url: "http://stt:8100"
-
-audio:
-  input_device: 1  # Audio input device index (use `agentwire init` to select)
 
 projects:
   dir: "~/projects"
@@ -1302,8 +1301,8 @@ Skills in `skills/` provide Claude Code integration:
 | spawn-worker | `/spawn-worker <name> [prompt]` | Create worker with optional initial task |
 | check-workers | `/check-workers` | Batch check output from all workers |
 | init | `/init` | Interactive onboarding wizard |
-| machine-setup | `/machine-setup [id] [ip]` | Add remote machine (guided wizard) |
-| machine-remove | `/machine-remove [id]` | Remove remote machine (guided wizard) |
+| machine-setup | `/machine-setup <id> <host>` | Add remote machine (guided wizard) |
+| machine-remove | `/machine-remove <id>` | Remove remote machine (guided wizard) |
 
 ### Installing Skills
 
