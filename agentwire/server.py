@@ -972,6 +972,7 @@ class AgentWireServer:
                     "type": get_project_type(Path(path)) if Path(path).exists() else "scratch",
                     "bypass_permissions": config.get("bypass_permissions", True),
                     "restricted": config.get("restricted", False),
+                    "role": config.get("role", "orchestrator"),
                     "activity": activity_status,
                 }
 

@@ -1,11 +1,17 @@
 ---
 name: spawn
-description: Smart session creation - checks if exists, offers options or recreates with --force.
+description: Smart orchestrator session creation - checks if exists, offers options or recreates with --force.
+agent: orchestrator
+allowed-tools:
+  - Task
+  - Bash(agentwire *)
+  - Bash(remote-say *)
+  - AskUserQuestion
 ---
 
 # /spawn
 
-Smart session creation with existence check. Unlike `/new` which fails if a session exists, `/spawn` checks first and offers options.
+Smart orchestrator session creation with existence check. Creates sessions with `--context ~/.agentwire/roles/orchestrator.md` loaded. Unlike `/new` which fails if a session exists, `/spawn` checks first and offers options.
 
 ## Usage
 
@@ -29,7 +35,13 @@ Smart session creation with existence check. Unlike `/new` which fails if a sess
 1. **Check if session exists** - Look for running tmux session with that name
 2. **If exists without --force** - Show helpful options (attach or recreate)
 3. **If exists with --force** - Cleanly kill existing (send /exit first), then create fresh
-4. **If doesn't exist** - Create new session from room config (path, model, role)
+4. **If doesn't exist** - Create new orchestrator session with role loaded via `--context`
+
+Sessions created with `/spawn` are orchestrators that:
+- Load `~/.agentwire/roles/orchestrator.md` via `--context` flag
+- Use voice (remote-say) for user communication
+- Spawn worker agents via Task tool for execution
+- Cannot edit files directly (blocked via allowed-tools)
 
 ## Examples
 
@@ -71,8 +83,8 @@ Model: opus
 
 Output:
 ```
-Spawned session 'api' in ~/projects/api
-Role: worker
+Spawned orchestrator session 'api' in ~/projects/api
+Role: orchestrator
 ```
 
 ## Why Use /spawn Instead of /new

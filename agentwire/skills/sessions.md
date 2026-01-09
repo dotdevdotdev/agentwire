@@ -1,11 +1,17 @@
 ---
 name: sessions
-description: List all tmux sessions across local and remote machines.
+description: List all tmux sessions across local and remote machines with role indicators.
+agent: orchestrator
+allowed-tools:
+  - Task
+  - Bash(agentwire *)
+  - Bash(remote-say *)
+  - AskUserQuestion
 ---
 
 # /sessions
 
-List all tmux sessions running on local machine and configured remote machines.
+List all tmux sessions running on local machine and configured remote machines. Shows session roles (orchestrator/bypass/normal/restricted) from rooms.json.
 
 ## Usage
 
@@ -19,30 +25,47 @@ List all tmux sessions running on local machine and configured remote machines.
 2. Read machine list from `~/.agentwire/machines.json`
 3. Read room config from `~/.agentwire/rooms.json` for role labels
 4. For each remote machine, SSH and list their tmux sessions
-5. Display formatted output grouped by machine with roles
+5. Display formatted output grouped by machine with role indicators
+
+## Session Types
+
+Sessions are labeled based on their role from `~/.agentwire/rooms.json`:
+
+| Role | Indicator | Meaning |
+|------|-----------|---------|
+| `orchestrator` | (orchestrator) | Voice-first coordinator, spawns workers via Task tool |
+| `bypass` | (bypass) | Full-capability session with bypass permissions |
+| `normal` | (normal) | Session with permission prompts |
+| `restricted` | (restricted) | Voice-only session, auto-denies non-voice tools |
+| (none) | - | Session not in rooms.json config |
 
 ## Output Format
 
 ```
 Local sessions:
   agentwire (orchestrator): 1 window
-  api (bypass): 2 windows
+  api (orchestrator): 2 windows
+  ml-worker (bypass): 2 windows
   untrusted-lib (normal): 1 window
+  voice-assistant (restricted): 1 window
   random-session: 1 window
 
 devbox-1:
-  ml (bypass): 3 windows
+  training (bypass): 3 windows
 
 gpu-server: (offline)
 ```
 
-Sessions show name, permission mode (if configured), and window count. Offline machines are indicated.
+Sessions show name, role/permission mode (if configured), and window count. Offline machines are indicated.
 
-Permission modes are determined from `~/.agentwire/rooms.json`:
-- `agentwire` is always "orchestrator"
-- Sessions with `bypass_permissions: true` (or unset) show as "bypass"
+Roles are determined from `~/.agentwire/rooms.json`:
+- Sessions with `role: "orchestrator"` show as "orchestrator"
+- Sessions with `restricted: true` show as "restricted"
 - Sessions with `bypass_permissions: false` show as "normal"
+- Sessions with `bypass_permissions: true` (or unset) show as "bypass"
 - Sessions not in config show without a label
+
+**Key difference:** Orchestrator sessions are voice-first coordinators that spawn workers via Task tool. They cannot edit files directly.
 
 ## Implementation
 
@@ -51,21 +74,29 @@ Permission modes are determined from `~/.agentwire/rooms.json`:
 
 rooms_file="$HOME/.agentwire/rooms.json"
 
-# Function to get permission mode for a session name
+# Function to get role/permission mode for a session name
 get_permission_mode() {
   local name="$1"
-
-  # agentwire is always orchestrator
-  if [ "$name" = "agentwire" ]; then
-    echo "orchestrator"
-    return
-  fi
 
   # Check rooms.json for config
   if [ -f "$rooms_file" ]; then
     local config=$(jq -r --arg n "$name" '.[$n] // empty' "$rooms_file" 2>/dev/null)
     if [ -n "$config" ]; then
-      # bypass_permissions defaults to true if not set
+      # Check for explicit role (orchestrator)
+      local role=$(echo "$config" | jq -r '.role // empty')
+      if [ "$role" = "orchestrator" ]; then
+        echo "orchestrator"
+        return
+      fi
+
+      # Check for restricted mode
+      local restricted=$(echo "$config" | jq -r '.restricted // false')
+      if [ "$restricted" = "true" ]; then
+        echo "restricted"
+        return
+      fi
+
+      # Check permission mode (bypass_permissions defaults to true if not set)
       local bypass=$(echo "$config" | jq -r '.bypass_permissions // true')
       if [ "$bypass" = "true" ]; then
         echo "bypass"
