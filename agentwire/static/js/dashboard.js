@@ -658,15 +658,25 @@ function renderSessionCard(session, machineId) {
     const isExpanded = isSessionExpanded(session.name);
     const expandIcon = isExpanded ? '▼' : '▶';
 
-    // Determine badge: restricted > prompted > bypass
-    let badge;
+    // Determine permission badge: restricted > prompted > bypass
+    let permissionBadge;
     if (session.restricted) {
-        badge = '<span class="session-badge restricted">Restricted</span>';
+        permissionBadge = '<span class="session-badge restricted">Restricted</span>';
     } else if (session.bypass_permissions === false) {
-        badge = '<span class="session-badge prompted">Prompted</span>';
+        permissionBadge = '<span class="session-badge prompted">Prompted</span>';
     } else {
-        badge = '<span class="session-badge bypass">Bypass</span>';
+        permissionBadge = '<span class="session-badge bypass">Bypass</span>';
     }
+
+    // Session type badge: worker or orchestrator
+    let typeBadge = '';
+    if (session.type === 'worker') {
+        typeBadge = '<span class="session-badge worker">Worker</span>';
+    } else if (session.type === 'orchestrator') {
+        typeBadge = '<span class="session-badge orchestrator">Orchestrator</span>';
+    }
+
+    const badge = typeBadge + permissionBadge;
 
     // Strip @machine from display name if present (avoid doubling)
     let displayName = session.name;

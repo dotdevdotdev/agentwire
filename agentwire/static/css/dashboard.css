@@ -540,6 +540,16 @@
   color: var(--text-muted);
 }
 
+.session-badge.worker {
+  background: rgba(139, 92, 246, 0.15); /* Purple tint */
+  color: rgb(139, 92, 246);
+}
+
+.session-badge.orchestrator {
+  background: rgba(59, 130, 246, 0.15); /* Blue tint */
+  color: rgb(59, 130, 246);
+}
+
 .no-sessions {
   color: var(--text-muted);
   padding: var(--space-md) 0;
