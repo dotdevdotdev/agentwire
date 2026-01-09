@@ -1654,9 +1654,13 @@ def cmd_output(args) -> int:
     """
     session_full = args.session
     lines = args.lines or 50
+    json_mode = getattr(args, 'json', False)
 
     if not session_full:
-        print("Usage: agentwire output -s <session> [-n lines]", file=sys.stderr)
+        if json_mode:
+            print(json.dumps({"success": False, "error": "Session name required"}))
+        else:
+            print("Usage: agentwire output -s <session> [-n lines]", file=sys.stderr)
         return 1
 
     # Parse session@machine format
@@ -1666,17 +1670,32 @@ def cmd_output(args) -> int:
         # Remote: SSH and run tmux capture-pane
         machine = _get_machine_config(machine_id)
         if machine is None:
-            print(f"Machine '{machine_id}' not found in machines.json", file=sys.stderr)
+            if json_mode:
+                print(json.dumps({"success": False, "error": f"Machine '{machine_id}' not found"}))
+            else:
+                print(f"Machine '{machine_id}' not found in machines.json", file=sys.stderr)
             return 1
 
         cmd = f"tmux capture-pane -t {shlex.quote(session)} -p -S -{lines}"
         result = _run_remote(machine_id, cmd)
 
         if result.returncode != 0:
-            print(f"Session '{session}' not found on {machine_id}", file=sys.stderr)
+            if json_mode:
+                print(json.dumps({"success": False, "error": f"Session '{session}' not found on {machine_id}"}))
+            else:
+                print(f"Session '{session}' not found on {machine_id}", file=sys.stderr)
             return 1
 
-        print(result.stdout)
+        if json_mode:
+            print(json.dumps({
+                "success": True,
+                "session": session_full,
+                "lines": lines,
+                "machine": machine_id,
+                "output": result.stdout
+            }))
+        else:
+            print(result.stdout)
         return 0
 
     # Local: existing logic
@@ -1685,7 +1704,10 @@ def cmd_output(args) -> int:
         capture_output=True
     )
     if result.returncode != 0:
-        print(f"Session '{session}' not found", file=sys.stderr)
+        if json_mode:
+            print(json.dumps({"success": False, "error": f"Session '{session}' not found"}))
+        else:
+            print(f"Session '{session}' not found", file=sys.stderr)
         return 1
 
     result = subprocess.run(
@@ -1693,7 +1715,17 @@ def cmd_output(args) -> int:
         capture_output=True,
         text=True
     )
-    print(result.stdout)
+
+    if json_mode:
+        print(json.dumps({
+            "success": True,
+            "session": session_full,
+            "lines": lines,
+            "machine": None,
+            "output": result.stdout
+        }))
+    else:
+        print(result.stdout)
     return 0
 
 
@@ -4767,6 +4799,7 @@ def main() -> int:
     output_parser = subparsers.add_parser("output", help="Read session output")
     output_parser.add_argument("-s", "--session", required=True, help="Session name (supports session@machine)")
     output_parser.add_argument("-n", "--lines", type=int, default=50, help="Lines to show (default: 50)")
+    output_parser.add_argument("--json", action="store_true", help="Output as JSON")
     output_parser.set_defaults(func=cmd_output)
 
     # === kill command (top-level) ===
