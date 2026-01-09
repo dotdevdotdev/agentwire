@@ -1086,13 +1086,20 @@ def cmd_send(args) -> int:
     """
     session_full = args.session
     prompt = " ".join(args.prompt) if args.prompt else ""
+    json_mode = getattr(args, 'json', False)
 
     if not session_full:
-        print("Usage: agentwire send -s <session> <prompt>", file=sys.stderr)
+        if json_mode:
+            print(json.dumps({"success": False, "error": "Session name required"}))
+        else:
+            print("Usage: agentwire send -s <session> <prompt>", file=sys.stderr)
         return 1
 
     if not prompt:
-        print("Usage: agentwire send -s <session> <prompt>", file=sys.stderr)
+        if json_mode:
+            print(json.dumps({"success": False, "error": "Prompt required"}))
+        else:
+            print("Usage: agentwire send -s <session> <prompt>", file=sys.stderr)
         return 1
 
     # Parse session@machine format
@@ -1102,7 +1109,10 @@ def cmd_send(args) -> int:
         # Remote: SSH and run tmux commands
         machine = _get_machine_config(machine_id)
         if machine is None:
-            print(f"Machine '{machine_id}' not found in machines.json", file=sys.stderr)
+            if json_mode:
+                print(json.dumps({"success": False, "error": f"Machine '{machine_id}' not found"}))
+            else:
+                print(f"Machine '{machine_id}' not found in machines.json", file=sys.stderr)
             return 1
 
         # Build remote command
@@ -1118,10 +1128,16 @@ def cmd_send(args) -> int:
 
         result = _run_remote(machine_id, cmd)
         if result.returncode != 0:
-            print(f"Failed to send to {session_full}: {result.stderr}", file=sys.stderr)
+            if json_mode:
+                print(json.dumps({"success": False, "error": f"Failed to send to {session_full}"}))
+            else:
+                print(f"Failed to send to {session_full}: {result.stderr}", file=sys.stderr)
             return 1
 
-        print(f"Sent to {session_full}")
+        if json_mode:
+            print(json.dumps({"success": True, "session": session_full, "machine": machine_id, "message": "Prompt sent"}))
+        else:
+            print(f"Sent to {session_full}")
         return 0
 
     # Local: existing logic
@@ -1131,7 +1147,10 @@ def cmd_send(args) -> int:
         capture_output=True
     )
     if result.returncode != 0:
-        print(f"Session '{session}' not found", file=sys.stderr)
+        if json_mode:
+            print(json.dumps({"success": False, "error": f"Session '{session}' not found"}))
+        else:
+            print(f"Session '{session}' not found", file=sys.stderr)
         return 1
 
     # Send the prompt via tmux send-keys (text first, then Enter after delay)
@@ -1157,7 +1176,10 @@ def cmd_send(args) -> int:
             check=True
         )
 
-    print(f"Sent to {session}")
+    if json_mode:
+        print(json.dumps({"success": True, "session": session_full, "machine": None, "message": "Prompt sent"}))
+    else:
+        print(f"Sent to {session}")
     return 0
 
 
@@ -4766,6 +4788,7 @@ def main() -> int:
     send_parser = subparsers.add_parser("send", help="Send prompt to a session (adds Enter)")
     send_parser.add_argument("-s", "--session", required=True, help="Target session (supports session@machine)")
     send_parser.add_argument("prompt", nargs="*", help="Prompt to send")
+    send_parser.add_argument("--json", action="store_true", help="Output as JSON")
     send_parser.set_defaults(func=cmd_send)
 
     # === send-keys command ===
