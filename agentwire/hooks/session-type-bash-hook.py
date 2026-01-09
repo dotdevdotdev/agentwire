@@ -10,7 +10,7 @@ AgentWire Session Type Bash Hook
 Enforces bash command restrictions based on session type (orchestrator vs worker).
 
 Orchestrator sessions:
-- ALLOWED: agentwire *, remote-say *, say *, git status, git log, git diff
+- ALLOWED: agentwire *, remote-say *, say *, git status/log/diff, cd, pwd, echo, sleep
 - BLOCKED: All other bash commands
 
 Worker sessions:
@@ -69,6 +69,10 @@ def is_allowed_orchestrator_command(command: str) -> bool:
     if re.match(r'^echo\s', command):
         return True
 
+    # Allow sleep for timing/waiting
+    if re.match(r'^sleep\s', command):
+        return True
+
     return False
 
 
@@ -120,7 +124,7 @@ def main():
             print(
                 f"[Session Type: Orchestrator] Command blocked. "
                 f"Orchestrators can only use: agentwire commands, say/remote-say, "
-                f"and read-only git commands (status, log, diff).\n"
+                f"read-only git commands, cd, pwd, echo, sleep.\n"
                 f"To execute this command, spawn a worker session.",
                 file=sys.stderr
             )
