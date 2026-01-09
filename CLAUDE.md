@@ -115,6 +115,8 @@ agentwire list                              # List sessions from ALL machines
 agentwire new -s <name> [-p path] [-f]      # Create Claude Code session
 agentwire new -s <name> -t <template>       # Create session with template
 agentwire new -s <name> --restricted        # Create restricted mode session
+agentwire new -s <name> --worker            # Create worker session (autonomous)
+agentwire new -s <name> --orchestrator      # Create orchestrator session (voice-first)
 agentwire output -s <session> [-n lines]    # Read recent session output
 agentwire kill -s <session>                 # Clean shutdown (/exit then kill)
 agentwire send -s <session> "prompt"        # Send prompt + Enter
@@ -946,6 +948,147 @@ Set per-session in `~/.agentwire/rooms.json`:
 
 ---
 
+## Session Types (Orchestrator + Workers)
+
+Sessions can be typed as **orchestrator** or **worker** to separate the voice/interaction layer from the execution layer.
+
+### Concept
+
+The orchestrator is the user's conversational interface. It spawns worker sessions to do actual file work, monitors their progress, and reports back conversationally. The user stays engaged with the orchestrator while workers execute in parallel.
+
+```
+User (voice/text)
+    │
+    ▼
+Orchestrator Session (voice-enabled, no file access)
+    │
+    ├── agentwire new myproject/auth-work --worker
+    │   └── Worker 1: Implementing auth endpoints
+    │
+    ├── agentwire new myproject/test-suite --worker
+    │   └── Worker 2: Writing integration tests
+    │
+    └── agentwire send / agentwire output
+        └── Orchestrator monitors, reports to user
+```
+
+### Session Type Comparison
+
+| Aspect | Orchestrator | Worker |
+|--------|--------------|--------|
+| **Purpose** | Voice interface, coordination | Autonomous execution |
+| **Create with** | `agentwire new project` (default) | `agentwire new project/task --worker` |
+| **Voice** | ✅ Can use remote-say | ❌ No voice output |
+| **File access** | ❌ No Edit/Write/Read | ✅ Full Claude Code |
+| **User questions** | ✅ Can use AskUserQuestion | ❌ Cannot ask user |
+| **Tool focus** | Task, Bash (agentwire only) | All tools except AskUserQuestion |
+
+### Creating Sessions
+
+```bash
+# Orchestrator session (default)
+agentwire new -s myproject
+agentwire new -s myproject --orchestrator  # Explicit
+
+# Worker session
+agentwire new -s myproject/auth-work --worker
+
+# Worker gets its own worktree automatically
+# → Creates: ~/projects/myproject-worktrees/auth-work/
+```
+
+### Orchestrator Workflow
+
+```bash
+# Spawn workers for parallel tasks
+agentwire new myproject/frontend-auth --worker
+agentwire new myproject/backend-auth --worker
+agentwire new myproject/auth-tests --worker
+
+# Send instructions to each worker
+agentwire send -s myproject/frontend-auth "Implement login form component"
+agentwire send -s myproject/backend-auth "Add JWT authentication middleware"
+agentwire send -s myproject/auth-tests "Write integration tests for auth flow"
+
+# Monitor progress
+agentwire output -s myproject/frontend-auth
+agentwire output -s myproject/backend-auth
+
+# List active workers
+/workers  # Skill shows all worker sessions
+```
+
+### Tool Restrictions
+
+**Orchestrator** (via `--disallowedTools`):
+- BLOCKED: `Edit`, `Write`, `Read`, `Glob`, `Grep`, `NotebookEdit`
+- ALLOWED: `Task`, `Bash`, `AskUserQuestion`, `WebFetch`, `WebSearch`, `TodoWrite`
+
+**Bash restrictions** (via PreToolUse hook):
+- ALLOWED: `agentwire *`, `remote-say *`, `say *`, `git status`, `git log`, `git diff`
+- BLOCKED: All other bash commands
+
+**Worker** (via `--disallowedTools`):
+- BLOCKED: `AskUserQuestion`
+- ALLOWED: Everything else (full Claude Code capabilities)
+
+**Bash restrictions** (via PreToolUse hook):
+- BLOCKED: `remote-say *`, `say *` (no voice output)
+- ALLOWED: Everything else
+
+### rooms.json Schema
+
+```json
+{
+  "myproject": {
+    "voice": "bashbunni",
+    "type": "orchestrator",
+    "bypass_permissions": true
+  },
+  "myproject/auth-work": {
+    "type": "worker",
+    "spawned_by": "myproject",
+    "bypass_permissions": true
+  }
+}
+```
+
+### Role Files
+
+Role context is loaded via `--append-system-prompt`:
+
+| Type | Role File |
+|------|-----------|
+| Orchestrator | `~/.agentwire/roles/orchestrator.md` |
+| Worker | `~/.agentwire/roles/worker.md` |
+
+### Agent Personas
+
+Preset prompting patterns for common worker tasks in `~/.agentwire/personas/`:
+
+| Persona | Focus |
+|---------|-------|
+| `refactorer.md` | Consolidating and cleaning code |
+| `implementer.md` | Building new features following patterns |
+| `debugger.md` | Systematic bug investigation and fixing |
+| `researcher.md` | Gathering information (read-only) |
+
+Use personas when sending instructions to workers:
+
+```bash
+agentwire send -s myproject/cleanup "Apply @~/.agentwire/personas/refactorer.md to consolidate auth utilities"
+```
+
+### Orchestrator Skills
+
+| Skill | Command | Purpose |
+|-------|---------|---------|
+| `/workers` | List active workers | Show all worker sessions spawned by orchestrator |
+| `/spawn-worker` | Create worker | Quick worker creation with optional initial prompt |
+| `/check-workers` | Batch status | Check output from all active workers |
+
+---
+
 ## Safety & Security (Damage Control)
 
 AgentWire integrates damage-control security hooks that protect against dangerous operations across all Claude Code sessions.
@@ -1129,6 +1272,9 @@ Skills in `skills/` provide Claude Code integration:
 | kill | `/kill <session>` | Destroy session |
 | status | `/status` | Check all machines |
 | jump | `/jump <session>` | Get attach instructions |
+| workers | `/workers` | List active worker sessions |
+| spawn-worker | `/spawn-worker <name> [prompt]` | Create worker with optional initial task |
+| check-workers | `/check-workers` | Batch check output from all workers |
 
 ### Installing Skills
 

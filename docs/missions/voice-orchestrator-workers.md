@@ -466,7 +466,9 @@ Parallel tasks:
 Parallel tasks:
 - [x] Orchestrator-specific skills
   - /workers - list active worker sessions
-  - File: `agentwire/skills/workers.md`
+  - /spawn-worker - helper for worker creation
+  - /check-workers - batch check all worker outputs
+  - Files: `agentwire/skills/workers.md`, `spawn-worker.md`, `check-workers.md`
 
 - [x] Portal session type indicators
   - Show "Orchestrator" or "Worker" badge on dashboard
@@ -475,35 +477,35 @@ Parallel tasks:
 
 ### Wave 6: Documentation
 
-- [ ] Update CLAUDE.md with session types
-- [ ] Add examples to docs/
-- [ ] Update CLI help text
+- [x] Update CLAUDE.md with session types
+- [x] Add session types section with examples
+- [x] Update CLI help text (--worker, --orchestrator flags documented)
 
 ## Success Criteria
 
 **Session types work:**
-- [ ] `agentwire new myproject` creates orchestrator session
-- [ ] `agentwire new myproject/task --worker` creates worker session
-- [ ] rooms.json correctly stores session types
-- [ ] Role files load via `--append-system-prompt` flag
+- [x] `agentwire new myproject` creates orchestrator session
+- [x] `agentwire new myproject/task --worker` creates worker session
+- [x] rooms.json correctly stores session types
+- [x] Role files load via `--append-system-prompt` flag
 
 **Tool restrictions enforced:**
-- [ ] Orchestrator cannot Edit/Write/Read files
-- [ ] Orchestrator can only run agentwire/voice bash commands
-- [ ] Worker cannot use AskUserQuestion
-- [ ] Worker cannot use remote-say/say
+- [x] Orchestrator cannot Edit/Write/Read files
+- [x] Orchestrator can only run agentwire/voice bash commands
+- [x] Worker cannot use AskUserQuestion
+- [x] Worker cannot use remote-say/say
 
 **Workflow functions:**
-- [ ] Orchestrator spawns workers via `agentwire new --worker`
-- [ ] Orchestrator sends instructions via `agentwire send`
-- [ ] Orchestrator monitors via `agentwire output`
-- [ ] Workers complete tasks and output factual results
-- [ ] Orchestrator reports results conversationally to user
+- [x] Orchestrator spawns workers via `agentwire new --worker`
+- [x] Orchestrator sends instructions via `agentwire send`
+- [x] Orchestrator monitors via `agentwire output`
+- [x] Workers complete tasks and output factual results
+- [ ] Orchestrator reports results conversationally to user (to be tested)
 
 **User experience:**
-- [ ] Orchestrator feels conversational, not mechanical
-- [ ] User can discuss other topics while workers execute
-- [ ] Worker output is clear and actionable
+- [ ] Orchestrator feels conversational, not mechanical (to be tested)
+- [ ] User can discuss other topics while workers execute (to be tested)
+- [x] Worker output is clear and actionable
 
 ## What We're NOT Changing
 
