@@ -21,6 +21,47 @@ from . import cli_safety
 # Default config directory
 CONFIG_DIR = Path.home() / ".agentwire"
 
+# Session type constants
+ORCHESTRATOR_DISALLOWED_TOOLS = ["Edit", "Write", "Read", "Glob", "Grep", "NotebookEdit"]
+WORKER_DISALLOWED_TOOLS = ["AskUserQuestion"]
+
+
+def _build_claude_cmd(
+    bypass_permissions: bool,
+    session_type: str | None = None,
+) -> str:
+    """Build the claude command with appropriate flags.
+
+    Args:
+        bypass_permissions: Whether to use --dangerously-skip-permissions
+        session_type: "orchestrator", "worker", or None for default behavior
+
+    Returns:
+        The claude command string to execute
+    """
+    parts = ["claude"]
+
+    if bypass_permissions:
+        parts.append("--dangerously-skip-permissions")
+
+    # Add role file via --append-system-prompt if role file exists
+    roles_dir = CONFIG_DIR / "roles"
+    if session_type == "worker":
+        role_file = roles_dir / "worker.md"
+        if role_file.exists():
+            # Use cat to read the file content
+            parts.append(f'--append-system-prompt "$(cat {shlex.quote(str(role_file))})"')
+        # Block AskUserQuestion for workers
+        parts.append("--disallowedTools " + " ".join(WORKER_DISALLOWED_TOOLS))
+    elif session_type == "orchestrator":
+        role_file = roles_dir / "orchestrator.md"
+        if role_file.exists():
+            parts.append(f'--append-system-prompt "$(cat {shlex.quote(str(role_file))})"')
+        # Block file manipulation tools for orchestrators
+        parts.append("--disallowedTools " + " ".join(ORCHESTRATOR_DISALLOWED_TOOLS))
+
+    return " ".join(parts)
+
 
 def check_python_version() -> bool:
     """Check if Python version meets minimum requirements.
@@ -1241,6 +1282,14 @@ def cmd_new(args) -> int:
         if template is None:
             return _output_result(False, json_mode, f"Template '{template_name}' not found")
 
+    # Determine session type (worker/orchestrator)
+    is_worker = getattr(args, 'worker', False)
+    is_orchestrator = getattr(args, 'orchestrator', False)
+    if is_worker and is_orchestrator:
+        return _output_result(False, json_mode, "Cannot specify both --worker and --orchestrator")
+    # Default to None (no type-specific behavior) unless explicitly set
+    session_type = "worker" if is_worker else ("orchestrator" if is_orchestrator else None)
+
     # Parse session name: project, branch, machine
     project, branch, machine_id = parse_session_name(name)
 
@@ -1327,7 +1376,8 @@ def cmd_new(args) -> int:
         else:
             bypass_permissions = not (no_bypass_arg or restricted)
 
-        bypass_flag = "" if not bypass_permissions else " --dangerously-skip-permissions"
+        # Build claude command with session type flags
+        claude_cmd = _build_claude_cmd(bypass_permissions, session_type)
         # AGENTWIRE_ROOM must include @machine so portal can find room config
         room_name = f"{session_name}@{machine_id}"
         create_cmd = (
@@ -1336,7 +1386,7 @@ def cmd_new(args) -> int:
             f"sleep 0.1 && "
             f"tmux send-keys -t {shlex.quote(session_name)} 'export AGENTWIRE_ROOM={shlex.quote(room_name)}' Enter && "
             f"sleep 0.1 && "
-            f"tmux send-keys -t {shlex.quote(session_name)} 'claude{bypass_flag}' Enter"
+            f"tmux send-keys -t {shlex.quote(session_name)} {shlex.quote(claude_cmd)} Enter"
         )
 
         result = _run_remote(machine_id, create_cmd)
@@ -1357,6 +1407,9 @@ def cmd_new(args) -> int:
 
         room_key = f"{session_name}@{machine_id}"
         room_config = {"bypass_permissions": bypass_permissions, "restricted": restricted}
+        # Add session type if specified
+        if session_type:
+            room_config["type"] = session_type
         # Add voice from template if specified
         if template and template.voice:
             room_config["voice"] = template.voice
@@ -1497,10 +1550,8 @@ def cmd_new(args) -> int:
     else:
         bypass_permissions = not (no_bypass_arg or restricted)
 
-    if bypass_permissions:
-        claude_cmd = "claude --dangerously-skip-permissions"
-    else:
-        claude_cmd = "claude"
+    # Build claude command with session type flags
+    claude_cmd = _build_claude_cmd(bypass_permissions, session_type)
 
     subprocess.run(
         ["tmux", "send-keys", "-t", session_name, claude_cmd, "Enter"],
@@ -1520,6 +1571,9 @@ def cmd_new(args) -> int:
             pass
 
     room_config = {"bypass_permissions": bypass_permissions, "restricted": restricted}
+    # Add session type if specified
+    if session_type:
+        room_config["type"] = session_type
     # Add voice from template if specified
     if template and template.voice:
         room_config["voice"] = template.voice
@@ -4560,6 +4614,8 @@ def main() -> int:
     new_parser.add_argument("-f", "--force", action="store_true", help="Replace existing session")
     new_parser.add_argument("--no-bypass", action="store_true", help="Don't use --dangerously-skip-permissions (normal mode)")
     new_parser.add_argument("--restricted", action="store_true", help="Restricted mode: only allow say/remote-say commands (implies --no-bypass)")
+    new_parser.add_argument("--worker", action="store_true", help="Worker session: blocks AskUserQuestion, loads worker role")
+    new_parser.add_argument("--orchestrator", action="store_true", help="Orchestrator session: blocks file tools, loads orchestrator role (default)")
     new_parser.add_argument("--json", action="store_true", help="Output as JSON")
     new_parser.set_defaults(func=cmd_new)
 

@@ -35,8 +35,8 @@ Orchestrator Session (voice-enabled, no file access)
 
 **What we're adding**:
 - Session types: `orchestrator` vs `worker`
-- Tool restrictions per type (Claude Code 2.1.0 `--allowedTools`/`--disallowedTools`)
-- Role files loaded via `--context` flag
+- Tool restrictions per type (Claude Code `--disallowedTools`)
+- Role files loaded via `--append-system-prompt` flag
 - Preset agent personas for common worker tasks
 - Type-specific skills
 
@@ -161,21 +161,21 @@ agentwire new myproject/auth-work --worker
 # Worker inherits project from name prefix
 # Creates worktree: ~/projects/myproject-worktrees/auth-work/
 # Sets type: worker in rooms.json
-# Starts Claude with --context ~/.agentwire/roles/worker.md
+# Starts Claude with --append-system-prompt and --disallowedTools
 ```
 
 ### Claude Code Startup
 
 **Orchestrator sessions:**
 ```bash
-claude --context ~/.agentwire/roles/orchestrator.md \
-       --disallowedTools "Edit,Write,Read,Glob,Grep,NotebookEdit"
+claude --append-system-prompt "$(cat ~/.agentwire/roles/orchestrator.md)" \
+       --disallowedTools Edit Write Read Glob Grep NotebookEdit
 ```
 
 **Worker sessions:**
 ```bash
-claude --context ~/.agentwire/roles/worker.md \
-       --disallowedTools "AskUserQuestion"
+claude --append-system-prompt "$(cat ~/.agentwire/roles/worker.md)" \
+       --disallowedTools AskUserQuestion
 ```
 
 ## Role Files
@@ -403,26 +403,26 @@ Output: Summary of findings, options identified, recommendation if clear.
 ### Wave 1: Session Type Infrastructure (BLOCKING)
 
 Human tasks:
-- [ ] Decide: Use `--disallowedTools` flag or PreToolUse hooks for tool blocking?
-- [ ] Test Claude Code 2.1.0 `--disallowedTools` flag manually
-- [ ] Verify `--context` flag loads role files correctly
+- [x] Decide: Use `--disallowedTools` flag for tool blocking
+- [x] Verified `--append-system-prompt` flag loads role files correctly
+- [x] Verified `--disallowedTools` accepts space-separated tool names
 
 ### Wave 2: CLI & Configuration
 
 Parallel tasks:
-- [ ] Add `--worker` flag to `agentwire new` command
+- [x] Add `--worker` flag to `agentwire new` command
   - Sets `type: worker` in rooms.json
-  - Loads worker role via `--context`
-  - Applies tool restrictions
+  - Loads worker role via `--append-system-prompt`
+  - Applies `--disallowedTools AskUserQuestion`
   - File: `agentwire/__main__.py` cmd_new
 
-- [ ] Add `--orchestrator` flag (explicit, optional)
+- [x] Add `--orchestrator` flag (explicit, optional)
   - Sets `type: orchestrator` in rooms.json
-  - Loads orchestrator role via `--context`
-  - Applies tool restrictions
+  - Loads orchestrator role via `--append-system-prompt`
+  - Applies `--disallowedTools Edit Write Read Glob Grep NotebookEdit`
   - File: `agentwire/__main__.py` cmd_new
 
-- [ ] Update rooms.json schema
+- [x] Update rooms.json schema
   - Add `type` field (orchestrator | worker)
   - Add `spawned_by` field for workers
   - Backwards compat: missing type = orchestrator
@@ -452,12 +452,12 @@ Parallel tasks:
 
 Parallel tasks:
 - [ ] Orchestrator tool blocking
-  - Block Edit, Write, Read, Glob, Grep via --disallowedTools OR hooks
+  - Block Edit, Write, Read, Glob, Grep via `--disallowedTools`
   - Block non-agentwire bash commands via PreToolUse hook
   - File: Hook scripts or settings.json
 
 - [ ] Worker tool blocking
-  - Block AskUserQuestion via --disallowedTools OR hooks
+  - Block AskUserQuestion via `--disallowedTools`
   - Block remote-say/say bash commands via PreToolUse hook
   - File: Hook scripts or settings.json
 
@@ -487,7 +487,7 @@ Parallel tasks:
 - [ ] `agentwire new myproject` creates orchestrator session
 - [ ] `agentwire new myproject/task --worker` creates worker session
 - [ ] rooms.json correctly stores session types
-- [ ] Role files load via `--context` flag
+- [ ] Role files load via `--append-system-prompt` flag
 
 **Tool restrictions enforced:**
 - [ ] Orchestrator cannot Edit/Write/Read files
