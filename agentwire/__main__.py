@@ -1110,7 +1110,7 @@ def cmd_send(args) -> int:
         quoted_prompt = shlex.quote(prompt)
 
         # Send text, sleep, send Enter
-        cmd = f"tmux send-keys -t {quoted_session} {quoted_prompt} && sleep 0.3 && tmux send-keys -t {quoted_session} Enter"
+        cmd = f"tmux send-keys -t {quoted_session} {quoted_prompt} && sleep 0.5 && tmux send-keys -t {quoted_session} Enter"
 
         # For multi-line text, add another Enter
         if "\n" in prompt or len(prompt) > 200:
@@ -1141,7 +1141,7 @@ def cmd_send(args) -> int:
     )
 
     # Wait for text to be fully entered before pressing Enter
-    time.sleep(0.3)
+    time.sleep(0.5)
 
     subprocess.run(
         ["tmux", "send-keys", "-t", session, "Enter"],
