@@ -531,3 +531,74 @@ Existing infrastructure to preserve:
 - Orchestrator: `myproject`
 - Workers: `myproject/task-name` (automatically creates worktree)
 - This leverages existing worktree infrastructure
+
+## Testing Issues Found
+
+Issues discovered during hands-on testing that need to be fixed:
+
+### Issue 1: MCP Filesystem Tools Not Blocked
+
+**Problem:** `--disallowedTools` only blocks Claude Code's built-in tools. MCP filesystem tools are separate and bypass the restriction.
+
+**Observed behavior:** Orchestrator used `mcp__filesystem__create_directory`, `mcp__filesystem__read_file`, etc. to create directories and explore files.
+
+**Expected behavior:** Orchestrator should not be able to do ANY file operations - should spawn a worker instead.
+
+**Status: FIXED** - Added all MCP filesystem tools to `ORCHESTRATOR_DISALLOWED_TOOLS` list in `agentwire/__main__.py`:
+- `mcp__filesystem__read_file`
+- `mcp__filesystem__read_multiple_files`
+- `mcp__filesystem__write_file`
+- `mcp__filesystem__edit_file`
+- `mcp__filesystem__create_directory`
+- `mcp__filesystem__move_file`
+- `mcp__filesystem__directory_tree`
+- `mcp__filesystem__list_directory`
+- `mcp__filesystem__list_directory_with_sizes`
+- `mcp__filesystem__search_files`
+- `mcp__filesystem__get_file_info`
+
+### Issue 2: Session-Type Bash Hook Not Registered
+
+**Problem:** The bash restriction hook (`session-type-bash-hook.py`) was created but never registered in `~/.claude/settings.json`.
+
+**Observed behavior:** Orchestrator ran `git init && git add && git commit` directly - arbitrary bash commands that should be blocked.
+
+**Expected behavior:** Orchestrator should only be able to run:
+- `agentwire *` commands
+- `remote-say *` / `say *` commands
+- `git status`, `git log`, `git diff` (read-only git)
+
+**Status: FIXED** - Implemented using Option A (env var approach):
+1. `agentwire new --orchestrator` now sets `AGENTWIRE_SESSION_TYPE=orchestrator` env var
+2. `agentwire new --worker` now sets `AGENTWIRE_SESSION_TYPE=worker` env var
+3. Hook updated to read `AGENTWIRE_SESSION_TYPE` env var at runtime
+4. Hook installed to `~/.agentwire/hooks/session-type-bash-hook.py`
+5. Hook registered in `~/.claude/settings.json` via `agentwire skills install`
+
+Sessions without the env var (backwards compat) have no restrictions.
+
+### Issue 3: Damage Control Bypass via Individual Deletions
+
+**Problem:** Claude found a workaround to delete files despite damage control hooks.
+
+**Observed behavior:**
+1. `rm -rf docs .git` → BLOCKED ✓
+2. `rm docs/missions/file.md && rmdir docs/missions && rmdir docs` → SUCCEEDED (bypass!)
+3. `rm .git/*` → BLOCKED ✓
+
+**Result:** The `docs/` directory was successfully deleted by using individual `rm` (no flags) and `rmdir` commands.
+
+**Root cause:** Damage control patterns only catch:
+- `rm -rf` or `rm -r` (recursive flag)
+- `rm -f` (force flag)
+- Operations on protected paths like `.git/`
+
+But they DON'T catch:
+- `rm specific-file.md` (no flags)
+- `rmdir directory` (directory removal)
+
+**Note:** This is somewhat mitigated by the fact that the session-type bash hook (Issue 2) SHOULD have blocked ALL these commands for orchestrators anyway. Fixing Issue 2 would prevent this bypass.
+
+**Status: FIXED** - Added patterns to `~/.agentwire/hooks/damage-control/patterns.yaml`:
+- `\brmdir\b` - blocks all rmdir commands
+- `\brm\s+[^-]` - blocks rm with file paths (not just rm -rf)
