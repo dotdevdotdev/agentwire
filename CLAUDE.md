@@ -98,11 +98,13 @@ agentwire init
 
 # Portal (web server)
 agentwire portal start     # Start in tmux (agentwire-portal)
+agentwire portal serve     # Run in foreground (for debugging)
 agentwire portal stop      # Stop the portal
 agentwire portal status    # Check if running
 
 # TTS Server
 agentwire tts start        # Start Chatterbox in tmux (agentwire-tts)
+agentwire tts serve        # Run in foreground (for debugging)
 agentwire tts stop         # Stop TTS server
 agentwire tts status       # Check TTS status
 
@@ -110,13 +112,28 @@ agentwire tts status       # Check TTS status
 agentwire say "Hello"      # Speak text locally
 agentwire say --room api "Done"  # Send TTS to room
 
+# Voice input (push-to-talk recording)
+agentwire listen                      # Toggle recording (start/stop)
+agentwire listen start                # Start recording
+agentwire listen stop -s <session>    # Stop and send to session
+agentwire listen cancel               # Cancel recording
+
+# Voice cloning
+agentwire voiceclone start        # Start recording voice sample
+agentwire voiceclone stop <name>  # Stop and upload as voice clone
+agentwire voiceclone cancel       # Cancel current recording
+agentwire voiceclone list         # List available voices
+agentwire voiceclone delete <name>  # Delete a voice clone
+
 # Session management
 agentwire list                              # List sessions from ALL machines
+agentwire list --local                      # List only local sessions
 agentwire new -s <name> [-p path] [-f]      # Create Claude Code session
 agentwire new -s <name> -t <template>       # Create session with template
-agentwire new -s <name> --restricted        # Create restricted mode session
-agentwire new -s <name> --worker            # Create worker session (autonomous)
-agentwire new -s <name> --orchestrator      # Create orchestrator session (voice-first)
+agentwire new -s <name> --no-bypass         # Normal mode (permission prompts)
+agentwire new -s <name> --restricted        # Restricted mode (voice-only)
+agentwire new -s <name> --worker            # Worker session (autonomous)
+agentwire new -s <name> --orchestrator      # Orchestrator session (voice-first)
 agentwire output -s <session> [-n lines]    # Read recent session output
 agentwire kill -s <session>                 # Clean shutdown (/exit then kill)
 agentwire send -s <session> "prompt"        # Send prompt + Enter
@@ -251,11 +268,11 @@ agentwire send -s api "run tests" --json
 #### Read Output
 
 ```bash
-# Read from local session (last 20 lines)
+# Read from local session (last 50 lines by default)
 agentwire output -s api
 
 # Read more lines
-agentwire output -s api -n 50
+agentwire output -s api -n 100
 
 # Read from local worktree session
 agentwire output -s api/feature -n 30
@@ -268,7 +285,7 @@ agentwire output -s ml/experiment@gpu-server
 
 # JSON output
 agentwire output -s api --json
-# {"success": true, "session": "api", "output": "...", "lines": 20}
+# {"success": true, "session": "api", "output": "...", "lines": 50}
 ```
 
 #### Kill Sessions
@@ -418,7 +435,7 @@ agentwire output -s api --json
   "success": true,
   "session": "api",
   "output": "...",
-  "lines": 20
+  "lines": 50
 }
 
 # Kill session
@@ -1275,6 +1292,9 @@ Skills in `skills/` provide Claude Code integration:
 | workers | `/workers` | List active worker sessions |
 | spawn-worker | `/spawn-worker <name> [prompt]` | Create worker with optional initial task |
 | check-workers | `/check-workers` | Batch check output from all workers |
+| init | `/init` | Interactive onboarding wizard |
+| machine-setup | `/machine-setup [id] [ip]` | Add remote machine (guided wizard) |
+| machine-remove | `/machine-remove [id]` | Remove remote machine (guided wizard) |
 
 ### Installing Skills
 
