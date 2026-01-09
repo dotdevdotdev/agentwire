@@ -747,18 +747,19 @@ server:
   port: 8765
 
 tts:
-  backend: "chatterbox"
+  backend: "chatterbox"  # chatterbox | runpod | none
   url: "http://localhost:8100"
   default_voice: "bashbunni"
-  voices_dir: "~/.agentwire/voices"  # Where voice clones are stored
+  exaggeration: 0.5      # 0-1, voice expressiveness
+  cfg_weight: 0.5        # 0-1, voice consistency
 
 stt:
-  backend: "whisperkit"  # whisperkit | whispercpp | openai | none
+  backend: "whisperkit"  # whisperkit | whispercpp | openai | remote | none
   model_path: "~/Library/Application Support/MacWhisper/models/..."
   language: "en"
-
-audio:
-  input_device: 1  # Audio input device index (use `agentwire init` to select)
+  # For remote STT (Docker/container setup):
+  # backend: "remote"
+  # url: "http://localhost:8100"
 
 projects:
   dir: "~/projects"
@@ -1275,6 +1276,9 @@ Skills in `skills/` provide Claude Code integration:
 | workers | `/workers` | List active worker sessions |
 | spawn-worker | `/spawn-worker <name> [prompt]` | Create worker with optional initial task |
 | check-workers | `/check-workers` | Batch check output from all workers |
+| machine-setup | `/machine-setup <id> <host>` | Interactive machine setup wizard |
+| machine-remove | `/machine-remove <id>` | Interactive machine removal wizard |
+| init | `/init` | Initialize AgentWire configuration |
 
 ### Installing Skills
 
@@ -2205,8 +2209,8 @@ python -c "from agentwire import __version__; print(__version__)"
 | `__main__.py` | CLI entry point, all commands |
 | `server.py` | WebSocket server, HTTP routes, room management |
 | `config.py` | Config dataclass, YAML loading, defaults |
-| `tts/` | TTS backends (chatterbox, none) |
-| `stt/` | STT backends (whisperkit, whispercpp, openai, none) |
+| `tts/` | TTS backends (chatterbox, runpod, none) |
+| `stt/` | STT backends (whisperkit, whispercpp, openai, remote, none) |
 | `agents/` | Agent backends (tmux local/remote) |
 | `templates/` | HTML templates (dashboard, room) |
 | `skills/` | Claude Code skills for orchestration |
