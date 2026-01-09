@@ -431,19 +431,19 @@ Parallel tasks:
 ### Wave 3: Role Files & Personas
 
 Parallel tasks:
-- [ ] Create orchestrator role file
+- [x] Create orchestrator role file
   - Voice-first instructions
   - agentwire command examples
   - Worker spawning patterns
   - File: `~/.agentwire/roles/orchestrator.md`
 
-- [ ] Create worker role file
+- [x] Create worker role file
   - Autonomous execution instructions
   - Factual output format
   - Parallel execution guidance
   - File: `~/.agentwire/roles/worker.md`
 
-- [ ] Create persona files
+- [x] Create persona files
   - refactorer.md, implementer.md, debugger.md, researcher.md
   - Reusable prompting patterns
   - File: `~/.agentwire/personas/*.md`
