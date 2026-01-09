@@ -347,37 +347,22 @@ All decisions are logged to `~/.agentwire/logs/damage-control/` for audit trails
 
 ## Voice Integration
 
-AgentWire provides native voice capabilities to Claude Code via MCP:
+AgentWire provides TTS via command-based voice output:
 
 ```bash
 # One-time setup
-agentwire skills install  # Registers MCP server
+agentwire skills install  # Installs say/remote-say commands + Claude Code skills
 
-# Start daemon (provides TTS routing)
-agentwire daemon start
-
-# Now all Claude sessions can use:
-# - speak(text, voice=None)
-# - list_voices()
-# - set_voice(name)
+# In sessions, Claude (or users) can trigger TTS:
+say "Hello world"           # Local: plays via system audio
+remote-say "Task complete"  # Remote: streams to browser via portal
 ```
 
-The daemon auto-detects which session is calling and routes TTS appropriately:
-- **Portal API** - Broadcasts to browser if room exists
-- **Configured backend** - Uses TTS backend from config.yaml
-- **No AGENTWIRE_ROOM needed** - Session detection is automatic
-
-**Available daemon commands:**
-
-```bash
-agentwire daemon start     # Start daemon in background
-agentwire daemon stop      # Stop daemon
-agentwire daemon status    # Check if running
-agentwire daemon restart   # Restart daemon
-agentwire daemon logs      # View daemon logs
-```
-
-**Deprecation:** say/remote-say scripts are deprecated. Use MCP tools instead. See `docs/MIGRATION-MCP.md` for migration guide.
+**How it works:**
+- `say` - Generates TTS locally and plays via system speakers
+- `remote-say` - POSTs to portal API, broadcasts audio to connected browser clients
+- Room detection uses `AGENTWIRE_ROOM` env var (set automatically when session is created)
+- For remote machines, configure portal URL in `~/.agentwire/portal_url`
 
 ## TTS Setup
 
@@ -401,9 +386,10 @@ tts:
 
 | Backend | Platforms | Setup |
 |---------|-----------|-------|
-| `whisperkit` | macOS (Apple Silicon) | Install WhisperKit |
+| `whisperkit` | macOS (Apple Silicon) | Install MacWhisper |
 | `whispercpp` | All | Install whisper.cpp |
 | `openai` | All | Set `OPENAI_API_KEY` |
+| `remote` | All | Containerized deployment (use STT container URL) |
 | `none` | All | Typing only, no voice |
 
 ## Architecture
