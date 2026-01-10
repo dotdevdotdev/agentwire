@@ -2325,16 +2325,13 @@ python -c "from agentwire import __version__; print(__version__)"
 | File | Purpose |
 |------|---------|
 | `__main__.py` | CLI entry point, all commands |
-| `server.py` | WebSocket server, HTTP routes, room management |
+| `server.py` | WebSocket server, HTTP routes, room management, TTS routing |
 | `config.py` | Config dataclass, YAML loading, defaults |
 | `tts/` | TTS backends (chatterbox, runpod, none) |
 | `stt/` | STT backends (whisperkit, whispercpp, openai, remote, none) |
 | `agents/` | Agent backends (tmux local/remote) |
-| `mcp/` | MCP server implementation (stdio, not currently wired to CLI) |
 | `templates/` | HTML templates (dashboard, room) |
 | `skills/` | Claude Code skills for orchestration |
 | `worktree.py` | Git worktree management utilities |
 | `tunnels.py` | SSH tunnel management |
-| `tts_router.py` | TTS routing with fallback logic |
-| `session_detector.py` | Session detection for MCP/routing |
 
