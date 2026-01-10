@@ -1,5 +1,7 @@
 # Voice Orchestrator + Worker Sessions
 
+> **COMPLETE** - All 8 waves finished. Session types, tool restrictions, roles, personas, and codebase cleanup done.
+
 > Living document. Update this, don't create new versions.
 
 ## Overview
