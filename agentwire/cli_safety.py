@@ -22,6 +22,77 @@ LOGS_DIR = CONFIG_DIR / "logs" / "damage-control"
 PATTERNS_FILE = HOOKS_DIR / "patterns.yaml"
 
 
+def is_glob_pattern(pattern: str) -> bool:
+    """Check if a pattern contains glob wildcards."""
+    return '*' in pattern or '?' in pattern or '[' in pattern
+
+
+def glob_to_regex(pattern: str) -> str:
+    """Convert a glob pattern to a regex pattern."""
+    result = ""
+    i = 0
+    while i < len(pattern):
+        c = pattern[i]
+        if c == '*':
+            result += '.*'
+        elif c == '?':
+            result += '.'
+        elif c == '[':
+            j = i + 1
+            while j < len(pattern) and pattern[j] != ']':
+                j += 1
+            result += pattern[i:j+1]
+            i = j
+        elif c in '.^$+{}|()\\':
+            result += '\\' + c
+        else:
+            result += c
+        i += 1
+    return result
+
+
+def matches_path_in_command(pattern: str, command: str) -> bool:
+    """
+    Check if a path pattern matches in the command in a file-path context.
+    
+    For glob patterns, we ensure we're matching file paths,
+    not method calls like module.method().
+    """
+    expanded = os.path.expanduser(pattern)
+    
+    if not is_glob_pattern(pattern):
+        # Non-glob: simple substring match (existing behavior)
+        return expanded in command
+    
+    # Glob pattern: convert to regex and match in file-path contexts only
+    glob_regex = glob_to_regex(expanded)
+    
+    # Only match in file-path contexts:
+    # - Preceded by: space, /, =, ", ', <, >, or start of string
+    # - Followed by: space, ", ', ), <, >, or end of string
+    file_path_regex = r'(?:^|[\s/="\'<>])' + glob_regex + r'(?:[\s"\')<>]|$)'
+    
+    try:
+        match = re.search(file_path_regex, command, re.IGNORECASE)
+    except re.error:
+        return False
+    
+    if not match:
+        return False
+    
+    # Extra check: reject if it looks like a method call (preceded by identifier char and dot)
+    # Method calls look like: module.method()
+    extension = pattern.split('*')[-1] if '*' in pattern else pattern
+    if extension.startswith('.'):
+        extension = extension[1:]
+    if extension:
+        method_call_regex = r'\w\.' + re.escape(extension) + r'\s*\('
+        if re.search(method_call_regex, command):
+            return False
+    
+    return True
+
+
 def load_patterns() -> Dict[str, Any]:
     """Load patterns from patterns.yaml."""
     if not yaml:
@@ -77,9 +148,9 @@ def check_command_safety(command: str, verbose: bool = False) -> Dict[str, Any]:
     read_only = patterns.get("readOnlyPaths", [])
     no_delete = patterns.get("noDeletePaths", [])
 
+
     for path in zero_access:
-        expanded = os.path.expanduser(path)
-        if expanded in command:
+        if matches_path_in_command(path, command):
             return {
                 "decision": "block",
                 "reason": f"Zero-access path: {path}",
@@ -88,8 +159,7 @@ def check_command_safety(command: str, verbose: bool = False) -> Dict[str, Any]:
             }
 
     for path in read_only:
-        expanded = os.path.expanduser(path)
-        if expanded in command and any(op in command for op in ["rm", "mv", "sed -i", ">"]):
+        if matches_path_in_command(path, command) and any(op in command for op in ["rm", "mv", "sed -i", ">"]):
             return {
                 "decision": "block",
                 "reason": f"Read-only path: {path}",
@@ -98,8 +168,7 @@ def check_command_safety(command: str, verbose: bool = False) -> Dict[str, Any]:
             }
 
     for path in no_delete:
-        expanded = os.path.expanduser(path)
-        if expanded in command and "rm" in command:
+        if matches_path_in_command(path, command) and "rm" in command:
             return {
                 "decision": "block",
                 "reason": f"No-delete path: {path}",
