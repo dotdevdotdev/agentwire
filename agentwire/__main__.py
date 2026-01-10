@@ -2962,17 +2962,30 @@ def cmd_dev(args) -> int:
         print(f"Project directory not found: {project_dir}", file=sys.stderr)
         return 1
 
-    # Get agent command from config
-    config = load_config()
-    agent_cmd = config.get("agent", {}).get("command", "claude --dangerously-skip-permissions")
+    # Build claude command with orchestrator flags (role file + disallowed tools)
+    claude_cmd = _build_claude_cmd(bypass_permissions=True, session_type="orchestrator")
 
-    # Create session and start Claude Code
+    # Create session
     print(f"Creating dev session '{session_name}' in {project_dir}...")
     subprocess.run([
         "tmux", "new-session", "-d", "-s", session_name, "-c", str(project_dir),
     ])
+
+    # Set env vars (used by permission hook and session-type bash hook)
     subprocess.run([
-        "tmux", "send-keys", "-t", session_name, agent_cmd, "Enter",
+        "tmux", "send-keys", "-t", session_name,
+        f"export AGENTWIRE_ROOM={session_name}", "Enter",
+    ])
+    time.sleep(0.1)
+    subprocess.run([
+        "tmux", "send-keys", "-t", session_name,
+        "export AGENTWIRE_SESSION_TYPE=orchestrator", "Enter",
+    ])
+    time.sleep(0.1)
+
+    # Start Claude with orchestrator config
+    subprocess.run([
+        "tmux", "send-keys", "-t", session_name, claude_cmd, "Enter",
     ])
 
     print(f"Attaching... (Ctrl+B D to detach)")
