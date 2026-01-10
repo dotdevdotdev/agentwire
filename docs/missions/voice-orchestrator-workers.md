@@ -738,10 +738,12 @@ The daemon-based MCP server approach was planned but never fully implemented. Th
 
 ### Wave 8 Acceptance Criteria
 
-- [ ] No `agentwire/mcp/` directory
-- [ ] No `agentwire/tts_router.py`
-- [ ] No `agentwire/session_detector.py`
-- [ ] No MCP-related test files
-- [ ] No `docs/MIGRATION-MCP.md`
-- [ ] MCP mission moved to `cancelled/` folder with status update
-- [ ] Documentation updated to remove MCP daemon references
+- [x] No `agentwire/mcp/` directory
+- [x] No `agentwire/tts_router.py`
+- [x] No `agentwire/session_detector.py`
+- [x] No MCP-related test files
+- [x] No `docs/MIGRATION-MCP.md`
+- [x] MCP mission moved to `cancelled/` folder with status update
+- [x] Removed `mcp` dependency from pyproject.toml
+
+**Completed:** 2,804 lines of dead code removed.
