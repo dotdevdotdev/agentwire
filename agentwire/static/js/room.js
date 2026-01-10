@@ -42,7 +42,7 @@ const STATES = {
 
 let currentState = STATES.IDLE;
 let currentMode = 'ambient';  // 'ambient', 'monitor', or 'terminal'
-let isAmbientMode = true;  // Legacy flag for backward compatibility
+let isAmbientMode = true;  // Tracks ambient mode state
 let textInputOpen = false;
 let processingTimeout = null;
 let pendingAiText = null;
@@ -543,7 +543,7 @@ function switchToMode(mode) {
     console.log('[Mode] Switching from', currentMode, 'to', mode);
     currentMode = mode;
 
-    // Update legacy flag for backward compatibility
+    // Update ambient mode flag
     isAmbientMode = (mode === 'ambient');
 
     // Update tab states

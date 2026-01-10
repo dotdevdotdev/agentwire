@@ -1,5 +1,7 @@
 # Orchestrator-Worker Session Pairing
 
+> **CANCELLED** - Superseded by `voice-orchestrator-workers.md` which implemented session types with --worker/--orchestrator flags.
+
 > Living document. Update this, don't create new versions.
 
 ## Overview

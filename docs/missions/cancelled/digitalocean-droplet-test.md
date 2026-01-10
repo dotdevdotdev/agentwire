@@ -1,5 +1,7 @@
 # Mission: Digital Ocean Droplet Network Test
 
+> **CANCELLED** - Testing plan never executed. Remote machine support is functional via existing infrastructure.
+
 > Test multi-machine networking by adding a small DO droplet to the AgentWire network.
 
 ## Objective

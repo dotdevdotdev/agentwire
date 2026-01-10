@@ -58,10 +58,10 @@ def load_config() -> dict:
     return {}
 
 
-def get_tts_url() -> str:
+def get_tts_url() -> str | None:
     """Get TTS server URL from config."""
     config = load_config()
-    return config.get("tts", {}).get("url", "http://localhost:8100")
+    return config.get("tts", {}).get("url")
 
 
 def get_audio_device() -> str:
@@ -190,6 +190,12 @@ def stop_recording(voice_name: str) -> int:
 
     # Upload to TTS server
     tts_url = get_tts_url()
+    if not tts_url:
+        beep("error")
+        log("ERROR: tts.url not configured")
+        notify("TTS URL not configured")
+        print("Error: tts.url not configured in config.yaml")
+        return 1
     try:
         with open(AUDIO_FILE, "rb") as f:
             response = requests.post(
@@ -253,6 +259,9 @@ def is_recording() -> bool:
 def list_voices() -> int:
     """List available voices from TTS server."""
     tts_url = get_tts_url()
+    if not tts_url:
+        print("Error: tts.url not configured in config.yaml")
+        return 1
     try:
         response = requests.get(f"{tts_url}/voices")
         if response.status_code == 200:
@@ -280,6 +289,9 @@ def list_voices() -> int:
 def delete_voice(voice_name: str) -> int:
     """Delete a voice from TTS server."""
     tts_url = get_tts_url()
+    if not tts_url:
+        print("Error: tts.url not configured in config.yaml")
+        return 1
     try:
         response = requests.delete(f"{tts_url}/voices/{voice_name}")
         if response.status_code == 200:

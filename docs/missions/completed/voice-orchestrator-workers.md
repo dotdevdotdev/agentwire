@@ -1,5 +1,7 @@
 # Voice Orchestrator + Worker Sessions
 
+> **COMPLETE** - All 8 waves finished. Session types, tool restrictions, roles, personas, and codebase cleanup done.
+
 > Living document. Update this, don't create new versions.
 
 ## Overview
@@ -30,13 +32,13 @@ Orchestrator Session (voice-enabled, no file access)
 - `agentwire output` for reading session output
 - `agentwire list` for session discovery
 - rooms.json for per-session config
-- Voice layer (remote-say, push-to-talk)
+- Voice layer (say command with smart routing, push-to-talk)
 - Permission modes (bypass, normal, restricted)
 
 **What we're adding**:
 - Session types: `orchestrator` vs `worker`
-- Tool restrictions per type (Claude Code 2.1.0 `--allowedTools`/`--disallowedTools`)
-- Role files loaded via `--context` flag
+- Tool restrictions per type (Claude Code `--disallowedTools`)
+- Role files loaded via `--append-system-prompt` flag
 - Preset agent personas for common worker tasks
 - Type-specific skills
 
@@ -90,11 +92,11 @@ OAuth patterns - want me to summarize?"
 - ALLOWED: `Task`, `Bash`, `AskUserQuestion`, `WebFetch`, `WebSearch`, `TodoWrite`
 
 **Bash restrictions** (via PreToolUse hook):
-- ALLOWED: `agentwire *`, `remote-say *`, `say *`, `git status`, `git log`, `git diff`
+- ALLOWED: `agentwire *`, `say *`, `git status`, `git log`, `git diff`
 - BLOCKED: All other bash commands (no direct file manipulation)
 
 **Behavior**:
-- Uses voice (remote-say) for all user communication
+- Uses voice (say) for all user communication
 - Spawns workers via `agentwire new --worker`
 - Monitors workers via `agentwire output`
 - Sends instructions via `agentwire send`
@@ -113,7 +115,7 @@ OAuth patterns - want me to summarize?"
 - ALLOWED: Everything else (full Claude Code capabilities)
 
 **Bash restrictions** (via PreToolUse hook):
-- BLOCKED: `remote-say *`, `say *` (no voice output)
+- BLOCKED: `say *` (no voice output)
 - ALLOWED: Everything else
 
 **Behavior**:
@@ -161,21 +163,21 @@ agentwire new myproject/auth-work --worker
 # Worker inherits project from name prefix
 # Creates worktree: ~/projects/myproject-worktrees/auth-work/
 # Sets type: worker in rooms.json
-# Starts Claude with --context ~/.agentwire/roles/worker.md
+# Starts Claude with --append-system-prompt and --disallowedTools
 ```
 
 ### Claude Code Startup
 
 **Orchestrator sessions:**
 ```bash
-claude --context ~/.agentwire/roles/orchestrator.md \
-       --disallowedTools "Edit,Write,Read,Glob,Grep,NotebookEdit"
+claude --append-system-prompt "$(cat ~/.agentwire/roles/orchestrator.md)" \
+       --disallowedTools Edit Write Read Glob Grep NotebookEdit
 ```
 
 **Worker sessions:**
 ```bash
-claude --context ~/.agentwire/roles/worker.md \
-       --disallowedTools "AskUserQuestion"
+claude --append-system-prompt "$(cat ~/.agentwire/roles/worker.md)" \
+       --disallowedTools AskUserQuestion
 ```
 
 ## Role Files
@@ -191,7 +193,7 @@ by spawning worker sessions, never by editing files directly.
 ## Your Capabilities
 
 You can:
-- Talk to the user via voice (remote-say)
+- Talk to the user via voice (say)
 - Spawn worker sessions: `agentwire new project/task-name --worker`
 - Send instructions to workers: `agentwire send -s project/task-name "prompt"`
 - Check worker progress: `agentwire output -s project/task-name`
@@ -403,26 +405,26 @@ Output: Summary of findings, options identified, recommendation if clear.
 ### Wave 1: Session Type Infrastructure (BLOCKING)
 
 Human tasks:
-- [ ] Decide: Use `--disallowedTools` flag or PreToolUse hooks for tool blocking?
-- [ ] Test Claude Code 2.1.0 `--disallowedTools` flag manually
-- [ ] Verify `--context` flag loads role files correctly
+- [x] Decide: Use `--disallowedTools` flag for tool blocking
+- [x] Verified `--append-system-prompt` flag loads role files correctly
+- [x] Verified `--disallowedTools` accepts space-separated tool names
 
 ### Wave 2: CLI & Configuration
 
 Parallel tasks:
-- [ ] Add `--worker` flag to `agentwire new` command
+- [x] Add `--worker` flag to `agentwire new` command
   - Sets `type: worker` in rooms.json
-  - Loads worker role via `--context`
-  - Applies tool restrictions
+  - Loads worker role via `--append-system-prompt`
+  - Applies `--disallowedTools AskUserQuestion`
   - File: `agentwire/__main__.py` cmd_new
 
-- [ ] Add `--orchestrator` flag (explicit, optional)
+- [x] Add `--orchestrator` flag (explicit, optional)
   - Sets `type: orchestrator` in rooms.json
-  - Loads orchestrator role via `--context`
-  - Applies tool restrictions
+  - Loads orchestrator role via `--append-system-prompt`
+  - Applies `--disallowedTools Edit Write Read Glob Grep NotebookEdit`
   - File: `agentwire/__main__.py` cmd_new
 
-- [ ] Update rooms.json schema
+- [x] Update rooms.json schema
   - Add `type` field (orchestrator | worker)
   - Add `spawned_by` field for workers
   - Backwards compat: missing type = orchestrator
@@ -431,19 +433,19 @@ Parallel tasks:
 ### Wave 3: Role Files & Personas
 
 Parallel tasks:
-- [ ] Create orchestrator role file
+- [x] Create orchestrator role file
   - Voice-first instructions
   - agentwire command examples
   - Worker spawning patterns
   - File: `~/.agentwire/roles/orchestrator.md`
 
-- [ ] Create worker role file
+- [x] Create worker role file
   - Autonomous execution instructions
   - Factual output format
   - Parallel execution guidance
   - File: `~/.agentwire/roles/worker.md`
 
-- [ ] Create persona files
+- [x] Create persona files
   - refactorer.md, implementer.md, debugger.md, researcher.md
   - Reusable prompting patterns
   - File: `~/.agentwire/personas/*.md`
@@ -451,61 +453,61 @@ Parallel tasks:
 ### Wave 4: Tool Enforcement
 
 Parallel tasks:
-- [ ] Orchestrator tool blocking
-  - Block Edit, Write, Read, Glob, Grep via --disallowedTools OR hooks
+- [x] Orchestrator tool blocking
+  - Block Edit, Write, Read, Glob, Grep via `--disallowedTools`
   - Block non-agentwire bash commands via PreToolUse hook
-  - File: Hook scripts or settings.json
+  - File: `agentwire/hooks/session-type-bash-hook.py`
 
-- [ ] Worker tool blocking
-  - Block AskUserQuestion via --disallowedTools OR hooks
-  - Block remote-say/say bash commands via PreToolUse hook
-  - File: Hook scripts or settings.json
+- [x] Worker tool blocking
+  - Block AskUserQuestion via `--disallowedTools`
+  - Block say bash command via PreToolUse hook
+  - File: `agentwire/hooks/session-type-bash-hook.py`
 
 ### Wave 5: Skills & Portal UI
 
 Parallel tasks:
-- [ ] Orchestrator-specific skills
+- [x] Orchestrator-specific skills
   - /workers - list active worker sessions
   - /spawn-worker - helper for worker creation
   - /check-workers - batch check all worker outputs
-  - File: `~/.claude/skills/agentwire/`
+  - Files: `agentwire/skills/workers.md`, `spawn-worker.md`, `check-workers.md`
 
-- [ ] Portal session type indicators
+- [x] Portal session type indicators
   - Show "Orchestrator" or "Worker" badge on dashboard
-  - Different styling for worker sessions
-  - File: `agentwire/templates/`, `agentwire/static/`
+  - Different styling for worker sessions (purple for worker, blue for orchestrator)
+  - File: `agentwire/static/js/dashboard.js`, `agentwire/static/css/dashboard.css`
 
 ### Wave 6: Documentation
 
-- [ ] Update CLAUDE.md with session types
-- [ ] Add examples to docs/
-- [ ] Update CLI help text
+- [x] Update CLAUDE.md with session types
+- [x] Add session types section with examples
+- [x] Update CLI help text (--worker, --orchestrator flags documented)
 
 ## Success Criteria
 
 **Session types work:**
-- [ ] `agentwire new myproject` creates orchestrator session
-- [ ] `agentwire new myproject/task --worker` creates worker session
-- [ ] rooms.json correctly stores session types
-- [ ] Role files load via `--context` flag
+- [x] `agentwire new myproject` creates orchestrator session
+- [x] `agentwire new myproject/task --worker` creates worker session
+- [x] rooms.json correctly stores session types
+- [x] Role files load via `--append-system-prompt` flag
 
 **Tool restrictions enforced:**
-- [ ] Orchestrator cannot Edit/Write/Read files
-- [ ] Orchestrator can only run agentwire/voice bash commands
-- [ ] Worker cannot use AskUserQuestion
-- [ ] Worker cannot use remote-say/say
+- [x] Orchestrator cannot Edit/Write/Read files
+- [x] Orchestrator can only run agentwire/voice bash commands
+- [x] Worker cannot use AskUserQuestion
+- [x] Worker cannot use remote-say/say
 
 **Workflow functions:**
-- [ ] Orchestrator spawns workers via `agentwire new --worker`
-- [ ] Orchestrator sends instructions via `agentwire send`
-- [ ] Orchestrator monitors via `agentwire output`
-- [ ] Workers complete tasks and output factual results
-- [ ] Orchestrator reports results conversationally to user
+- [x] Orchestrator spawns workers via `agentwire new --worker`
+- [x] Orchestrator sends instructions via `agentwire send`
+- [x] Orchestrator monitors via `agentwire output`
+- [x] Workers complete tasks and output factual results
+- [ ] Orchestrator reports results conversationally to user (to be tested)
 
 **User experience:**
-- [ ] Orchestrator feels conversational, not mechanical
-- [ ] User can discuss other topics while workers execute
-- [ ] Worker output is clear and actionable
+- [ ] Orchestrator feels conversational, not mechanical (to be tested)
+- [ ] User can discuss other topics while workers execute (to be tested)
+- [x] Worker output is clear and actionable
 
 ## What We're NOT Changing
 
@@ -531,3 +533,219 @@ Existing infrastructure to preserve:
 - Orchestrator: `myproject`
 - Workers: `myproject/task-name` (automatically creates worktree)
 - This leverages existing worktree infrastructure
+
+## Testing Issues Found
+
+Issues discovered during hands-on testing that need to be fixed:
+
+### Issue 1: MCP Filesystem Tools Not Blocked
+
+**Problem:** `--disallowedTools` only blocks Claude Code's built-in tools. MCP filesystem tools are separate and bypass the restriction.
+
+**Observed behavior:** Orchestrator used `mcp__filesystem__create_directory`, `mcp__filesystem__read_file`, etc. to create directories and explore files.
+
+**Expected behavior:** Orchestrator should not be able to do ANY file operations - should spawn a worker instead.
+
+**Status: FIXED** - Added all MCP filesystem tools to `ORCHESTRATOR_DISALLOWED_TOOLS` list in `agentwire/__main__.py`:
+- `mcp__filesystem__read_file`
+- `mcp__filesystem__read_multiple_files`
+- `mcp__filesystem__write_file`
+- `mcp__filesystem__edit_file`
+- `mcp__filesystem__create_directory`
+- `mcp__filesystem__move_file`
+- `mcp__filesystem__directory_tree`
+- `mcp__filesystem__list_directory`
+- `mcp__filesystem__list_directory_with_sizes`
+- `mcp__filesystem__search_files`
+- `mcp__filesystem__get_file_info`
+
+### Issue 2: Session-Type Bash Hook Not Registered
+
+**Problem:** The bash restriction hook (`session-type-bash-hook.py`) was created but never registered in `~/.claude/settings.json`.
+
+**Observed behavior:** Orchestrator ran `git init && git add && git commit` directly - arbitrary bash commands that should be blocked.
+
+**Expected behavior:** Orchestrator should only be able to run:
+- `agentwire *` commands
+- `say *` commands
+- `git status`, `git log`, `git diff` (read-only git)
+
+**Status: FIXED** - Implemented using Option A (env var approach):
+1. `agentwire new --orchestrator` now sets `AGENTWIRE_SESSION_TYPE=orchestrator` env var
+2. `agentwire new --worker` now sets `AGENTWIRE_SESSION_TYPE=worker` env var
+3. Hook updated to read `AGENTWIRE_SESSION_TYPE` env var at runtime
+4. Hook installed to `~/.agentwire/hooks/session-type-bash-hook.py`
+5. Hook registered in `~/.claude/settings.json` via `agentwire skills install`
+
+Sessions without the env var (backwards compat) have no restrictions.
+
+### Issue 3: Damage Control Bypass via Individual Deletions
+
+**Problem:** Claude found a workaround to delete files despite damage control hooks.
+
+**Observed behavior:**
+1. `rm -rf docs .git` → BLOCKED ✓
+2. `rm docs/missions/file.md && rmdir docs/missions && rmdir docs` → SUCCEEDED (bypass!)
+3. `rm .git/*` → BLOCKED ✓
+
+**Result:** The `docs/` directory was successfully deleted by using individual `rm` (no flags) and `rmdir` commands.
+
+**Root cause:** Damage control patterns only catch:
+- `rm -rf` or `rm -r` (recursive flag)
+- `rm -f` (force flag)
+- Operations on protected paths like `.git/`
+
+But they DON'T catch:
+- `rm specific-file.md` (no flags)
+- `rmdir directory` (directory removal)
+
+**Note:** This is somewhat mitigated by the fact that the session-type bash hook (Issue 2) SHOULD have blocked ALL these commands for orchestrators anyway. Fixing Issue 2 would prevent this bypass.
+
+**Status: FIXED** - Added patterns to `~/.agentwire/hooks/damage-control/patterns.yaml`:
+- `\brmdir\b` - blocks all rmdir commands
+- `\brm\s+[^-]` - blocks rm with file paths (not just rm -rf)
+
+---
+
+## Wave 7: Codebase Cleanup (Pre-Launch)
+
+Remove legacy patterns, dead code, and backwards compatibility code. This is a pre-launch project with no customers.
+
+### 7.1 Remove `remote-say` References
+
+The `say` and `remote-say` commands were unified with smart routing. Remove all separate references.
+
+**Files to update:**
+
+| File | Changes |
+|------|---------|
+| `agentwire/server.py` | Change regex `say\|remote-say` to just `say` (line ~69) |
+| `agentwire/__main__.py` | Remove `remote-say` from help text and legacy script detection |
+| `agentwire/onboarding.py` | Remove `remote-say` verification steps |
+| `agentwire/templates/dashboard.html` | Update help text |
+| `agentwire/hooks/session-type-bash-hook.py` | Update pattern to just `say` |
+
+**Pattern to remove:**
+```python
+# OLD (bad)
+r'^(say|remote-say)\s+'
+
+# NEW (good)
+r'^say\s+'
+```
+
+### 7.2 Remove Backwards Compatibility Comments/Defaults
+
+Remove all "backwards compat" comments and defensive defaults.
+
+**Files to update:**
+
+| File | Line | Change |
+|------|------|--------|
+| `agentwire/server.py` | ~84 | Remove "for backwards compat" comment |
+| `agentwire/server.py` | ~86 | Remove "for backwards compat" from type default |
+| `agentwire/agents/tmux.py` | ~160, 167 | Remove backwards compat comment |
+| `agentwire/hooks/session-type-bash-hook.py` | ~117 | Remove backwards compat comment |
+| `agentwire/static/css/base.css` | ~30 | Remove legacy CSS alias comment |
+| `agentwire/static/js/room.js` | ~45, 546 | Remove legacy flag comment |
+
+### 7.3 Delete Legacy `session` Commands
+
+The `agentwire session new/list/output/kill` commands were replaced by `agentwire new/list/output/kill`. Delete the legacy versions.
+
+**File:** `agentwire/__main__.py`
+- Delete `cmd_session_new()` function
+- Delete `cmd_session_list()` function
+- Delete `cmd_session_output()` function
+- Delete `cmd_session_kill()` function
+- Remove `session` subcommand group from argparse
+
+### 7.4 Remove Hardcoded `localhost:8100` Defaults
+
+Update default URLs to use `None` and resolve via NetworkContext.
+
+**Files to update:**
+
+| File | Change |
+|------|--------|
+| `agentwire/config.py` | Change `url: str = "http://localhost:8100"` to `url: Optional[str] = None` |
+| `agentwire/validation.py` | Update validation example |
+
+### 7.5 Clean Up Unused Code
+
+- Remove TODO stub in `agentwire/listen.py` line 249 (incomplete OpenAI implementation)
+- Remove any commented-out code blocks
+- Remove unused imports
+
+### Wave 7 Acceptance Criteria
+
+- [x] No references to `remote-say` as separate from `say`
+- [x] No "backwards compat" comments in codebase
+- [x] No legacy `session` command functions
+- [x] No hardcoded `localhost:8100` defaults
+- [x] Clean, minimal codebase ready for launch
+
+---
+
+## Wave 8: Remove Orphaned MCP Server Code
+
+The daemon-based MCP server approach was planned but never fully implemented. The code exists but is not wired to any CLI entry point or registered with Claude Code. Since the bash `say` command works correctly with smart routing via portal HTTP APIs, this is dead code to be removed.
+
+**Background:**
+- MCP server code exists in `agentwire/mcp/`
+- Never wired to CLI (no `agentwire daemon mcp` command)
+- Not registered in Claude's MCP settings
+- `docs/MIGRATION-MCP.md` says "DEPRECATED - never fully implemented"
+- The `say` bash command provides the same functionality via portal APIs
+
+### 8.1 Delete MCP Server Module
+
+**Files to delete:**
+- `agentwire/mcp/` (entire directory)
+- `agentwire/mcp/__init__.py`
+- `agentwire/mcp/server.py`
+
+### 8.2 Delete TTS Router (Only Used by MCP)
+
+**Files to delete:**
+- `agentwire/tts_router.py`
+
+**Note:** TTS routing is handled by `server.py` endpoints (`/api/say`, `/api/local-tts`), not this module.
+
+### 8.3 Delete Session Detector (Only Used by MCP)
+
+**Files to delete:**
+- `agentwire/session_detector.py`
+
+**Note:** Session/room detection for the `say` command uses env vars and path inference, not this module.
+
+### 8.4 Delete Orphaned Test Files
+
+**Files to delete:**
+- `tests/test_mcp_server.py`
+- `tests/test_tts_router.py`
+- `tests/test_session_detector.py`
+
+### 8.5 Delete/Archive MCP Documentation
+
+**Files to delete:**
+- `docs/MIGRATION-MCP.md` (deprecated guide)
+- Move `docs/missions/completed/agentwire-mcp-server.md` to `docs/missions/cancelled/` with status update
+
+### 8.6 Update Documentation References
+
+**Files to update:**
+- `CLAUDE.md` - Remove any MCP daemon references
+- `docs/missions/completed/connection-aware-tts-routing.md` - Remove TTSRouter references (they reference old architecture)
+
+### Wave 8 Acceptance Criteria
+
+- [x] No `agentwire/mcp/` directory
+- [x] No `agentwire/tts_router.py`
+- [x] No `agentwire/session_detector.py`
+- [x] No MCP-related test files
+- [x] No `docs/MIGRATION-MCP.md`
+- [x] MCP mission moved to `cancelled/` folder with status update
+- [x] Removed `mcp` dependency from pyproject.toml
+
+**Completed:** 2,804 lines of dead code removed.

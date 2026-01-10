@@ -21,6 +21,62 @@ from . import cli_safety
 # Default config directory
 CONFIG_DIR = Path.home() / ".agentwire"
 
+# Session type constants
+ORCHESTRATOR_DISALLOWED_TOOLS = [
+    # Claude Code file tools
+    "Edit", "Write", "Read", "Glob", "Grep", "NotebookEdit",
+    # MCP filesystem tools (if filesystem MCP server is enabled)
+    "mcp__filesystem__read_file",
+    "mcp__filesystem__read_multiple_files",
+    "mcp__filesystem__write_file",
+    "mcp__filesystem__edit_file",
+    "mcp__filesystem__create_directory",
+    "mcp__filesystem__move_file",
+    "mcp__filesystem__directory_tree",
+    "mcp__filesystem__list_directory",
+    "mcp__filesystem__list_directory_with_sizes",
+    "mcp__filesystem__search_files",
+    "mcp__filesystem__get_file_info",
+]
+WORKER_DISALLOWED_TOOLS = ["AskUserQuestion"]
+
+
+def _build_claude_cmd(
+    bypass_permissions: bool,
+    session_type: str | None = None,
+) -> str:
+    """Build the claude command with appropriate flags.
+
+    Args:
+        bypass_permissions: Whether to use --dangerously-skip-permissions
+        session_type: "orchestrator", "worker", or None for default behavior
+
+    Returns:
+        The claude command string to execute
+    """
+    parts = ["claude"]
+
+    if bypass_permissions:
+        parts.append("--dangerously-skip-permissions")
+
+    # Add role file via --append-system-prompt if role file exists
+    roles_dir = CONFIG_DIR / "roles"
+    if session_type == "worker":
+        role_file = roles_dir / "worker.md"
+        if role_file.exists():
+            # Use cat to read the file content
+            parts.append(f'--append-system-prompt "$(cat {shlex.quote(str(role_file))})"')
+        # Block AskUserQuestion for workers
+        parts.append("--disallowedTools " + " ".join(WORKER_DISALLOWED_TOOLS))
+    elif session_type == "orchestrator":
+        role_file = roles_dir / "orchestrator.md"
+        if role_file.exists():
+            parts.append(f'--append-system-prompt "$(cat {shlex.quote(str(role_file))})"')
+        # Block file manipulation tools for orchestrators
+        parts.append("--disallowedTools " + " ".join(ORCHESTRATOR_DISALLOWED_TOOLS))
+
+    return " ".join(parts)
+
 
 def check_python_version() -> bool:
     """Check if Python version meets minimum requirements.
@@ -907,8 +963,205 @@ def _get_portal_url() -> str:
     return direct_url.replace("http://", "https://")
 
 
+def _get_current_tmux_session() -> str | None:
+    """Get the current tmux session name, if running inside tmux."""
+    # Check if we're in tmux
+    if not os.environ.get("TMUX"):
+        return None
+
+    try:
+        result = subprocess.run(
+            ["tmux", "display-message", "-p", "#S"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip() or None
+    except Exception:
+        pass
+
+    return None
+
+
+def _check_portal_connections(room: str, portal_url: str) -> tuple[bool, str]:
+    """Check if portal has active browser connections for a room.
+
+    Tries both the room name as-is and with @local suffix (for Docker portal).
+
+    Returns:
+        Tuple of (has_connections, actual_room_name)
+        - has_connections: True if there are connections (audio should go to portal)
+        - actual_room_name: The room name that has connections (may include @local)
+    """
+    import urllib.request
+    import ssl
+
+    # Try room variants: as-is, then with @local suffix (for Docker portal)
+    room_variants = [room]
+    if "@" not in room:
+        room_variants.append(f"{room}@local")
+
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+
+    for room_name in room_variants:
+        try:
+            req = urllib.request.Request(
+                f"{portal_url}/api/rooms/{room_name}/connections",
+                headers={"Accept": "application/json"},
+            )
+
+            with urllib.request.urlopen(req, context=ctx, timeout=5) as response:
+                result = json.loads(response.read().decode())
+                if result.get("has_connections", False):
+                    return True, room_name
+
+        except Exception:
+            continue
+
+    # No connections found in any variant
+    return False, room
+
+
+def _local_say_runpod(
+    text: str,
+    voice: str,
+    exaggeration: float,
+    cfg_weight: float,
+    tts_config: dict,
+) -> int:
+    """Generate TTS via RunPod API and play locally.
+
+    Works with runpod backend - calls the API directly.
+    Falls back to chatterbox HTTP if that's the backend.
+    """
+    import urllib.request
+    import tempfile
+    import base64
+
+    backend = tts_config.get("backend", "none")
+
+    if backend == "runpod":
+        return _local_say_runpod_api(text, voice, exaggeration, cfg_weight, tts_config)
+    elif backend == "chatterbox":
+        # Use the old HTTP-based local TTS
+        from .network import NetworkContext
+        ctx = NetworkContext.from_config()
+        tts_url = ctx.get_service_url("tts", use_tunnel=True)
+        return _local_say(text, voice, exaggeration, cfg_weight, tts_url)
+    else:
+        print(f"TTS backend '{backend}' not supported for local playback", file=sys.stderr)
+        return 1
+
+
+def _local_say_runpod_api(
+    text: str,
+    voice: str,
+    exaggeration: float,
+    cfg_weight: float,
+    tts_config: dict,
+) -> int:
+    """Generate TTS via RunPod serverless API and play locally."""
+    import urllib.request
+    import tempfile
+    import base64
+
+    endpoint_id = tts_config.get("runpod_endpoint_id", "")
+    api_key = tts_config.get("runpod_api_key", "")
+    timeout = tts_config.get("runpod_timeout", 60)
+
+    if not endpoint_id or not api_key:
+        print("RunPod backend requires runpod_endpoint_id and runpod_api_key in config", file=sys.stderr)
+        return 1
+
+    endpoint_url = f"https://api.runpod.ai/v2/{endpoint_id}/runsync"
+
+    payload = {
+        "input": {
+            "action": "generate",
+            "text": text,
+            "voice": voice,
+            "exaggeration": exaggeration,
+            "cfg_weight": cfg_weight,
+        }
+    }
+
+    try:
+        data = json.dumps(payload).encode()
+        req = urllib.request.Request(
+            endpoint_url,
+            data=data,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {api_key}",
+            },
+        )
+
+        with urllib.request.urlopen(req, timeout=timeout) as response:
+            result = json.loads(response.read().decode())
+
+            # Check RunPod status
+            if result.get("status") == "error":
+                print(f"RunPod error: {result.get('error', 'Unknown error')}", file=sys.stderr)
+                return 1
+
+            # Extract output
+            output = result.get("output", {})
+            if "error" in output:
+                print(f"TTS error: {output['error']}", file=sys.stderr)
+                return 1
+
+            # Decode base64 audio
+            audio_b64 = output.get("audio", "")
+            if not audio_b64:
+                print("No audio returned from TTS", file=sys.stderr)
+                return 1
+
+            audio_data = base64.b64decode(audio_b64)
+
+        # Save to temp file and play
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+            f.write(audio_data)
+            temp_path = f.name
+
+        # Play audio (cross-platform)
+        if sys.platform == "darwin":
+            subprocess.run(["afplay", temp_path], check=True)
+        elif sys.platform == "linux":
+            # Try various players
+            for player in ["aplay", "paplay", "play"]:
+                try:
+                    subprocess.run([player, temp_path], check=True)
+                    break
+                except FileNotFoundError:
+                    continue
+        else:
+            print(f"Audio saved to: {temp_path}")
+            return 0
+
+        # Clean up
+        Path(temp_path).unlink(missing_ok=True)
+        return 0
+
+    except urllib.error.URLError as e:
+        print(f"RunPod API not reachable: {e}", file=sys.stderr)
+        return 1
+    except Exception as e:
+        print(f"TTS failed: {e}", file=sys.stderr)
+        return 1
+
+
 def cmd_say(args) -> int:
-    """Generate TTS audio and play it."""
+    """Generate TTS audio and play it.
+
+    Smart routing:
+    1. Determine room (--room, AGENTWIRE_ROOM env var, or tmux session name)
+    2. Check if portal has browser connections for that room
+    3. If connections exist → send to portal (plays on browser/tablet)
+    4. If no connections → generate locally and play via system audio
+    """
     text = " ".join(args.text) if args.text else ""
 
     if not text:
@@ -917,22 +1170,25 @@ def cmd_say(args) -> int:
 
     config = load_config()
     tts_config = config.get("tts", {})
-    voice = args.voice or tts_config.get("default_voice", "default")
-    exaggeration = args.exaggeration or tts_config.get("exaggeration", 0.5)
-    cfg_weight = args.cfg or tts_config.get("cfg_weight", 0.5)
+    voice = args.voice or tts_config.get("default_voice", "bashbunni")
+    exaggeration = args.exaggeration if args.exaggeration is not None else tts_config.get("exaggeration", 0.5)
+    cfg_weight = args.cfg if args.cfg is not None else tts_config.get("cfg_weight", 0.5)
 
-    # Check if this is a remote session (room specified)
-    if args.room:
-        # Use remote-say: POST to portal
+    # Determine room name
+    room = args.room or os.environ.get("AGENTWIRE_ROOM") or _get_current_tmux_session()
+
+    # Try portal first if we have a room
+    if room:
         portal_url = _get_portal_url()
-        return _remote_say(text, args.room, portal_url)
+        has_connections, actual_room = _check_portal_connections(room, portal_url)
 
-    # Local TTS: generate and play via TTS service
-    from .network import NetworkContext
+        if has_connections:
+            # Send to portal - browser will play the audio
+            # Use actual_room which may include @local suffix for Docker portal
+            return _remote_say(text, actual_room, portal_url)
 
-    ctx = NetworkContext.from_config()
-    tts_url = ctx.get_service_url("tts", use_tunnel=True)
-    return _local_say(text, voice, exaggeration, cfg_weight, tts_url)
+    # No portal connections (or no room) - generate locally
+    return _local_say_runpod(text, voice, exaggeration, cfg_weight, tts_config)
 
 
 def _local_say(text: str, voice: str, exaggeration: float, cfg_weight: float, tts_url: str) -> int:
@@ -1008,7 +1264,8 @@ def _remote_say(text: str, room: str, portal_url: str) -> int:
             headers={"Content-Type": "application/json"},
         )
 
-        with urllib.request.urlopen(req, context=ctx, timeout=30) as response:
+        # 90 second timeout to handle RunPod cold starts
+        with urllib.request.urlopen(req, context=ctx, timeout=90) as response:
             result = json.loads(response.read().decode())
             if result.get("error"):
                 print(f"Error: {result['error']}", file=sys.stderr)
@@ -1030,13 +1287,20 @@ def cmd_send(args) -> int:
     """
     session_full = args.session
     prompt = " ".join(args.prompt) if args.prompt else ""
+    json_mode = getattr(args, 'json', False)
 
     if not session_full:
-        print("Usage: agentwire send -s <session> <prompt>", file=sys.stderr)
+        if json_mode:
+            print(json.dumps({"success": False, "error": "Session name required"}))
+        else:
+            print("Usage: agentwire send -s <session> <prompt>", file=sys.stderr)
         return 1
 
     if not prompt:
-        print("Usage: agentwire send -s <session> <prompt>", file=sys.stderr)
+        if json_mode:
+            print(json.dumps({"success": False, "error": "Prompt required"}))
+        else:
+            print("Usage: agentwire send -s <session> <prompt>", file=sys.stderr)
         return 1
 
     # Parse session@machine format
@@ -1046,7 +1310,10 @@ def cmd_send(args) -> int:
         # Remote: SSH and run tmux commands
         machine = _get_machine_config(machine_id)
         if machine is None:
-            print(f"Machine '{machine_id}' not found in machines.json", file=sys.stderr)
+            if json_mode:
+                print(json.dumps({"success": False, "error": f"Machine '{machine_id}' not found"}))
+            else:
+                print(f"Machine '{machine_id}' not found in machines.json", file=sys.stderr)
             return 1
 
         # Build remote command
@@ -1054,7 +1321,7 @@ def cmd_send(args) -> int:
         quoted_prompt = shlex.quote(prompt)
 
         # Send text, sleep, send Enter
-        cmd = f"tmux send-keys -t {quoted_session} {quoted_prompt} && sleep 0.3 && tmux send-keys -t {quoted_session} Enter"
+        cmd = f"tmux send-keys -t {quoted_session} {quoted_prompt} && sleep 0.5 && tmux send-keys -t {quoted_session} Enter"
 
         # For multi-line text, add another Enter
         if "\n" in prompt or len(prompt) > 200:
@@ -1062,10 +1329,16 @@ def cmd_send(args) -> int:
 
         result = _run_remote(machine_id, cmd)
         if result.returncode != 0:
-            print(f"Failed to send to {session_full}: {result.stderr}", file=sys.stderr)
+            if json_mode:
+                print(json.dumps({"success": False, "error": f"Failed to send to {session_full}"}))
+            else:
+                print(f"Failed to send to {session_full}: {result.stderr}", file=sys.stderr)
             return 1
 
-        print(f"Sent to {session_full}")
+        if json_mode:
+            print(json.dumps({"success": True, "session": session_full, "machine": machine_id, "message": "Prompt sent"}))
+        else:
+            print(f"Sent to {session_full}")
         return 0
 
     # Local: existing logic
@@ -1075,7 +1348,10 @@ def cmd_send(args) -> int:
         capture_output=True
     )
     if result.returncode != 0:
-        print(f"Session '{session}' not found", file=sys.stderr)
+        if json_mode:
+            print(json.dumps({"success": False, "error": f"Session '{session}' not found"}))
+        else:
+            print(f"Session '{session}' not found", file=sys.stderr)
         return 1
 
     # Send the prompt via tmux send-keys (text first, then Enter after delay)
@@ -1085,7 +1361,7 @@ def cmd_send(args) -> int:
     )
 
     # Wait for text to be fully entered before pressing Enter
-    time.sleep(0.3)
+    time.sleep(0.5)
 
     subprocess.run(
         ["tmux", "send-keys", "-t", session, "Enter"],
@@ -1101,7 +1377,10 @@ def cmd_send(args) -> int:
             check=True
         )
 
-    print(f"Sent to {session}")
+    if json_mode:
+        print(json.dumps({"success": True, "session": session_full, "machine": None, "message": "Prompt sent"}))
+    else:
+        print(f"Sent to {session}")
     return 0
 
 
@@ -1241,6 +1520,14 @@ def cmd_new(args) -> int:
         if template is None:
             return _output_result(False, json_mode, f"Template '{template_name}' not found")
 
+    # Determine session type (worker/orchestrator)
+    is_worker = getattr(args, 'worker', False)
+    is_orchestrator = getattr(args, 'orchestrator', False)
+    if is_worker and is_orchestrator:
+        return _output_result(False, json_mode, "Cannot specify both --worker and --orchestrator")
+    # Default to None (no type-specific behavior) unless explicitly set
+    session_type = "worker" if is_worker else ("orchestrator" if is_orchestrator else None)
+
     # Parse session name: project, branch, machine
     project, branch, machine_id = parse_session_name(name)
 
@@ -1327,16 +1614,21 @@ def cmd_new(args) -> int:
         else:
             bypass_permissions = not (no_bypass_arg or restricted)
 
-        bypass_flag = "" if not bypass_permissions else " --dangerously-skip-permissions"
+        # Build claude command with session type flags
+        claude_cmd = _build_claude_cmd(bypass_permissions, session_type)
         # AGENTWIRE_ROOM must include @machine so portal can find room config
         room_name = f"{session_name}@{machine_id}"
+        # Build env var exports
+        env_exports = f"export AGENTWIRE_ROOM={shlex.quote(room_name)}"
+        if session_type:
+            env_exports += f" && export AGENTWIRE_SESSION_TYPE={session_type}"
         create_cmd = (
             f"tmux new-session -d -s {shlex.quote(session_name)} -c {shlex.quote(remote_path)} && "
             f"tmux send-keys -t {shlex.quote(session_name)} 'cd {shlex.quote(remote_path)}' Enter && "
             f"sleep 0.1 && "
-            f"tmux send-keys -t {shlex.quote(session_name)} 'export AGENTWIRE_ROOM={shlex.quote(room_name)}' Enter && "
+            f"tmux send-keys -t {shlex.quote(session_name)} '{env_exports}' Enter && "
             f"sleep 0.1 && "
-            f"tmux send-keys -t {shlex.quote(session_name)} 'claude{bypass_flag}' Enter"
+            f"tmux send-keys -t {shlex.quote(session_name)} {shlex.quote(claude_cmd)} Enter"
         )
 
         result = _run_remote(machine_id, create_cmd)
@@ -1357,6 +1649,9 @@ def cmd_new(args) -> int:
 
         room_key = f"{session_name}@{machine_id}"
         room_config = {"bypass_permissions": bypass_permissions, "restricted": restricted}
+        # Add session type if specified
+        if session_type:
+            room_config["type"] = session_type
         # Add voice from template if specified
         if template and template.voice:
             room_config["voice"] = template.voice
@@ -1484,6 +1779,14 @@ def cmd_new(args) -> int:
     )
     time.sleep(0.1)
 
+    # Set AGENTWIRE_SESSION_TYPE env var (used by session-type bash hook)
+    if session_type:
+        subprocess.run(
+            ["tmux", "send-keys", "-t", session_name, f"export AGENTWIRE_SESSION_TYPE={session_type}", "Enter"],
+            check=True
+        )
+        time.sleep(0.1)
+
     # Start Claude (with or without skip-permissions flag)
     # Permission mode: command line overrides template defaults
     restricted = getattr(args, 'restricted', False)
@@ -1497,10 +1800,8 @@ def cmd_new(args) -> int:
     else:
         bypass_permissions = not (no_bypass_arg or restricted)
 
-    if bypass_permissions:
-        claude_cmd = "claude --dangerously-skip-permissions"
-    else:
-        claude_cmd = "claude"
+    # Build claude command with session type flags
+    claude_cmd = _build_claude_cmd(bypass_permissions, session_type)
 
     subprocess.run(
         ["tmux", "send-keys", "-t", session_name, claude_cmd, "Enter"],
@@ -1520,6 +1821,9 @@ def cmd_new(args) -> int:
             pass
 
     room_config = {"bypass_permissions": bypass_permissions, "restricted": restricted}
+    # Add session type if specified
+    if session_type:
+        room_config["type"] = session_type
     # Add voice from template if specified
     if template and template.voice:
         room_config["voice"] = template.voice
@@ -1573,9 +1877,13 @@ def cmd_output(args) -> int:
     """
     session_full = args.session
     lines = args.lines or 50
+    json_mode = getattr(args, 'json', False)
 
     if not session_full:
-        print("Usage: agentwire output -s <session> [-n lines]", file=sys.stderr)
+        if json_mode:
+            print(json.dumps({"success": False, "error": "Session name required"}))
+        else:
+            print("Usage: agentwire output -s <session> [-n lines]", file=sys.stderr)
         return 1
 
     # Parse session@machine format
@@ -1585,17 +1893,32 @@ def cmd_output(args) -> int:
         # Remote: SSH and run tmux capture-pane
         machine = _get_machine_config(machine_id)
         if machine is None:
-            print(f"Machine '{machine_id}' not found in machines.json", file=sys.stderr)
+            if json_mode:
+                print(json.dumps({"success": False, "error": f"Machine '{machine_id}' not found"}))
+            else:
+                print(f"Machine '{machine_id}' not found in machines.json", file=sys.stderr)
             return 1
 
         cmd = f"tmux capture-pane -t {shlex.quote(session)} -p -S -{lines}"
         result = _run_remote(machine_id, cmd)
 
         if result.returncode != 0:
-            print(f"Session '{session}' not found on {machine_id}", file=sys.stderr)
+            if json_mode:
+                print(json.dumps({"success": False, "error": f"Session '{session}' not found on {machine_id}"}))
+            else:
+                print(f"Session '{session}' not found on {machine_id}", file=sys.stderr)
             return 1
 
-        print(result.stdout)
+        if json_mode:
+            print(json.dumps({
+                "success": True,
+                "session": session_full,
+                "lines": lines,
+                "machine": machine_id,
+                "output": result.stdout
+            }))
+        else:
+            print(result.stdout)
         return 0
 
     # Local: existing logic
@@ -1604,7 +1927,10 @@ def cmd_output(args) -> int:
         capture_output=True
     )
     if result.returncode != 0:
-        print(f"Session '{session}' not found", file=sys.stderr)
+        if json_mode:
+            print(json.dumps({"success": False, "error": f"Session '{session}' not found"}))
+        else:
+            print(f"Session '{session}' not found", file=sys.stderr)
         return 1
 
     result = subprocess.run(
@@ -1612,7 +1938,17 @@ def cmd_output(args) -> int:
         capture_output=True,
         text=True
     )
-    print(result.stdout)
+
+    if json_mode:
+        print(json.dumps({
+            "success": True,
+            "session": session_full,
+            "lines": lines,
+            "machine": None,
+            "output": result.stdout
+        }))
+    else:
+        print(result.stdout)
     return 0
 
 
@@ -1785,119 +2121,6 @@ def cmd_send_keys(args) -> int:
             time.sleep(0.1)
 
     print(f"Sent keys to {session}")
-    return 0
-
-
-def cmd_session_new(args) -> int:
-    """Create a new Claude Code session in tmux."""
-    name = args.name
-    path = args.path
-
-    # Convert dots to underscores for tmux session name
-    session_name = name.replace(".", "_")
-
-    # Resolve path
-    if path:
-        session_path = Path(path).expanduser().resolve()
-    else:
-        # Default to ~/projects/<name> (using original name with dots)
-        config = load_config()
-        projects_dir = Path(config.get("projects", {}).get("dir", "~/projects")).expanduser()
-        session_path = projects_dir / name
-
-    if not session_path.exists():
-        print(f"Path does not exist: {session_path}", file=sys.stderr)
-        return 1
-
-    # Check if session already exists
-    result = subprocess.run(
-        ["tmux", "has-session", "-t", session_name],
-        capture_output=True
-    )
-    if result.returncode == 0:
-        if args.force:
-            # Kill existing session
-            subprocess.run(["tmux", "send-keys", "-t", session_name, "/exit", "Enter"])
-            time.sleep(2)
-            subprocess.run(["tmux", "kill-session", "-t", session_name], capture_output=True)
-        else:
-            print(f"Session '{session_name}' already exists. Use --force to replace.", file=sys.stderr)
-            return 1
-
-    # Create new tmux session
-    subprocess.run(
-        ["tmux", "new-session", "-d", "-s", session_name, "-c", str(session_path)],
-        check=True
-    )
-
-    # Start Claude with skip-permissions flag
-    subprocess.run(
-        ["tmux", "send-keys", "-t", session_name, "claude --dangerously-skip-permissions", "Enter"],
-        check=True
-    )
-
-    print(f"Created session '{session_name}' in {session_path}")
-    print(f"Attach with: tmux attach -t {session_name}")
-    return 0
-
-
-def cmd_session_list(args) -> int:
-    """List all tmux sessions."""
-    result = subprocess.run(
-        ["tmux", "list-sessions", "-F", "#{session_name}: #{session_windows} windows (#{session_path})"],
-        capture_output=True,
-        text=True
-    )
-    if result.returncode != 0:
-        print("No sessions running")
-        return 0
-
-    print(result.stdout.strip())
-    return 0
-
-
-def cmd_session_output(args) -> int:
-    """Read output from a tmux session."""
-    session = args.session
-    lines = args.lines or 50
-
-    result = subprocess.run(
-        ["tmux", "has-session", "-t", session],
-        capture_output=True
-    )
-    if result.returncode != 0:
-        print(f"Session '{session}' not found", file=sys.stderr)
-        return 1
-
-    result = subprocess.run(
-        ["tmux", "capture-pane", "-t", session, "-p", "-S", f"-{lines}"],
-        capture_output=True,
-        text=True
-    )
-    print(result.stdout)
-    return 0
-
-
-def cmd_session_kill(args) -> int:
-    """Kill a tmux session (with clean Claude exit)."""
-    session = args.session
-
-    result = subprocess.run(
-        ["tmux", "has-session", "-t", session],
-        capture_output=True
-    )
-    if result.returncode != 0:
-        print(f"Session '{session}' not found", file=sys.stderr)
-        return 1
-
-    # Send /exit to Claude first for clean shutdown
-    subprocess.run(["tmux", "send-keys", "-t", session, "/exit", "Enter"])
-    print(f"Sent /exit to {session}, waiting 3s...")
-    time.sleep(3)
-
-    # Kill the session
-    subprocess.run(["tmux", "kill-session", "-t", session])
-    print(f"Killed session '{session}'")
     return 0
 
 
@@ -3081,7 +3304,6 @@ def cmd_doctor(args) -> int:
     print("\nChecking AgentWire scripts...")
 
     say_path = shutil.which("say")
-    remote_say_path = shutil.which("remote-say")
 
     scripts_missing = False
     if say_path:
@@ -3091,16 +3313,9 @@ def cmd_doctor(args) -> int:
         scripts_missing = True
         issues_found += 1
 
-    if remote_say_path:
-        print(f"  [ok] remote-say: {remote_say_path}")
-    else:
-        print("  [!!] remote-say: not found")
-        scripts_missing = True
-        issues_found += 1
-
     # Offer to fix missing scripts
     if scripts_missing and not dry_run:
-        if auto_confirm or _confirm("     Install say/remote-say scripts?"):
+        if auto_confirm or _confirm("     Install say script?"):
             print("     -> Installing scripts...", end=" ", flush=True)
 
             # Create a minimal args object for cmd_skills_install
@@ -3113,7 +3328,7 @@ def cmd_doctor(args) -> int:
 
             if result == 0:
                 print("[ok] installed")
-                issues_fixed += 2 if not say_path and not remote_say_path else 1
+                issues_fixed += 1
             else:
                 print("[!!] failed")
 
@@ -3358,22 +3573,22 @@ def cmd_doctor(args) -> int:
                 print(f"         Fix: ssh {target} 'agentwire skills install'")
                 issues_found += 1
 
-            # Test remote-say command
+            # Test say command
             try:
                 result = subprocess.run(
-                    ["ssh", "-o", "ConnectTimeout=5", "-o", "BatchMode=yes", target, "which remote-say"],
+                    ["ssh", "-o", "ConnectTimeout=5", "-o", "BatchMode=yes", target, "which say"],
                     capture_output=True,
                     text=True,
                     timeout=7,
                 )
                 if result.returncode == 0:
-                    print(f"    [ok] remote-say command available")
+                    print(f"    [ok] say command available")
                 else:
-                    print(f"    [!!] remote-say command not found")
+                    print(f"    [!!] say command not found")
                     print(f"         Fix: ssh {target} 'agentwire skills install'")
                     issues_found += 1
             except (subprocess.TimeoutExpired, subprocess.CalledProcessError):
-                print(f"    [!!] remote-say command not found")
+                print(f"    [!!] say command not found")
                 print(f"         Fix: ssh {target} 'agentwire skills install'")
                 issues_found += 1
 
@@ -3955,6 +4170,116 @@ def install_permission_hook(force: bool = False, copy: bool = False) -> bool:
     return file_updated or settings_updated
 
 
+def register_session_type_hook_in_settings() -> bool:
+    """Register the session-type bash hook in Claude's settings.json.
+
+    Returns True if settings were updated, False if already configured.
+
+    This adds a PreToolUse hook for Bash commands that enforces
+    session-type restrictions (orchestrator vs worker).
+    """
+    settings_file = Path.home() / ".claude" / "settings.json"
+    hook_command = "uv run ~/.agentwire/hooks/session-type-bash-hook.py"
+
+    # Load existing settings or create new
+    if settings_file.exists():
+        try:
+            settings = json.loads(settings_file.read_text())
+        except json.JSONDecodeError:
+            settings = {}
+    else:
+        settings = {}
+
+    # Ensure hooks structure exists
+    if "hooks" not in settings:
+        settings["hooks"] = {}
+    if "PreToolUse" not in settings["hooks"]:
+        settings["hooks"]["PreToolUse"] = []
+
+    # Check if already registered
+    for entry in settings["hooks"]["PreToolUse"]:
+        if entry.get("matcher") == "Bash":
+            if "hooks" in entry:
+                for h in entry["hooks"]:
+                    if "session-type-bash-hook" in h.get("command", ""):
+                        return False  # Already registered
+
+    # Add hook with Claude Code format
+    hook_entry = {
+        "matcher": "Bash",
+        "hooks": [
+            {"type": "command", "command": hook_command, "timeout": 5}
+        ]
+    }
+    settings["hooks"]["PreToolUse"].append(hook_entry)
+
+    # Write back
+    settings_file.parent.mkdir(parents=True, exist_ok=True)
+    settings_file.write_text(json.dumps(settings, indent=2))
+
+    return True
+
+
+def install_session_type_hook(force: bool = False, copy: bool = False) -> bool:
+    """Install the session-type bash hook for Claude Code integration.
+
+    Installs to ~/.agentwire/hooks/ and registers in ~/.claude/settings.json.
+
+    Returns True if hook was installed/updated, False if skipped.
+    """
+    hook_name = "session-type-bash-hook.py"
+
+    try:
+        hooks_source = get_hooks_source()
+    except FileNotFoundError:
+        print("  Warning: hooks directory not found, skipping session-type hook")
+        return False
+
+    source_hook = hooks_source / hook_name
+    if not source_hook.exists():
+        print(f"  Warning: {hook_name} not found in package, skipping")
+        return False
+
+    # Create ~/.agentwire/hooks if it doesn't exist
+    agentwire_hooks_dir = CONFIG_DIR / "hooks"
+    agentwire_hooks_dir.mkdir(parents=True, exist_ok=True)
+
+    target_hook = agentwire_hooks_dir / hook_name
+
+    # Check if already installed
+    file_updated = False
+    if target_hook.exists():
+        if target_hook.is_symlink():
+            current_target = target_hook.resolve()
+            if current_target == source_hook.resolve() and not force:
+                file_updated = False
+            else:
+                target_hook.unlink()
+                file_updated = True
+        elif not force:
+            print(f"  Session-type hook already exists at {target_hook}")
+            file_updated = False
+        else:
+            target_hook.unlink()
+            file_updated = True
+    else:
+        file_updated = True
+
+    # Create symlink (preferred) or copy if needed
+    if file_updated or not target_hook.exists():
+        if copy:
+            shutil.copy2(source_hook, target_hook)
+        else:
+            target_hook.symlink_to(source_hook)
+        # Make executable
+        target_hook.chmod(0o755)
+
+    # Register in settings.json
+    settings_updated = register_session_type_hook_in_settings()
+
+    return file_updated or settings_updated
+
+
 def cmd_skills_install(args) -> int:
     """Install Claude Code skills for AgentWire integration."""
     target_dir = CLAUDE_SKILLS_DIR / "agentwire"
@@ -4006,10 +4331,17 @@ def cmd_skills_install(args) -> int:
     if hook_installed:
         print(f"Installed permission hook to {CLAUDE_HOOKS_DIR / 'agentwire-permission.sh'}")
 
+    # Install session-type hook for orchestrator/worker restrictions
+    session_hook_installed = install_session_type_hook(force=args.force, copy=args.copy)
+    if session_hook_installed:
+        print(f"Installed session-type hook to {CONFIG_DIR / 'hooks' / 'session-type-bash-hook.py'}")
+
     print("\nClaude Code skills installed. Available commands:")
     print("  /sessions, /send, /output, /spawn, /new, /kill, /status, /jump")
     if hook_installed:
         print("\nPermission hook installed for normal session support.")
+    if session_hook_installed:
+        print("Session-type hook installed for orchestrator/worker bash restrictions.")
     return 0
 
 
@@ -4526,8 +4858,8 @@ def main() -> int:
     # === say command ===
     say_parser = subparsers.add_parser("say", help="Speak text via TTS")
     say_parser.add_argument("text", nargs="*", help="Text to speak")
-    say_parser.add_argument("--voice", type=str, help="Voice name")
-    say_parser.add_argument("--room", type=str, help="Send to room (remote-say)")
+    say_parser.add_argument("-v", "--voice", type=str, help="Voice name")
+    say_parser.add_argument("-r", "--room", type=str, help="Room name (auto-detected from AGENTWIRE_ROOM or tmux session)")
     say_parser.add_argument("--exaggeration", type=float, help="Voice exaggeration (0-1)")
     say_parser.add_argument("--cfg", type=float, help="CFG weight (0-1)")
     say_parser.set_defaults(func=cmd_say)
@@ -4536,6 +4868,7 @@ def main() -> int:
     send_parser = subparsers.add_parser("send", help="Send prompt to a session (adds Enter)")
     send_parser.add_argument("-s", "--session", required=True, help="Target session (supports session@machine)")
     send_parser.add_argument("prompt", nargs="*", help="Prompt to send")
+    send_parser.add_argument("--json", action="store_true", help="Output as JSON")
     send_parser.set_defaults(func=cmd_send)
 
     # === send-keys command ===
@@ -4559,7 +4892,9 @@ def main() -> int:
     new_parser.add_argument("-t", "--template", help="Apply session template (from ~/.agentwire/templates/)")
     new_parser.add_argument("-f", "--force", action="store_true", help="Replace existing session")
     new_parser.add_argument("--no-bypass", action="store_true", help="Don't use --dangerously-skip-permissions (normal mode)")
-    new_parser.add_argument("--restricted", action="store_true", help="Restricted mode: only allow say/remote-say commands (implies --no-bypass)")
+    new_parser.add_argument("--restricted", action="store_true", help="Restricted mode: only allow say commands (implies --no-bypass)")
+    new_parser.add_argument("--worker", action="store_true", help="Worker session: blocks AskUserQuestion, loads worker role")
+    new_parser.add_argument("--orchestrator", action="store_true", help="Orchestrator session: blocks file tools, loads orchestrator role (default)")
     new_parser.add_argument("--json", action="store_true", help="Output as JSON")
     new_parser.set_defaults(func=cmd_new)
 
@@ -4567,6 +4902,7 @@ def main() -> int:
     output_parser = subparsers.add_parser("output", help="Read session output")
     output_parser.add_argument("-s", "--session", required=True, help="Session name (supports session@machine)")
     output_parser.add_argument("-n", "--lines", type=int, default=50, help="Lines to show (default: 50)")
+    output_parser.add_argument("--json", action="store_true", help="Output as JSON")
     output_parser.set_defaults(func=cmd_output)
 
     # === kill command (top-level) ===
@@ -4579,7 +4915,7 @@ def main() -> int:
     recreate_parser = subparsers.add_parser("recreate", help="Destroy and recreate session with fresh worktree")
     recreate_parser.add_argument("-s", "--session", required=True, help="Session name (project/branch or project/branch@machine)")
     recreate_parser.add_argument("--no-bypass", action="store_true", help="Don't use --dangerously-skip-permissions")
-    recreate_parser.add_argument("--restricted", action="store_true", help="Restricted mode: only allow say/remote-say commands (implies --no-bypass)")
+    recreate_parser.add_argument("--restricted", action="store_true", help="Restricted mode: only allow say commands (implies --no-bypass)")
     recreate_parser.add_argument("--json", action="store_true", help="Output as JSON")
     recreate_parser.set_defaults(func=cmd_recreate)
 
@@ -4588,37 +4924,9 @@ def main() -> int:
     fork_parser.add_argument("-s", "--source", required=True, help="Source session (project or project/branch)")
     fork_parser.add_argument("-t", "--target", required=True, help="Target session (must include branch: project/new-branch)")
     fork_parser.add_argument("--no-bypass", action="store_true", help="Don't use --dangerously-skip-permissions")
-    fork_parser.add_argument("--restricted", action="store_true", help="Restricted mode: only allow say/remote-say commands (implies --no-bypass)")
+    fork_parser.add_argument("--restricted", action="store_true", help="Restricted mode: only allow say commands (implies --no-bypass)")
     fork_parser.add_argument("--json", action="store_true", help="Output as JSON")
     fork_parser.set_defaults(func=cmd_fork)
-
-    # === session command group (legacy, kept for backwards compat) ===
-    session_parser = subparsers.add_parser("session", help="Manage tmux sessions")
-    session_subparsers = session_parser.add_subparsers(dest="session_command")
-
-    # session new <name> [path]
-    session_new = session_subparsers.add_parser(
-        "new", help="Create new Claude Code session"
-    )
-    session_new.add_argument("name", help="Session name (project/branch format supported)")
-    session_new.add_argument("path", nargs="?", help="Working directory (default: ~/projects/<name>)")
-    session_new.add_argument("--force", "-f", action="store_true", help="Replace existing session")
-    session_new.set_defaults(func=cmd_session_new)
-
-    # session list
-    session_list = session_subparsers.add_parser("list", help="List all sessions")
-    session_list.set_defaults(func=cmd_session_list)
-
-    # session output <session> [lines]
-    session_output = session_subparsers.add_parser("output", help="Read session output")
-    session_output.add_argument("session", help="Session name")
-    session_output.add_argument("--lines", "-n", type=int, default=50, help="Lines to show (default: 50)")
-    session_output.set_defaults(func=cmd_session_output)
-
-    # session kill <session>
-    session_kill = session_subparsers.add_parser("kill", help="Kill a session")
-    session_kill.add_argument("session", help="Session name")
-    session_kill.set_defaults(func=cmd_session_kill)
 
     # === dev command ===
     dev_parser = subparsers.add_parser(

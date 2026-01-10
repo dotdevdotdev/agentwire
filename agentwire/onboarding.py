@@ -220,7 +220,7 @@ def setup_remote_machine(
     3. Install agentwire package
     4. Create config files
     5. Install skills/scripts
-    6. Verify remote-say works
+    6. Verify say command works
 
     Returns:
         True if successful
@@ -353,11 +353,11 @@ def setup_remote_machine(
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
         print_warning("Could not install skills automatically")
 
-    # Step 6: Verify remote-say works
-    print("\nVerifying remote-say connectivity...")
+    # Step 6: Verify say command works
+    print("\nVerifying say command connectivity...")
 
     try:
-        # Try to run remote-say with test message (will fail if portal not running, but that's OK)
+        # Try to run say with test message (will fail if portal not running, but that's OK)
         result = subprocess.run(
             ["ssh", ssh_target, f"{agentwire_cmd} say --room test 'Setup complete'"],
             capture_output=True,
@@ -368,12 +368,12 @@ def setup_remote_machine(
         # We don't expect this to fully work yet (portal may not be running),
         # but the command should exist
         if "command not found" in result.stderr:
-            print_warning("remote-say command not found")
+            print_warning("say command not found")
         else:
-            print_success("remote-say command is available")
+            print_success("say command is available")
 
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
-        print_info("Could not verify remote-say (portal may not be running yet)")
+        print_info("Could not verify say command (portal may not be running yet)")
 
     print()
     print_success(f"Remote setup complete for {ssh_target}")

@@ -200,7 +200,12 @@ def stop_recording(session: str, voice_prompt: bool = True) -> int:
         import urllib.request
         import urllib.parse
 
-        stt_url = config.get("stt", {}).get("url", "http://localhost:8100")
+        stt_url = config.get("stt", {}).get("url")
+        if not stt_url:
+            log("ERROR: stt.url not configured")
+            notify("STT URL not configured in config.yaml")
+            beep("error")
+            return 1
         transcribe_url = f"{stt_url}/transcribe"
 
         try:
@@ -235,21 +240,6 @@ def stop_recording(session: str, voice_prompt: bool = True) -> int:
             notify(f"Transcription failed: {e}")
             beep("error")
             return 1
-
-    elif stt_backend == "openai":
-        # Use OpenAI Whisper API
-        import urllib.request
-        api_key = os.environ.get("OPENAI_API_KEY", "")
-        if not api_key:
-            log("ERROR: No OPENAI_API_KEY")
-            notify("OPENAI_API_KEY not set")
-            beep("error")
-            return 1
-
-        # TODO: Implement OpenAI API call
-        notify("OpenAI STT not yet implemented")
-        beep("error")
-        return 1
 
     else:
         log(f"ERROR: Unknown STT backend: {stt_backend}")

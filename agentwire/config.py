@@ -77,7 +77,7 @@ class TTSConfig:
     """Text-to-speech configuration."""
 
     backend: str = "chatterbox"  # chatterbox | runpod | none
-    url: str = "http://localhost:8100"
+    url: str | None = None  # TTS server URL (required for chatterbox backend)
     default_voice: str = "bashbunni"
     # Voice parameters (applies to all backends)
     exaggeration: float = 0.5
@@ -96,7 +96,7 @@ class STTConfig:
     model_path: Path | None = None
     language: str = "en"
     # Remote STT server configuration
-    url: str = "http://localhost:8100"
+    url: str | None = None  # STT server URL (required for remote backend)
     timeout: int = 30
 
     def __post_init__(self):
@@ -366,7 +366,7 @@ def _dict_to_config(data: dict) -> Config:
     tts_data = data.get("tts", {})
     tts = TTSConfig(
         backend=tts_data.get("backend", "chatterbox"),
-        url=tts_data.get("url", "http://localhost:8100"),
+        url=tts_data.get("url"),
         default_voice=tts_data.get("default_voice", "bashbunni"),
         runpod_endpoint_id=tts_data.get("runpod_endpoint_id", ""),
         runpod_api_key=tts_data.get("runpod_api_key", ""),
@@ -379,7 +379,7 @@ def _dict_to_config(data: dict) -> Config:
         backend=stt_data.get("backend", _default_stt_backend()),
         model_path=stt_data.get("model_path"),
         language=stt_data.get("language", "en"),
-        url=stt_data.get("url", "http://localhost:8100"),
+        url=stt_data.get("url"),
         timeout=stt_data.get("timeout", 30),
     )
 

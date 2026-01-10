@@ -98,23 +98,43 @@ agentwire init
 
 # Portal (web server)
 agentwire portal start     # Start in tmux (agentwire-portal)
+agentwire portal serve     # Run in foreground (for debugging)
 agentwire portal stop      # Stop the portal
 agentwire portal status    # Check if running
 
 # TTS Server
 agentwire tts start        # Start Chatterbox in tmux (agentwire-tts)
+agentwire tts serve        # Run in foreground (for debugging)
 agentwire tts stop         # Stop TTS server
 agentwire tts status       # Check TTS status
 
-# Voice
-agentwire say "Hello"      # Speak text locally
-agentwire say --room api "Done"  # Send TTS to room
+# Voice (smart routing: browser if connected, local if not)
+agentwire say "Hello"              # Auto-detect room from env/tmux
+agentwire say "Hello" -v voice     # Specify voice
+agentwire say "Hello" -r room      # Specify room explicitly
+
+# Voice input (push-to-talk recording)
+agentwire listen                      # Toggle recording (start/stop)
+agentwire listen start                # Start recording
+agentwire listen stop -s <session>    # Stop and send to session
+agentwire listen cancel               # Cancel recording
+
+# Voice cloning
+agentwire voiceclone start        # Start recording voice sample
+agentwire voiceclone stop <name>  # Stop and upload as voice clone
+agentwire voiceclone cancel       # Cancel current recording
+agentwire voiceclone list         # List available voices
+agentwire voiceclone delete <name>  # Delete a voice clone
 
 # Session management
 agentwire list                              # List sessions from ALL machines
+agentwire list --local                      # List only local sessions
 agentwire new -s <name> [-p path] [-f]      # Create Claude Code session
 agentwire new -s <name> -t <template>       # Create session with template
-agentwire new -s <name> --restricted        # Create restricted mode session
+agentwire new -s <name> --no-bypass         # Normal mode (permission prompts)
+agentwire new -s <name> --restricted        # Restricted mode (voice-only)
+agentwire new -s <name> --worker            # Worker session (autonomous)
+agentwire new -s <name> --orchestrator      # Orchestrator session (voice-first)
 agentwire output -s <session> [-n lines]    # Read recent session output
 agentwire kill -s <session>                 # Clean shutdown (/exit then kill)
 agentwire send -s <session> "prompt"        # Send prompt + Enter
@@ -249,11 +269,11 @@ agentwire send -s api "run tests" --json
 #### Read Output
 
 ```bash
-# Read from local session (last 20 lines)
+# Read from local session (last 50 lines by default)
 agentwire output -s api
 
 # Read more lines
-agentwire output -s api -n 50
+agentwire output -s api -n 100
 
 # Read from local worktree session
 agentwire output -s api/feature -n 30
@@ -266,7 +286,7 @@ agentwire output -s ml/experiment@gpu-server
 
 # JSON output
 agentwire output -s api --json
-# {"success": true, "session": "api", "output": "...", "lines": 20}
+# {"success": true, "session": "api", "output": "...", "lines": 50}
 ```
 
 #### Kill Sessions
@@ -416,7 +436,7 @@ agentwire output -s api --json
   "success": true,
   "session": "api",
   "output": "...",
-  "lines": 20
+  "lines": 50
 }
 
 # Kill session
@@ -745,18 +765,23 @@ server:
   port: 8765
 
 tts:
-  backend: "chatterbox"
+  backend: "chatterbox"  # chatterbox | runpod | none
   url: "http://localhost:8100"
   default_voice: "bashbunni"
   voices_dir: "~/.agentwire/voices"  # Where voice clones are stored
+  exaggeration: 0.5      # 0-1, voice expressiveness
+  cfg_weight: 0.5        # 0-1, voice consistency
+  # For runpod backend:
+  # runpod_endpoint_id: "your_endpoint_id"
+  # runpod_api_key: "your_api_key"
+  # runpod_timeout: 60
 
 stt:
-  backend: "whisperkit"  # whisperkit | whispercpp | openai | none
+  backend: "whisperkit"  # whisperkit | whispercpp | openai | remote | none
   model_path: "~/Library/Application Support/MacWhisper/models/..."
   language: "en"
-
-audio:
-  input_device: 1  # Audio input device index (use `agentwire init` to select)
+  # For remote STT (Docker/container setup):
+  # url: "http://stt:8100"
 
 projects:
   dir: "~/projects"
@@ -946,6 +971,147 @@ Set per-session in `~/.agentwire/rooms.json`:
 
 ---
 
+## Session Types (Orchestrator + Workers)
+
+Sessions can be typed as **orchestrator** or **worker** to separate the voice/interaction layer from the execution layer.
+
+### Concept
+
+The orchestrator is the user's conversational interface. It spawns worker sessions to do actual file work, monitors their progress, and reports back conversationally. The user stays engaged with the orchestrator while workers execute in parallel.
+
+```
+User (voice/text)
+    │
+    ▼
+Orchestrator Session (voice-enabled, no file access)
+    │
+    ├── agentwire new myproject/auth-work --worker
+    │   └── Worker 1: Implementing auth endpoints
+    │
+    ├── agentwire new myproject/test-suite --worker
+    │   └── Worker 2: Writing integration tests
+    │
+    └── agentwire send / agentwire output
+        └── Orchestrator monitors, reports to user
+```
+
+### Session Type Comparison
+
+| Aspect | Orchestrator | Worker |
+|--------|--------------|--------|
+| **Purpose** | Voice interface, coordination | Autonomous execution |
+| **Create with** | `agentwire new project` (default) | `agentwire new project/task --worker` |
+| **Voice** | ✅ Can use remote-say | ❌ No voice output |
+| **File access** | ❌ No Edit/Write/Read | ✅ Full Claude Code |
+| **User questions** | ✅ Can use AskUserQuestion | ❌ Cannot ask user |
+| **Tool focus** | Task, Bash (agentwire only) | All tools except AskUserQuestion |
+
+### Creating Sessions
+
+```bash
+# Orchestrator session (default)
+agentwire new -s myproject
+agentwire new -s myproject --orchestrator  # Explicit
+
+# Worker session
+agentwire new -s myproject/auth-work --worker
+
+# Worker gets its own worktree automatically
+# → Creates: ~/projects/myproject-worktrees/auth-work/
+```
+
+### Orchestrator Workflow
+
+```bash
+# Spawn workers for parallel tasks
+agentwire new myproject/frontend-auth --worker
+agentwire new myproject/backend-auth --worker
+agentwire new myproject/auth-tests --worker
+
+# Send instructions to each worker
+agentwire send -s myproject/frontend-auth "Implement login form component"
+agentwire send -s myproject/backend-auth "Add JWT authentication middleware"
+agentwire send -s myproject/auth-tests "Write integration tests for auth flow"
+
+# Monitor progress
+agentwire output -s myproject/frontend-auth
+agentwire output -s myproject/backend-auth
+
+# List active workers
+/workers  # Skill shows all worker sessions
+```
+
+### Tool Restrictions
+
+**Orchestrator** (via `--disallowedTools`):
+- BLOCKED: `Edit`, `Write`, `Read`, `Glob`, `Grep`, `NotebookEdit`
+- ALLOWED: `Task`, `Bash`, `AskUserQuestion`, `WebFetch`, `WebSearch`, `TodoWrite`
+
+**Bash restrictions** (via PreToolUse hook):
+- ALLOWED: `agentwire *`, `remote-say *`, `say *`, `git status`, `git log`, `git diff`
+- BLOCKED: All other bash commands
+
+**Worker** (via `--disallowedTools`):
+- BLOCKED: `AskUserQuestion`
+- ALLOWED: Everything else (full Claude Code capabilities)
+
+**Bash restrictions** (via PreToolUse hook):
+- BLOCKED: `remote-say *`, `say *` (no voice output)
+- ALLOWED: Everything else
+
+### rooms.json Schema
+
+```json
+{
+  "myproject": {
+    "voice": "bashbunni",
+    "type": "orchestrator",
+    "bypass_permissions": true
+  },
+  "myproject/auth-work": {
+    "type": "worker",
+    "spawned_by": "myproject",
+    "bypass_permissions": true
+  }
+}
+```
+
+### Role Files
+
+Role context is loaded via `--append-system-prompt`:
+
+| Type | Role File |
+|------|-----------|
+| Orchestrator | `~/.agentwire/roles/orchestrator.md` |
+| Worker | `~/.agentwire/roles/worker.md` |
+
+### Agent Personas
+
+Preset prompting patterns for common worker tasks in `~/.agentwire/personas/`:
+
+| Persona | Focus |
+|---------|-------|
+| `refactorer.md` | Consolidating and cleaning code |
+| `implementer.md` | Building new features following patterns |
+| `debugger.md` | Systematic bug investigation and fixing |
+| `researcher.md` | Gathering information (read-only) |
+
+Use personas when sending instructions to workers:
+
+```bash
+agentwire send -s myproject/cleanup "Apply @~/.agentwire/personas/refactorer.md to consolidate auth utilities"
+```
+
+### Orchestrator Skills
+
+| Skill | Command | Purpose |
+|-------|---------|---------|
+| `/workers` | List active workers | Show all worker sessions spawned by orchestrator |
+| `/spawn-worker` | Create worker | Quick worker creation with optional initial prompt |
+| `/check-workers` | Batch status | Check output from all active workers |
+
+---
+
 ## Safety & Security (Damage Control)
 
 AgentWire integrates damage-control security hooks that protect against dangerous operations across all Claude Code sessions.
@@ -1103,15 +1269,57 @@ uv run test-damage-control.py bash "rm -rf /" --expect-blocked
 
 ## Voice Layer
 
-AgentWire previously provided TTS via MCP server. The daemon-based MCP server implementation has been removed as part of the TTS architecture cleanup.
+AgentWire provides TTS via the unified `agentwire say` command with smart audio routing.
 
-### Current Status
+### Voice Command
 
-**Note:** The MCP server entry point was removed along with the daemon infrastructure. MCP integration needs a new implementation that doesn't rely on a background daemon.
+```bash
+agentwire say "Hello world"              # Smart routing (see below)
+agentwire say "Message" -v bashbunni     # Specify voice
+agentwire say "Message" -r myroom        # Specify room explicitly
+```
 
-### Voice Commands (say/remote-say)
+**Smart Audio Routing:**
 
-Claude (or users) can trigger TTS by running shell commands in sessions. See "Voice Commands" section below for details.
+1. **Determine room** (priority order):
+   - `--room` argument (explicit)
+   - `AGENTWIRE_ROOM` env var (set when session created)
+   - `.agentwire.yml` config file in project directory
+   - Path inference from `~/projects/{room}` or worktrees
+   - Current tmux session name (fallback)
+2. **Check portal connections** - Queries portal for active browser connections in that room
+3. **Route audio:**
+   - If browser connected → Send to portal (plays on browser/tablet)
+   - If no connections → Generate locally (plays via system audio)
+
+This means if you're using the portal on your tablet downstairs, voice output goes there. If you're at your Mac directly, it plays locally.
+
+**Path Inference Examples:**
+- `~/projects/myapp` → room `myapp`
+- `~/projects/myapp-worktrees/feature` → room `myapp/feature`
+
+**Project Config (optional):**
+Create `.agentwire.yml` in project root when path convention doesn't match:
+```yaml
+room: custom-room-name
+```
+
+**TTS Backends:**
+
+| Backend | Config | Description |
+|---------|--------|-------------|
+| `runpod` | `tts.backend: "runpod"` | RunPod serverless (recommended, no local GPU needed) |
+| `chatterbox` | `tts.backend: "chatterbox"` | Local Chatterbox server (requires CUDA GPU) |
+
+**Shell Aliases:**
+
+For convenience in Claude Code sessions, create shell aliases:
+
+```bash
+# In ~/.bashrc or ~/.zshrc
+alias say='agentwire say'
+alias remote-say='agentwire say'  # Both now use smart routing
+```
 
 ---
 
@@ -1129,6 +1337,12 @@ Skills in `skills/` provide Claude Code integration:
 | kill | `/kill <session>` | Destroy session |
 | status | `/status` | Check all machines |
 | jump | `/jump <session>` | Get attach instructions |
+| workers | `/workers` | List active worker sessions |
+| spawn-worker | `/spawn-worker <name> [prompt]` | Create worker with optional initial task |
+| check-workers | `/check-workers` | Batch check output from all workers |
+| init | `/init` | Interactive onboarding wizard |
+| machine-setup | `/machine-setup <id> <host>` | Add remote machine (guided wizard) |
+| machine-remove | `/machine-remove <id>` | Remove remote machine (guided wizard) |
 
 ### Installing Skills
 
@@ -1328,28 +1542,29 @@ The text input area supports multiline messages with auto-resize:
 
 The textarea starts as a single line and dynamically expands up to 10 lines before scrolling. This provides a natural typing experience for both quick single-line messages and longer multi-paragraph prompts.
 
-### Voice Commands (say/remote-say)
+### Voice Output
 
-Claude (or users) can trigger TTS by running actual shell commands:
+Claude (or users) can trigger TTS using the unified `agentwire say` command:
 
 ```bash
-say "Hello world"           # Local: plays via system audio
-remote-say "Task complete"  # Remote: POSTs to portal, streams to browser
+agentwire say "Hello world"          # Smart routing to browser or local
+agentwire say "Message" -v voice     # Specify voice
+agentwire say "Message" -r room      # Specify room
 ```
 
-**How it works:** These are real executables (not pattern matching on terminal output).
+**How it works:**
 
-- `say` - Uses `agentwire say` to generate TTS locally and play via system speakers
-- `remote-say` - POSTs to portal API, broadcasts TTS audio to connected browser clients
+1. Command detects room from `--room`, `AGENTWIRE_ROOM` env var, or tmux session name
+2. Checks if portal has active browser connections for that room
+3. If connected → Sends to portal (plays on browser/tablet)
+4. If not connected → Generates locally and plays via system audio
 
-**Room detection for remote-say:**
-1. Uses `AGENTWIRE_ROOM` env var (set automatically when session is created)
-2. Falls back to tmux session name if not set
-3. For remote sessions, `AGENTWIRE_ROOM` includes `@machine` suffix (e.g., `myproject@dotdev-pc`)
+**Room detection priority:**
+1. `--room` argument (explicit)
+2. `AGENTWIRE_ROOM` env var (set automatically when session is created)
+3. Current tmux session name (if running in tmux)
 
-**Portal URL for remote machines:** `remote-say` reads the portal URL from `~/.agentwire/portal_url`.
-
-This command-based approach is more reliable than parsing terminal output, which is noisy (typing echoes, ANSI codes, mixed input/output).
+**For remote sessions:** `AGENTWIRE_ROOM` includes `@machine` suffix (e.g., `myproject@dotdev-pc`)
 
 TTS audio includes 300ms silence padding to prevent first-syllable cutoff.
 
@@ -1417,22 +1632,75 @@ When the project path points to a git repo, additional options appear:
 
 ### Portal API
 
+**Core Endpoints:**
+
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
+| `/health` | GET | Health check |
 | `/api/sessions` | GET | List all tmux sessions |
+| `/api/sessions/{name}` | DELETE | Close/kill a session |
+| `/api/sessions/archive` | GET | List archived sessions |
 | `/api/create` | POST | Create new session (accepts machine, worktree, branch) |
 | `/api/check-path` | GET | Check if path exists and is git repo |
 | `/api/check-branches` | GET | Get existing branches matching prefix |
+
+**Room Management:**
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
 | `/api/room/{name}/config` | POST | Update room config (voice, etc.) |
 | `/api/room/{name}/recreate` | POST | Destroy and recreate session with fresh worktree |
 | `/api/room/{name}/spawn-sibling` | POST | Create parallel session in new worktree |
-| `/api/room/{name}/fork` | POST | Fork Claude Code session (preserves conversation context) |
-| `/api/room/{name}/restart-service` | POST | Restart system service (agentwire, portal, TTS) |
+| `/api/room/{name}/fork` | POST | Fork Claude Code session (preserves conversation) |
+| `/api/room/{name}/restart-service` | POST | Restart system service |
+| `/api/rooms/{name}/connections` | GET | Get connection count for room |
+
+**Voice & Input:**
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
 | `/api/say/{name}` | POST | Generate TTS and broadcast to room |
+| `/api/local-tts/{name}` | POST | Generate TTS for local playback |
+| `/api/answer/{name}` | POST | Submit answer to AskUserQuestion |
 | `/api/voices` | GET | List available TTS voices |
 | `/transcribe` | POST | Transcribe audio (multipart form) |
 | `/upload` | POST | Upload image (multipart form) |
 | `/send/{name}` | POST | Send text to session |
+
+**Machine Management:**
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/machines` | GET | List configured machines |
+| `/api/machines` | POST | Add a machine |
+| `/api/machines/{id}` | DELETE | Remove a machine |
+| `/api/machine/{id}/status` | GET | Get machine status |
+
+**Configuration & Templates:**
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/config` | GET | Get current config |
+| `/api/config` | POST | Save config |
+| `/api/config/reload` | POST | Reload config from disk |
+| `/api/templates` | GET | List templates |
+| `/api/templates` | POST | Create template |
+| `/api/templates/{name}` | GET | Get template details |
+| `/api/templates/{name}` | DELETE | Delete template |
+
+**Permission Handling:**
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/permission/{name}` | POST | Submit permission request (from hook) |
+| `/api/permission/{name}/respond` | POST | User responds to permission request |
+
+**WebSocket Endpoints:**
+
+| Endpoint | Purpose |
+|----------|---------|
+| `/ws/{name}` | Main room WebSocket (ambient/monitor modes) |
+| `/ws/terminal/{name}` | Terminal attach WebSocket (xterm.js) |
 
 ---
 
@@ -1708,8 +1976,8 @@ This builds the image and tests the handler without deploying to RunPod.
 ┌─────────────────────────────────────────────────────────────┐
 │  AgentWire Portal (agentwire-portal tmux session)           │
 │  ├── HTTP routes (dashboard, room pages)                    │
-│  ├── WebSocket /ws/output/{room} (Monitor mode polling)     │
-│  ├── WebSocket /ws/terminal/{room} (Terminal mode attach)   │
+│  ├── WebSocket /ws/{room} (ambient/monitor modes)           │
+│  ├── WebSocket /ws/terminal/{room} (terminal mode attach)   │
 │  ├── /transcribe (STT)                                      │
 │  ├── /send/{room} (prompt forwarding)                       │
 │  └── /api/say/{room} (TTS broadcast)                        │
@@ -1819,7 +2087,7 @@ This command-based approach is more reliable than pattern-matching terminal outp
 - Works consistently across local and remote sessions
 
 **Current capabilities using this pattern:**
-- `say/remote-say` → TTS audio playback
+- `agentwire say` → TTS audio playback (smart routing to browser or local)
 - `agentwire send` → Send prompts to sessions
 - Image uploads → `@/path` references in messages
 
@@ -2057,11 +2325,13 @@ python -c "from agentwire import __version__; print(__version__)"
 | File | Purpose |
 |------|---------|
 | `__main__.py` | CLI entry point, all commands |
-| `server.py` | WebSocket server, HTTP routes, room management |
+| `server.py` | WebSocket server, HTTP routes, room management, TTS routing |
 | `config.py` | Config dataclass, YAML loading, defaults |
-| `tts/` | TTS backends (chatterbox, none) |
-| `stt/` | STT backends (whisperkit, whispercpp, openai, none) |
+| `tts/` | TTS backends (chatterbox, runpod, none) |
+| `stt/` | STT backends (whisperkit, whispercpp, openai, remote, none) |
 | `agents/` | Agent backends (tmux local/remote) |
 | `templates/` | HTML templates (dashboard, room) |
 | `skills/` | Claude Code skills for orchestration |
+| `worktree.py` | Git worktree management utilities |
+| `tunnels.py` | SSH tunnel management |
 
