@@ -10,11 +10,11 @@ AgentWire Session Type Bash Hook
 Enforces bash command restrictions based on session type (orchestrator vs worker).
 
 Orchestrator sessions:
-- ALLOWED: agentwire *, remote-say *, say *, git status/log/diff, cd, pwd, echo, sleep
+- ALLOWED: agentwire *, say *, git status/log/diff, cd, pwd, echo, sleep
 - BLOCKED: All other bash commands
 
 Worker sessions:
-- BLOCKED: remote-say *, say * (workers should not produce voice output)
+- BLOCKED: say * (workers should not produce voice output)
 - ALLOWED: Everything else
 
 Exit codes:
@@ -44,7 +44,7 @@ def is_allowed_orchestrator_command(command: str) -> bool:
 
     Allowed commands:
     - agentwire * (any agentwire subcommand)
-    - remote-say "..." or say "..."
+    - say "..."
     - git status, git log, git diff (read-only git commands)
     """
     command = command.strip()
@@ -53,8 +53,8 @@ def is_allowed_orchestrator_command(command: str) -> bool:
     if re.match(r'^agentwire\s', command) or command == 'agentwire':
         return True
 
-    # Allow say/remote-say with quoted string
-    if re.match(r'^(say|remote-say)\s+["\']', command):
+    # Allow say with quoted string
+    if re.match(r'^say\s+["\']', command):
         return True
 
     # Allow read-only git commands
@@ -80,13 +80,12 @@ def is_blocked_worker_command(command: str) -> bool:
     """Check if command should be blocked for worker sessions.
 
     Blocked commands:
-    - remote-say * (workers should not produce voice output)
     - say * (workers should not produce voice output)
     """
     command = command.strip()
 
-    # Block say/remote-say commands
-    if re.match(r'^(say|remote-say)\s', command):
+    # Block say commands
+    if re.match(r'^say\s', command):
         return True
 
     return False
@@ -114,7 +113,7 @@ def main():
     # Get session type
     session_type = get_session_type()
 
-    # No session type = no restrictions (backwards compat)
+    # No session type = no restrictions
     if not session_type:
         sys.exit(0)
 
@@ -123,7 +122,7 @@ def main():
             # Block the command
             print(
                 f"[Session Type: Orchestrator] Command blocked. "
-                f"Orchestrators can only use: agentwire commands, say/remote-say, "
+                f"Orchestrators can only use: agentwire commands, say, "
                 f"read-only git commands, cd, pwd, echo, sleep.\n"
                 f"To execute this command, spawn a worker session.",
                 file=sys.stderr
@@ -135,7 +134,7 @@ def main():
             # Block the command
             print(
                 f"[Session Type: Worker] Command blocked. "
-                f"Workers cannot use say/remote-say (voice output). "
+                f"Workers cannot use say (voice output). "
                 f"Only the orchestrator should communicate with the user via voice.",
                 file=sys.stderr
             )

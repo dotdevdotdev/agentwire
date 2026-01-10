@@ -113,7 +113,7 @@ def _validate_url(url: str, service_name: str, config_path: str) -> List[ConfigW
             warnings.append(ConfigWarning(
                 message=f"URL appears incomplete in {service_name}",
                 context={"url": url, "service": service_name},
-                suggestion="Use a complete URL like 'http://localhost:8100'",
+                suggestion="Use a complete URL like 'http://hostname:port'",
             ))
     except Exception:
         warnings.append(ConfigWarning(

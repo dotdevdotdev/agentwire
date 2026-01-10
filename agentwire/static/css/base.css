@@ -27,7 +27,7 @@
     --bg-hover: var(--bg-level-3);
     --bg-subtle: var(--bg-level-4);
 
-    /* Legacy aliases for compatibility */
+    /* Background aliases */
     --bg-dark: var(--bg-base);
     --bg-mid: var(--bg-card);
     --bg-light: var(--bg-level-2);

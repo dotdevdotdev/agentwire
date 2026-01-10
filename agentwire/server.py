@@ -42,7 +42,7 @@ def _is_allowed_in_restricted_mode(tool_name: str, tool_input: dict) -> bool:
 
     Allows:
     - AskUserQuestion tool (for interactive prompts)
-    - Bash: say "message" or remote-say "message"
+    - Bash: say "message"
 
     Rejects any shell operators, redirects, or multi-line commands.
     """
@@ -59,14 +59,13 @@ def _is_allowed_in_restricted_mode(tool_name: str, tool_input: dict) -> bool:
     if '\n' in command:
         return False
 
-    # Match: (say|remote-say) followed by quoted string and nothing else
+    # Match: say followed by quoted string and nothing else
     # Allows: say "hello world"
     #         say 'hello world'
-    #         remote-say "done"
     # Rejects: say "hi" && rm -rf /
     #          say "hi" > /tmp/log
     #          say $(cat /etc/passwd)
-    pattern = r'^(say|remote-say)\s+(["\']).*\2\s*$'
+    pattern = r'^say\s+(["\']).*\1\s*$'
 
     return bool(re.match(pattern, command))
 
@@ -81,9 +80,9 @@ class RoomConfig:
     machine: str | None = None
     path: str | None = None
     claude_session_id: str | None = None  # Claude Code session UUID for forking
-    bypass_permissions: bool = True  # Default True for backwards compat with existing sessions
-    restricted: bool = False  # Restricted mode: only say/remote-say allowed
-    type: str = "orchestrator"  # Session type: "orchestrator" | "worker" (default orchestrator for backwards compat)
+    bypass_permissions: bool = True
+    restricted: bool = False  # Restricted mode: only say allowed
+    type: str = "orchestrator"  # Session type: "orchestrator" | "worker"
     spawned_by: str | None = None  # Parent orchestrator session (for worker sessions)
 
 
@@ -288,7 +287,7 @@ class AgentWireServer:
                 claude_session_id=cfg.get("claude_session_id"),
                 bypass_permissions=cfg.get("bypass_permissions", True),  # Default True
                 restricted=cfg.get("restricted", False),  # Default False
-                type=cfg.get("type", "orchestrator"),  # Default orchestrator for backwards compat
+                type=cfg.get("type", "orchestrator"),
                 spawned_by=cfg.get("spawned_by"),
             )
         return RoomConfig(voice=self.config.tts.default_voice)

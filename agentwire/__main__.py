@@ -2124,119 +2124,6 @@ def cmd_send_keys(args) -> int:
     return 0
 
 
-def cmd_session_new(args) -> int:
-    """Create a new Claude Code session in tmux."""
-    name = args.name
-    path = args.path
-
-    # Convert dots to underscores for tmux session name
-    session_name = name.replace(".", "_")
-
-    # Resolve path
-    if path:
-        session_path = Path(path).expanduser().resolve()
-    else:
-        # Default to ~/projects/<name> (using original name with dots)
-        config = load_config()
-        projects_dir = Path(config.get("projects", {}).get("dir", "~/projects")).expanduser()
-        session_path = projects_dir / name
-
-    if not session_path.exists():
-        print(f"Path does not exist: {session_path}", file=sys.stderr)
-        return 1
-
-    # Check if session already exists
-    result = subprocess.run(
-        ["tmux", "has-session", "-t", session_name],
-        capture_output=True
-    )
-    if result.returncode == 0:
-        if args.force:
-            # Kill existing session
-            subprocess.run(["tmux", "send-keys", "-t", session_name, "/exit", "Enter"])
-            time.sleep(2)
-            subprocess.run(["tmux", "kill-session", "-t", session_name], capture_output=True)
-        else:
-            print(f"Session '{session_name}' already exists. Use --force to replace.", file=sys.stderr)
-            return 1
-
-    # Create new tmux session
-    subprocess.run(
-        ["tmux", "new-session", "-d", "-s", session_name, "-c", str(session_path)],
-        check=True
-    )
-
-    # Start Claude with skip-permissions flag
-    subprocess.run(
-        ["tmux", "send-keys", "-t", session_name, "claude --dangerously-skip-permissions", "Enter"],
-        check=True
-    )
-
-    print(f"Created session '{session_name}' in {session_path}")
-    print(f"Attach with: tmux attach -t {session_name}")
-    return 0
-
-
-def cmd_session_list(args) -> int:
-    """List all tmux sessions."""
-    result = subprocess.run(
-        ["tmux", "list-sessions", "-F", "#{session_name}: #{session_windows} windows (#{session_path})"],
-        capture_output=True,
-        text=True
-    )
-    if result.returncode != 0:
-        print("No sessions running")
-        return 0
-
-    print(result.stdout.strip())
-    return 0
-
-
-def cmd_session_output(args) -> int:
-    """Read output from a tmux session."""
-    session = args.session
-    lines = args.lines or 50
-
-    result = subprocess.run(
-        ["tmux", "has-session", "-t", session],
-        capture_output=True
-    )
-    if result.returncode != 0:
-        print(f"Session '{session}' not found", file=sys.stderr)
-        return 1
-
-    result = subprocess.run(
-        ["tmux", "capture-pane", "-t", session, "-p", "-S", f"-{lines}"],
-        capture_output=True,
-        text=True
-    )
-    print(result.stdout)
-    return 0
-
-
-def cmd_session_kill(args) -> int:
-    """Kill a tmux session (with clean Claude exit)."""
-    session = args.session
-
-    result = subprocess.run(
-        ["tmux", "has-session", "-t", session],
-        capture_output=True
-    )
-    if result.returncode != 0:
-        print(f"Session '{session}' not found", file=sys.stderr)
-        return 1
-
-    # Send /exit to Claude first for clean shutdown
-    subprocess.run(["tmux", "send-keys", "-t", session, "/exit", "Enter"])
-    print(f"Sent /exit to {session}, waiting 3s...")
-    time.sleep(3)
-
-    # Kill the session
-    subprocess.run(["tmux", "kill-session", "-t", session])
-    print(f"Killed session '{session}'")
-    return 0
-
-
 # === Wave 5: Recreate and Fork Commands ===
 
 
@@ -3417,7 +3304,6 @@ def cmd_doctor(args) -> int:
     print("\nChecking AgentWire scripts...")
 
     say_path = shutil.which("say")
-    remote_say_path = shutil.which("remote-say")
 
     scripts_missing = False
     if say_path:
@@ -3427,16 +3313,9 @@ def cmd_doctor(args) -> int:
         scripts_missing = True
         issues_found += 1
 
-    if remote_say_path:
-        print(f"  [ok] remote-say: {remote_say_path}")
-    else:
-        print("  [!!] remote-say: not found")
-        scripts_missing = True
-        issues_found += 1
-
     # Offer to fix missing scripts
     if scripts_missing and not dry_run:
-        if auto_confirm or _confirm("     Install say/remote-say scripts?"):
+        if auto_confirm or _confirm("     Install say script?"):
             print("     -> Installing scripts...", end=" ", flush=True)
 
             # Create a minimal args object for cmd_skills_install
@@ -3449,7 +3328,7 @@ def cmd_doctor(args) -> int:
 
             if result == 0:
                 print("[ok] installed")
-                issues_fixed += 2 if not say_path and not remote_say_path else 1
+                issues_fixed += 1
             else:
                 print("[!!] failed")
 
@@ -3694,22 +3573,22 @@ def cmd_doctor(args) -> int:
                 print(f"         Fix: ssh {target} 'agentwire skills install'")
                 issues_found += 1
 
-            # Test remote-say command
+            # Test say command
             try:
                 result = subprocess.run(
-                    ["ssh", "-o", "ConnectTimeout=5", "-o", "BatchMode=yes", target, "which remote-say"],
+                    ["ssh", "-o", "ConnectTimeout=5", "-o", "BatchMode=yes", target, "which say"],
                     capture_output=True,
                     text=True,
                     timeout=7,
                 )
                 if result.returncode == 0:
-                    print(f"    [ok] remote-say command available")
+                    print(f"    [ok] say command available")
                 else:
-                    print(f"    [!!] remote-say command not found")
+                    print(f"    [!!] say command not found")
                     print(f"         Fix: ssh {target} 'agentwire skills install'")
                     issues_found += 1
             except (subprocess.TimeoutExpired, subprocess.CalledProcessError):
-                print(f"    [!!] remote-say command not found")
+                print(f"    [!!] say command not found")
                 print(f"         Fix: ssh {target} 'agentwire skills install'")
                 issues_found += 1
 
@@ -5013,7 +4892,7 @@ def main() -> int:
     new_parser.add_argument("-t", "--template", help="Apply session template (from ~/.agentwire/templates/)")
     new_parser.add_argument("-f", "--force", action="store_true", help="Replace existing session")
     new_parser.add_argument("--no-bypass", action="store_true", help="Don't use --dangerously-skip-permissions (normal mode)")
-    new_parser.add_argument("--restricted", action="store_true", help="Restricted mode: only allow say/remote-say commands (implies --no-bypass)")
+    new_parser.add_argument("--restricted", action="store_true", help="Restricted mode: only allow say commands (implies --no-bypass)")
     new_parser.add_argument("--worker", action="store_true", help="Worker session: blocks AskUserQuestion, loads worker role")
     new_parser.add_argument("--orchestrator", action="store_true", help="Orchestrator session: blocks file tools, loads orchestrator role (default)")
     new_parser.add_argument("--json", action="store_true", help="Output as JSON")
@@ -5036,7 +4915,7 @@ def main() -> int:
     recreate_parser = subparsers.add_parser("recreate", help="Destroy and recreate session with fresh worktree")
     recreate_parser.add_argument("-s", "--session", required=True, help="Session name (project/branch or project/branch@machine)")
     recreate_parser.add_argument("--no-bypass", action="store_true", help="Don't use --dangerously-skip-permissions")
-    recreate_parser.add_argument("--restricted", action="store_true", help="Restricted mode: only allow say/remote-say commands (implies --no-bypass)")
+    recreate_parser.add_argument("--restricted", action="store_true", help="Restricted mode: only allow say commands (implies --no-bypass)")
     recreate_parser.add_argument("--json", action="store_true", help="Output as JSON")
     recreate_parser.set_defaults(func=cmd_recreate)
 
@@ -5045,37 +4924,9 @@ def main() -> int:
     fork_parser.add_argument("-s", "--source", required=True, help="Source session (project or project/branch)")
     fork_parser.add_argument("-t", "--target", required=True, help="Target session (must include branch: project/new-branch)")
     fork_parser.add_argument("--no-bypass", action="store_true", help="Don't use --dangerously-skip-permissions")
-    fork_parser.add_argument("--restricted", action="store_true", help="Restricted mode: only allow say/remote-say commands (implies --no-bypass)")
+    fork_parser.add_argument("--restricted", action="store_true", help="Restricted mode: only allow say commands (implies --no-bypass)")
     fork_parser.add_argument("--json", action="store_true", help="Output as JSON")
     fork_parser.set_defaults(func=cmd_fork)
-
-    # === session command group (legacy, kept for backwards compat) ===
-    session_parser = subparsers.add_parser("session", help="Manage tmux sessions")
-    session_subparsers = session_parser.add_subparsers(dest="session_command")
-
-    # session new <name> [path]
-    session_new = session_subparsers.add_parser(
-        "new", help="Create new Claude Code session"
-    )
-    session_new.add_argument("name", help="Session name (project/branch format supported)")
-    session_new.add_argument("path", nargs="?", help="Working directory (default: ~/projects/<name>)")
-    session_new.add_argument("--force", "-f", action="store_true", help="Replace existing session")
-    session_new.set_defaults(func=cmd_session_new)
-
-    # session list
-    session_list = session_subparsers.add_parser("list", help="List all sessions")
-    session_list.set_defaults(func=cmd_session_list)
-
-    # session output <session> [lines]
-    session_output = session_subparsers.add_parser("output", help="Read session output")
-    session_output.add_argument("session", help="Session name")
-    session_output.add_argument("--lines", "-n", type=int, default=50, help="Lines to show (default: 50)")
-    session_output.set_defaults(func=cmd_session_output)
-
-    # session kill <session>
-    session_kill = session_subparsers.add_parser("kill", help="Kill a session")
-    session_kill.add_argument("session", help="Session name")
-    session_kill.set_defaults(func=cmd_session_kill)
 
     # === dev command ===
     dev_parser = subparsers.add_parser(

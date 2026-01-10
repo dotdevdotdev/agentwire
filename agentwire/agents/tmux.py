@@ -157,14 +157,14 @@ class TmuxAgent(AgentBackend):
         model = options.get("model", self.default_model)
         session_id = options.get("session_id")
         fork_from = options.get("fork_from")
-        bypass_permissions = options.get("bypass_permissions", True)  # Default True for backwards compat
+        bypass_permissions = options.get("bypass_permissions", True)
 
         cmd = self.agent_command
         cmd = cmd.replace("{name}", name)
         cmd = cmd.replace("{path}", str(path))
         cmd = cmd.replace("{model}", model)
 
-        # Add permission bypass flag if requested (default True for backwards compat)
+        # Add permission bypass flag if requested
         if bypass_permissions:
             cmd = f"{cmd} --dangerously-skip-permissions"
 
