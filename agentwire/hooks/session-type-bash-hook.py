@@ -7,11 +7,10 @@
 AgentWire Session Type Bash Hook
 ================================
 
-Enforces bash command restrictions based on session type (orchestrator vs worker).
+Enforces bash command restrictions based on session type.
 
 Orchestrator sessions:
-- ALLOWED: agentwire *, say *, remote-say *, git status/log/diff, cd, pwd, echo, sleep
-- BLOCKED: All other bash commands
+- No restrictions (guided by role instructions, not hard blocks)
 
 Worker sessions:
 - BLOCKED: say *, remote-say * (workers should not produce voice output)
@@ -37,43 +36,6 @@ def get_session_type() -> str | None:
     Returns: "orchestrator", "worker", or None (no restrictions)
     """
     return os.environ.get("AGENTWIRE_SESSION_TYPE")
-
-
-def is_allowed_orchestrator_command(command: str) -> bool:
-    """Check if command is allowed for orchestrator sessions.
-
-    Allowed commands:
-    - agentwire * (any agentwire subcommand)
-    - say "...", remote-say "..."
-    - git status, git log, git diff (read-only git commands)
-    """
-    command = command.strip()
-
-    # Allow agentwire commands
-    if re.match(r'^agentwire\s', command) or command == 'agentwire':
-        return True
-
-    # Allow say and remote-say with quoted string
-    if re.match(r'^(remote-)?say\s+["\']', command):
-        return True
-
-    # Allow read-only git commands
-    if re.match(r'^git\s+(status|log|diff|branch|show|remote|fetch)\b', command):
-        return True
-
-    # Allow cd and pwd for navigation
-    if re.match(r'^(cd|pwd)\b', command):
-        return True
-
-    # Allow echo for debugging (useful for orchestrator feedback)
-    if re.match(r'^echo\s', command):
-        return True
-
-    # Allow sleep for timing/waiting
-    if re.match(r'^sleep\s', command):
-        return True
-
-    return False
 
 
 def is_blocked_worker_command(command: str) -> bool:
@@ -117,19 +79,11 @@ def main():
     if not session_type:
         sys.exit(0)
 
+    # Orchestrators have no bash restrictions (guided by role instructions instead)
     if session_type == "orchestrator":
-        if not is_allowed_orchestrator_command(command):
-            # Block the command
-            print(
-                f"[Session Type: Orchestrator] Command blocked. "
-                f"Orchestrators can only use: agentwire commands, say/remote-say, "
-                f"read-only git commands, cd, pwd, echo, sleep.\n"
-                f"To execute this command, spawn a worker session.",
-                file=sys.stderr
-            )
-            sys.exit(2)
+        sys.exit(0)
 
-    elif session_type == "worker":
+    if session_type == "worker":
         if is_blocked_worker_command(command):
             # Block the command
             print(
