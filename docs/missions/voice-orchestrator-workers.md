@@ -677,8 +677,71 @@ Update default URLs to use `None` and resolve via NetworkContext.
 
 ### Wave 7 Acceptance Criteria
 
-- [ ] No references to `remote-say` as separate from `say`
-- [ ] No "backwards compat" comments in codebase
-- [ ] No legacy `session` command functions
-- [ ] No hardcoded `localhost:8100` defaults
-- [ ] Clean, minimal codebase ready for launch
+- [x] No references to `remote-say` as separate from `say`
+- [x] No "backwards compat" comments in codebase
+- [x] No legacy `session` command functions
+- [x] No hardcoded `localhost:8100` defaults
+- [x] Clean, minimal codebase ready for launch
+
+---
+
+## Wave 8: Remove Orphaned MCP Server Code
+
+The daemon-based MCP server approach was planned but never fully implemented. The code exists but is not wired to any CLI entry point or registered with Claude Code. Since the bash `say` command works correctly with smart routing via portal HTTP APIs, this is dead code to be removed.
+
+**Background:**
+- MCP server code exists in `agentwire/mcp/`
+- Never wired to CLI (no `agentwire daemon mcp` command)
+- Not registered in Claude's MCP settings
+- `docs/MIGRATION-MCP.md` says "DEPRECATED - never fully implemented"
+- The `say` bash command provides the same functionality via portal APIs
+
+### 8.1 Delete MCP Server Module
+
+**Files to delete:**
+- `agentwire/mcp/` (entire directory)
+- `agentwire/mcp/__init__.py`
+- `agentwire/mcp/server.py`
+
+### 8.2 Delete TTS Router (Only Used by MCP)
+
+**Files to delete:**
+- `agentwire/tts_router.py`
+
+**Note:** TTS routing is handled by `server.py` endpoints (`/api/say`, `/api/local-tts`), not this module.
+
+### 8.3 Delete Session Detector (Only Used by MCP)
+
+**Files to delete:**
+- `agentwire/session_detector.py`
+
+**Note:** Session/room detection for the `say` command uses env vars and path inference, not this module.
+
+### 8.4 Delete Orphaned Test Files
+
+**Files to delete:**
+- `tests/test_mcp_server.py`
+- `tests/test_tts_router.py`
+- `tests/test_session_detector.py`
+
+### 8.5 Delete/Archive MCP Documentation
+
+**Files to delete:**
+- `docs/MIGRATION-MCP.md` (deprecated guide)
+- Move `docs/missions/completed/agentwire-mcp-server.md` to `docs/missions/cancelled/` with status update
+
+### 8.6 Update Documentation References
+
+**Files to update:**
+- `CLAUDE.md` - Remove any MCP daemon references
+- `docs/missions/completed/connection-aware-tts-routing.md` - Remove TTSRouter references (they reference old architecture)
+
+### Wave 8 Acceptance Criteria
+
+- [ ] No `agentwire/mcp/` directory
+- [ ] No `agentwire/tts_router.py`
+- [ ] No `agentwire/session_detector.py`
+- [ ] No MCP-related test files
+- [ ] No `docs/MIGRATION-MCP.md`
+- [ ] MCP mission moved to `cancelled/` folder with status update
+- [ ] Documentation updated to remove MCP daemon references
