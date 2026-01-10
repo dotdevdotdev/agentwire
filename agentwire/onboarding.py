@@ -607,7 +607,7 @@ services:
             timeout=30,
         )
 
-        # Create portal_url file for remote-say to work
+        # Create portal_url file for say to work
         portal_url = f"https://{portal_host}:8765"
         subprocess.run(
             ["ssh", ssh_target, f"cat > ~/.agentwire/portal_url"],

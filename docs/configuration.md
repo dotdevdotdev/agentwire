@@ -138,7 +138,7 @@ Room config options:
 - `voice` - TTS voice for this room
 - `model` - AI model (passed to agent command as {model})
 - `bypass_permissions` - If true (default), skips permission prompts; if false, shows prompts in portal
-- `restricted` - If true, session only allows voice commands (say/remote-say/AskUserQuestion), denies all other tools
+- `restricted` - If true, session only allows voice commands (say/AskUserQuestion), denies all other tools
 - `machine` - Remote machine ID for this room
 - `path` - Custom project path
 

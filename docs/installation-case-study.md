@@ -91,7 +91,7 @@ projects:
 
 **Issue #3: Tunnel Setup Not Obvious**
 
-**Problem:** User didn't realize reverse tunnels were needed for remote-say to work
+**Problem:** User didn't realize reverse tunnels were needed for TTS routing to work
 
 **Context:** Documentation mentioned tunnels but wasn't clear they were mandatory for portal accessibility from devboxes
 
@@ -239,7 +239,7 @@ curl -s https://tts.serverofdreams.com/voices
 
 ### Phase 8: SSL/HTTPS Configuration
 
-**Issue #8: Portal Running on HTTP, remote-say Expected HTTPS**
+**Issue #8: Portal Running on HTTP, say Command Expected HTTPS**
 
 **Problem:**
 ```
@@ -294,58 +294,39 @@ curl -k https://localhost:8765/health
 
 ### Phase 9: Shell Script Installation
 
-**Issue #9: Missing say and remote-say Commands**
+**Issue #9: Missing say Command**
 
-**Problem:** Claude tried to use remote-say command but got:
+**Problem:** Claude tried to use say command but got:
 ```
 Error: Exit code 127
-(eval):1: command not found: remote-say
+(eval):1: command not found: say
 ```
 
-**Context:** Documentation mentioned `say` and `remote-say` scripts but they weren't installed anywhere
+**Context:** Documentation mentioned `say` script but it wasn't installed anywhere
 
-**Root Cause:** These scripts don't exist in the repository and aren't installed by `agentwire skills install`
+**Root Cause:** The `say` script doesn't exist in the repository and isn't installed by `agentwire skills install`
 
-**Solution:** Manually created wrapper scripts:
+**Solution:** Manually created wrapper script:
 
 `say`:
 ```bash
 #!/bin/bash
-# Local TTS playback
+# TTS with automatic routing (local or remote)
 agentwire say "$@"
 ```
 
-`remote-say`:
-```bash
-#!/bin/bash
-# Remote TTS via portal
-room="${AGENTWIRE_ROOM:-$(tmux display-message -p '#S')}"
-agentwire say --room "$room" "$@"
-```
-
-**Installation:**
-```bash
-# Mac Mini
-cp say remote-say ~/.pyenv/versions/3.12.0/bin/
-chmod +x ~/.pyenv/versions/3.12.0/bin/{say,remote-say}
-
-# devbox1 and devbox2
-scp say remote-say dev@<host>:/tmp/
-ssh dev@<host> "sudo mv /tmp/{say,remote-say} /usr/local/bin/ && sudo chmod +x /usr/local/bin/{say,remote-say}"
-```
+**Installation:** Copy the say script to a directory in PATH and make it executable.
 
 **Lesson:**
-- `agentwire skills install` should install say and remote-say scripts to PATH
+- `agentwire skills install` should install say script to PATH
 - Detect system type (pyenv vs system Python) and install to appropriate location
-- Verify they're executable and in PATH after installation
+- Verify it's executable and in PATH after installation
 
 ---
 
-### Missing Configuration Files on Remote Machines
-
 **Issue #10: No portal_url on Devboxes**
 
-**Problem:** Not discovered during initial setup, but would cause issues when workers try to use remote-say
+**Problem:** Not discovered during initial setup, but would cause issues when workers try to use say
 
 **Required Setup** (not done, but documented for completeness):
 ```bash
@@ -434,7 +415,7 @@ projects:
 | STT troubleshooting | 20 min | ffmpeg, whisperkit-cli, config |
 | TTS troubleshooting | 10 min | Change default voice |
 | SSL setup | 15 min | Generate certs, configure, restart |
-| say/remote-say scripts | 15 min | Create and install on all machines |
+| say script | 15 min | Create and install on all machines |
 | Testing and verification | 10 min | End-to-end tests |
 | **Total** | **~2 hours** | With external assistance |
 
@@ -458,7 +439,7 @@ The core agentwire functionality is solid, but the first-time installation exper
 
 ❌ **No initialization wizard** - users must manually create config files
 ❌ **Undocumented dependencies** - ffmpeg, whisperkit-cli, MacWhisper not mentioned in install steps
-❌ **Missing scripts** - say/remote-say referenced but not installed
+❌ **Missing scripts** - say referenced but not installed
 ❌ **SSL confusion** - not clear whether HTTP or HTTPS should be used
 ❌ **Platform-specific issues** - Python version, externally-managed environments not addressed
 

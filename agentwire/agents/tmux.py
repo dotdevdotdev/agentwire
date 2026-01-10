@@ -104,13 +104,15 @@ class TmuxAgent(AgentBackend):
         user = machine.get("user", "")
 
         ssh_target = f"{user}@{host}" if user else host
+        port = machine.get("port")
         ssh_cmd = [
             "ssh",
             "-o", "BatchMode=yes",
             "-o", "ConnectTimeout=5",
-            ssh_target,
-            cmd,
         ]
+        if port:
+            ssh_cmd.extend(["-p", str(port)])
+        ssh_cmd.extend([ssh_target, cmd])
 
         logger.debug(f"Running remote on {ssh_target}: {cmd}")
         return subprocess.run(
@@ -368,19 +370,20 @@ class TmuxAgent(AgentBackend):
         # Check if running in Docker container (portal-only mode)
         in_container = os.path.exists('/.dockerenv')
 
-        # Only query local tmux if NOT in container
-        # Container is orchestrator-only, all sessions are on remote machines
-        if not in_container:
-            result = self._run_local([
-                "tmux", "list-sessions", "-F", "#{session_name}",
-            ])
-            if result.returncode == 0 and result.stdout.strip():
-                # Add local sessions with hostname as machine ID
+        # Always query local tmux
+        # Use "local" as machine ID in container, hostname on host
+        result = self._run_local([
+            "tmux", "list-sessions", "-F", "#{session_name}",
+        ])
+        if result.returncode == 0 and result.stdout.strip():
+            if in_container:
+                local_machine_id = "local"
+            else:
                 import socket
                 local_machine_id = socket.gethostname().split('.')[0]
-                for name in result.stdout.strip().split("\n"):
-                    if name:
-                        sessions.append(f"{name}@{local_machine_id}")
+            for name in result.stdout.strip().split("\n"):
+                if name:
+                    sessions.append(f"{name}@{local_machine_id}")
 
         # Remote sessions from configured machines
         for machine in self.machines:

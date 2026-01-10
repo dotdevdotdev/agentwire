@@ -347,24 +347,23 @@ All decisions are logged to `~/.agentwire/logs/damage-control/` for audit trails
 
 ## Voice Integration
 
-AgentWire provides TTS via command-based voice output:
+AgentWire provides TTS via the `say` command with automatic audio routing:
 
 ```bash
 # One-time setup
-agentwire skills install  # Installs say/remote-say commands + Claude Code skills
+agentwire skills install  # Installs say command + Claude Code skills
 
 # In sessions, Claude (or users) can trigger TTS:
-say "Hello world"           # Local: plays via system audio
-remote-say "Task complete"  # Remote: streams to browser via portal
+say "Hello world"  # Automatically routes to browser or local speakers
 ```
 
 **How it works:**
-- `say` - Generates TTS locally and plays via system speakers
-- `remote-say` - POSTs to portal API, broadcasts audio to connected browser clients
+- `say` automatically detects if a browser is connected to the room
+- If connected: streams audio to browser (tablet/phone/laptop)
+- If not connected: plays audio locally (Mac speakers)
 - Room detection uses `AGENTWIRE_ROOM` env var (set automatically when session is created)
 - For remote machines, configure portal URL in `~/.agentwire/portal_url`
 
-## TTS Setup
 
 TTS requires a GPU machine running the Chatterbox server:
 

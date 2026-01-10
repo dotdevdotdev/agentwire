@@ -146,8 +146,8 @@ In Claude sessions, use `say "message"` to speak to connected clients:
 # Local session - speaks via agentwire portal
 say "Task completed successfully"
 
-# Remote session - uses remote-say to POST back
-remote-say "Task completed on remote machine"
+# Remote session - say routes automatically
+say "Task completed on remote machine"
 ```
 
 ### Voice Input Flow

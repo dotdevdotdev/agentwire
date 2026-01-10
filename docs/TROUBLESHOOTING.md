@@ -264,7 +264,7 @@ agentwire --version
 ```bash
 # Make scripts executable
 chmod +x $(which agentwire)
-chmod +x ~/.local/bin/say ~/.local/bin/remote-say  # If applicable
+chmod +x ~/.local/bin/say  # If applicable
 ```
 
 ---
@@ -300,7 +300,7 @@ Certificates are stored at:
 sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain ~/.agentwire/cert.pem
 ```
 
-### Problem: Portal requires HTTPS but remote-say uses HTTP
+### Problem: Portal requires HTTPS but say uses HTTP
 
 **Fix config.yaml:**
 
@@ -400,7 +400,7 @@ ssh user@host "python3 -m venv ~/.agentwire-venv && source ~/.agentwire-venv/bin
 
 ### portal_url Not Set on Remote
 
-**Problem: remote-say fails with connection error**
+**Problem: say fails with connection error**
 
 **Fix:**
 ```bash

@@ -31,7 +31,7 @@ Your job is to walk them through advanced setup.
 6. **Start services**
    - Start TTS if remote
    - Start portal
-   - Test voice with a quick `remote-say "Setup complete!"`
+   - Test voice with a quick `say "Setup complete!"`
 
 ## Guidelines
 
@@ -65,7 +65,7 @@ agentwire tts start
 
 Then test voice:
 ```bash
-remote-say "Hello! Your AgentWire setup is complete."
+say "Hello! Your AgentWire setup is complete."
 ```
 
 ### If "Multiple machines" selected:
@@ -131,7 +131,7 @@ agentwire network status
 
 If tests pass:
 ```bash
-remote-say "Congratulations! Your AgentWire network is fully configured and working."
+say "Congratulations! Your AgentWire network is fully configured and working."
 ```
 
 ## Success Message

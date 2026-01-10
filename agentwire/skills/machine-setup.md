@@ -71,7 +71,7 @@ Interactive step - run `claude` and complete OAuth flow.
 
 ### Phase 7: Voice Commands (Remote)
 
-Install `say` and `remote-say` scripts for TTS integration.
+Install `say` script for TTS integration.
 
 ### Phase 8: Verification
 

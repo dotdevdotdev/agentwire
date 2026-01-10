@@ -13,7 +13,7 @@ Orchestrator sessions:
 - No restrictions (guided by role instructions, not hard blocks)
 
 Worker sessions:
-- BLOCKED: say *, remote-say * (workers should not produce voice output)
+- BLOCKED: say * (workers should not produce voice output)
 - ALLOWED: Everything else
 
 Exit codes:
@@ -42,12 +42,12 @@ def is_blocked_worker_command(command: str) -> bool:
     """Check if command should be blocked for worker sessions.
 
     Blocked commands:
-    - say *, remote-say * (workers should not produce voice output)
+    - say * (workers should not produce voice output)
     """
     command = command.strip()
 
-    # Block say and remote-say commands
-    if re.match(r'^(remote-)?say\s', command):
+    # Block say commands
+    if re.match(r'^say\s', command):
         return True
 
     return False
@@ -88,7 +88,7 @@ def main():
             # Block the command
             print(
                 f"[Session Type: Worker] Command blocked. "
-                f"Workers cannot use say/remote-say (voice output). "
+                f"Workers cannot use say (voice output). "
                 f"Only the orchestrator should communicate with the user via voice.",
                 file=sys.stderr
             )

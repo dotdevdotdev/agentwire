@@ -10,10 +10,11 @@ RUN apt-get update && apt-get install -y \
     tmux \
     git \
     ssh \
+    openssh-server \
     jq \
     curl \
     ffmpeg \
-    && rm -rf /var/lib/apt/lists/*
+    && apt-get clean && apt-get autoremove -y
 
 WORKDIR /app
 
@@ -27,6 +28,10 @@ COPY agentwire/ ./agentwire/
 # Install AgentWire package
 RUN pip install --no-cache-dir -e .
 
+# Copy entrypoint script
+COPY scripts/portal-entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
 # Create directories for volumes
 RUN mkdir -p /root/.agentwire /root/.ssh /projects
 
@@ -35,9 +40,16 @@ RUN echo "Host host.docker.internal" >> /etc/ssh/ssh_config && \
     echo "  StrictHostKeyChecking no" >> /etc/ssh/ssh_config && \
     echo "  UserKnownHostsFile /dev/null" >> /etc/ssh/ssh_config
 
+# Setup SSH server for remote access
+RUN mkdir -p /run/sshd && \
+    echo "PermitRootLogin prohibit-password" >> /etc/ssh/sshd_config && \
+    echo "PubkeyAuthentication yes" >> /etc/ssh/sshd_config
+
+# SSH will use mounted keys from /root/.ssh/authorized_keys
+EXPOSE 22
+
 # Expose portal port
 EXPOSE 8765
-
 # Health check
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
     CMD curl -k -f https://localhost:8765/health || exit 1
@@ -45,5 +57,5 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
 # Set environment
 ENV PYTHONUNBUFFERED=1
 
-# Default command
-CMD ["agentwire", "portal", "serve"]
+# Use entrypoint script to run portal in tmux session
+ENTRYPOINT ["/entrypoint.sh"]

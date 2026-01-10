@@ -762,7 +762,7 @@ class AgentWireServer:
             pass
 
     # Patterns for say command detection
-    SAY_PATTERN = re.compile(r'(?:remote-)?say\s+(?:"([^"]+)"|\'([^\']+)\')', re.IGNORECASE)
+    SAY_PATTERN = re.compile(r'say\s+(?:"([^"]+)"|\'([^\']+)\')', re.IGNORECASE)
     ANSI_PATTERN = re.compile(r'\x1b\[[0-9;]*m|\x1b\].*?\x07')
 
     # Pattern to detect AskUserQuestion UI blocks
@@ -1184,7 +1184,7 @@ class AgentWireServer:
             path: Custom project path (optional, ignored if worktree=true)
             voice: TTS voice for this room
             bypass_permissions: Whether to skip permission prompts
-            restricted: Whether to use restricted mode (only say/remote-say allowed)
+            restricted: Whether to use restricted mode (only say allowed)
             machine: Machine ID ('local' or remote machine ID)
             worktree: Whether to create a worktree session
             branch: Branch name for worktree sessions
@@ -2088,7 +2088,7 @@ projects:
         needs permission for an action. It broadcasts the request to connected
         clients and waits for a response.
 
-        In restricted mode, only say/remote-say commands are auto-allowed,
+        In restricted mode, only say commands are auto-allowed,
         everything else is auto-denied silently.
         """
         name = request.match_info["name"]
@@ -2118,7 +2118,7 @@ projects:
                 if _is_allowed_in_restricted_mode(tool_name, tool_input):
                     # Auto-allow
                     logger.info(f"[{name}] Restricted mode: auto-allowing {tool_name}")
-                    # Only send keystroke for Bash commands (say/remote-say)
+                    # Only send keystroke for Bash commands (say)
                     # AskUserQuestion doesn't need permission keystroke
                     if tool_name == "Bash":
                         try:
@@ -2147,7 +2147,7 @@ projects:
                         logger.error(f"[{name}] Failed to send deny keystroke: {e}")
                     return web.json_response({
                         "decision": "deny",
-                        "message": "Restricted mode: only say/remote-say commands are allowed"
+                        "message": "Restricted mode: only say commands are allowed"
                     })
 
             # Create pending permission request (normal/prompted mode)

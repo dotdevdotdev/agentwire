@@ -280,6 +280,7 @@ def _run_remote(machine_id: str, command: str) -> subprocess.CompletedProcess:
 
     host = machine.get("host", machine_id)
     user = machine.get("user")
+    port = machine.get("port")
 
     # Build SSH target
     if user:
@@ -287,8 +288,14 @@ def _run_remote(machine_id: str, command: str) -> subprocess.CompletedProcess:
     else:
         ssh_target = host
 
+    # Build SSH command with optional port
+    ssh_cmd = ["ssh"]
+    if port:
+        ssh_cmd.extend(["-p", str(port)])
+    ssh_cmd.extend([ssh_target, command])
+
     return subprocess.run(
-        ["ssh", ssh_target, command],
+        ssh_cmd,
         capture_output=True,
         text=True,
     )

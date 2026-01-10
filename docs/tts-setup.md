@@ -111,41 +111,35 @@ curl http://localhost:8100/voices
 ```bash
 agentwire say --voice my-voice "Testing custom voice"
 ```
+## Smart Audio Routing
 
-## say vs remote-say
+The `say` command automatically routes audio to the right destination:
 
-AgentWire provides two ways for Claude to speak:
-
-### say (Local)
-
-Used in local Claude sessions. Generates audio and plays on local speakers.
+1. **Check portal connections** - Is a browser connected to this room?
+2. **If connected** - Stream audio to browser (tablet/phone/laptop)
+3. **If not connected** - Play audio locally (Mac speakers)
 
 ```bash
-# In Claude session
+# Just use say - routing is automatic
 say "Task completed"
+
+# With custom voice
+say "Message" --voice tiny-tina
+
+# Explicit room (rarely needed)
+say "Message" --room myproject
 ```
-
-### remote-say (Remote Sessions)
-
-Used in remote Claude sessions. Sends audio back to the portal for playback on connected clients.
-
-```bash
-# In remote Claude session
-remote-say "Task completed on remote server"
-```
-
-This is automatically handled - Claude sessions detect if they're local or remote.
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │  Claude Session                                             │
-│  └── say "hello" or remote-say "hello"                     │
+│  └── say "hello"                                            │
 └─────────────────────────────────────────────────────────────┘
                               │
               ┌───────────────┴───────────────┐
-              │ (local)           (remote)     │
+              │ (no browser)      (browser)    │
               ▼                               ▼
 ┌─────────────────────┐         ┌─────────────────────────────┐
 │  Chatterbox TTS     │         │  AgentWire Portal           │
@@ -155,8 +149,6 @@ This is automatically handled - Claude sessions detect if they're local or remot
 │  Local speakers     │         │  WebSocket → Browser audio  │
 └─────────────────────┘         └─────────────────────────────┘
 ```
-
-## Troubleshooting
 
 ### "TTS server not reachable"
 
