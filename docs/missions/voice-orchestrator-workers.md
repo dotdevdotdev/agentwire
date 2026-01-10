@@ -30,7 +30,7 @@ Orchestrator Session (voice-enabled, no file access)
 - `agentwire output` for reading session output
 - `agentwire list` for session discovery
 - rooms.json for per-session config
-- Voice layer (remote-say, push-to-talk)
+- Voice layer (say command with smart routing, push-to-talk)
 - Permission modes (bypass, normal, restricted)
 
 **What we're adding**:
@@ -90,11 +90,11 @@ OAuth patterns - want me to summarize?"
 - ALLOWED: `Task`, `Bash`, `AskUserQuestion`, `WebFetch`, `WebSearch`, `TodoWrite`
 
 **Bash restrictions** (via PreToolUse hook):
-- ALLOWED: `agentwire *`, `remote-say *`, `say *`, `git status`, `git log`, `git diff`
+- ALLOWED: `agentwire *`, `say *`, `git status`, `git log`, `git diff`
 - BLOCKED: All other bash commands (no direct file manipulation)
 
 **Behavior**:
-- Uses voice (remote-say) for all user communication
+- Uses voice (say) for all user communication
 - Spawns workers via `agentwire new --worker`
 - Monitors workers via `agentwire output`
 - Sends instructions via `agentwire send`
@@ -113,7 +113,7 @@ OAuth patterns - want me to summarize?"
 - ALLOWED: Everything else (full Claude Code capabilities)
 
 **Bash restrictions** (via PreToolUse hook):
-- BLOCKED: `remote-say *`, `say *` (no voice output)
+- BLOCKED: `say *` (no voice output)
 - ALLOWED: Everything else
 
 **Behavior**:
@@ -191,7 +191,7 @@ by spawning worker sessions, never by editing files directly.
 ## Your Capabilities
 
 You can:
-- Talk to the user via voice (remote-say)
+- Talk to the user via voice (say)
 - Spawn worker sessions: `agentwire new project/task-name --worker`
 - Send instructions to workers: `agentwire send -s project/task-name "prompt"`
 - Check worker progress: `agentwire output -s project/task-name`
@@ -458,7 +458,7 @@ Parallel tasks:
 
 - [x] Worker tool blocking
   - Block AskUserQuestion via `--disallowedTools`
-  - Block remote-say/say bash commands via PreToolUse hook
+  - Block say bash command via PreToolUse hook
   - File: `agentwire/hooks/session-type-bash-hook.py`
 
 ### Wave 5: Skills & Portal UI
@@ -565,7 +565,7 @@ Issues discovered during hands-on testing that need to be fixed:
 
 **Expected behavior:** Orchestrator should only be able to run:
 - `agentwire *` commands
-- `remote-say *` / `say *` commands
+- `say *` commands
 - `git status`, `git log`, `git diff` (read-only git)
 
 **Status: FIXED** - Implemented using Option A (env var approach):
@@ -602,3 +602,83 @@ But they DON'T catch:
 **Status: FIXED** - Added patterns to `~/.agentwire/hooks/damage-control/patterns.yaml`:
 - `\brmdir\b` - blocks all rmdir commands
 - `\brm\s+[^-]` - blocks rm with file paths (not just rm -rf)
+
+---
+
+## Wave 7: Codebase Cleanup (Pre-Launch)
+
+Remove legacy patterns, dead code, and backwards compatibility code. This is a pre-launch project with no customers.
+
+### 7.1 Remove `remote-say` References
+
+The `say` and `remote-say` commands were unified with smart routing. Remove all separate references.
+
+**Files to update:**
+
+| File | Changes |
+|------|---------|
+| `agentwire/server.py` | Change regex `say\|remote-say` to just `say` (line ~69) |
+| `agentwire/__main__.py` | Remove `remote-say` from help text and legacy script detection |
+| `agentwire/onboarding.py` | Remove `remote-say` verification steps |
+| `agentwire/templates/dashboard.html` | Update help text |
+| `agentwire/hooks/session-type-bash-hook.py` | Update pattern to just `say` |
+
+**Pattern to remove:**
+```python
+# OLD (bad)
+r'^(say|remote-say)\s+'
+
+# NEW (good)
+r'^say\s+'
+```
+
+### 7.2 Remove Backwards Compatibility Comments/Defaults
+
+Remove all "backwards compat" comments and defensive defaults.
+
+**Files to update:**
+
+| File | Line | Change |
+|------|------|--------|
+| `agentwire/server.py` | ~84 | Remove "for backwards compat" comment |
+| `agentwire/server.py` | ~86 | Remove "for backwards compat" from type default |
+| `agentwire/agents/tmux.py` | ~160, 167 | Remove backwards compat comment |
+| `agentwire/hooks/session-type-bash-hook.py` | ~117 | Remove backwards compat comment |
+| `agentwire/static/css/base.css` | ~30 | Remove legacy CSS alias comment |
+| `agentwire/static/js/room.js` | ~45, 546 | Remove legacy flag comment |
+
+### 7.3 Delete Legacy `session` Commands
+
+The `agentwire session new/list/output/kill` commands were replaced by `agentwire new/list/output/kill`. Delete the legacy versions.
+
+**File:** `agentwire/__main__.py`
+- Delete `cmd_session_new()` function
+- Delete `cmd_session_list()` function
+- Delete `cmd_session_output()` function
+- Delete `cmd_session_kill()` function
+- Remove `session` subcommand group from argparse
+
+### 7.4 Remove Hardcoded `localhost:8100` Defaults
+
+Update default URLs to use `None` and resolve via NetworkContext.
+
+**Files to update:**
+
+| File | Change |
+|------|--------|
+| `agentwire/config.py` | Change `url: str = "http://localhost:8100"` to `url: Optional[str] = None` |
+| `agentwire/validation.py` | Update validation example |
+
+### 7.5 Clean Up Unused Code
+
+- Remove TODO stub in `agentwire/listen.py` line 249 (incomplete OpenAI implementation)
+- Remove any commented-out code blocks
+- Remove unused imports
+
+### Wave 7 Acceptance Criteria
+
+- [ ] No references to `remote-say` as separate from `say`
+- [ ] No "backwards compat" comments in codebase
+- [ ] No legacy `session` command functions
+- [ ] No hardcoded `localhost:8100` defaults
+- [ ] Clean, minimal codebase ready for launch
