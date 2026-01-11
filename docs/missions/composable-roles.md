@@ -230,7 +230,8 @@ Replace the current orchestrator/worker system with composable roles that follow
 - Files: `agentwire/server.py`
 - Scan all tmux sessions
 - For each session, get working directory
-- Read `.agentwire.yml` from that directory
+- Read `.agentwire.yml` from that directory (if exists)
+- Sessions without yaml: show with defaults (no roles, default permissions)
 - Build sessions.json cache from aggregated data
 
 **Task 7.6: Remove AGENTWIRE_ROOM env var**
