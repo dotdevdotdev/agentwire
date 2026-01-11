@@ -56,10 +56,11 @@ Replace the current orchestrator/worker system with composable roles that follow
 **Task 3.2: Update _build_claude_cmd() for composable roles**
 - Files: `agentwire/__main__.py`
 - Accept list of RoleConfig objects
-- Merge disallowedTools (union of all)
+- Merge tools: deduplicated union (all tools any role mentions)
+- Merge disallowedTools: intersection (only block if ALL roles agree)
 - Concatenate system instructions (joined with newlines)
 - Use last specified model (or inherit)
-- Build `--disallowedTools` and `--append-system-prompt` flags
+- Build `--tools`, `--disallowedTools`, and `--append-system-prompt` flags
 
 **Task 3.3: Migrate --worker and --orchestrator flags**
 - `--worker` becomes shorthand for `--roles worker`
@@ -98,7 +99,8 @@ Replace the current orchestrator/worker system with composable roles that follow
 
 - [ ] Role files use YAML frontmatter format
 - [ ] `agentwire new -s foo --roles worker,code-review` works
-- [ ] Multiple roles merge disallowedTools correctly
+- [ ] Multiple roles merge tools correctly (deduplicated union)
+- [ ] Multiple roles merge disallowedTools correctly (intersection)
 - [ ] Multiple roles concatenate system instructions
 - [ ] `agentwire roles` lists available roles
 - [ ] Documentation updated
@@ -124,11 +126,21 @@ class RoleConfig:
 **Merge logic:**
 ```python
 def merge_roles(roles: list[RoleConfig]) -> MergedRole:
-    # Union of all disallowed tools
-    disallowed = set()
+    # Union of all tools (deduplicated) - every tool any role needs is available
+    tools = set()
+    for r in roles:
+        if r.tools:
+            tools.update(r.tools)
+
+    # Intersection of disallowed tools - only block if ALL roles agree
+    disallowed = None
     for r in roles:
         if r.disallowed_tools:
-            disallowed.update(r.disallowed_tools)
+            if disallowed is None:
+                disallowed = set(r.disallowed_tools)
+            else:
+                disallowed &= set(r.disallowed_tools)
+    disallowed = disallowed or set()
 
     # Concatenate instructions
     instructions = "\n\n".join(r.instructions for r in roles)
@@ -136,7 +148,18 @@ def merge_roles(roles: list[RoleConfig]) -> MergedRole:
     # Last non-None model wins
     model = next((r.model for r in reversed(roles) if r.model), None)
 
-    return MergedRole(disallowed, instructions, model)
+    return MergedRole(tools, disallowed, instructions, model)
+```
+
+**Example merge:**
+```
+Role A: tools=[Read, Grep], disallowedTools=[Bash, AskUserQuestion]
+Role B: tools=[Write, Edit], disallowedTools=[AskUserQuestion]
+Role C: tools=[Read], disallowedTools=[AskUserQuestion, Write]
+
+Result:
+  tools = [Read, Grep, Write, Edit]  # union of all
+  disallowedTools = [AskUserQuestion]  # only one in ALL three
 ```
 
 **Bundled vs user roles:**
