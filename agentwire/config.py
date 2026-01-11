@@ -173,8 +173,7 @@ class Template:
     voice: str | None = None  # TTS voice
     project: str | None = None  # Default project path
     initial_prompt: str = ""  # Context sent to Claude on session start
-    bypass_permissions: bool = True  # Permission mode
-    restricted: bool = False  # Restricted mode
+    type: str = "claude-bypass"  # Session type: claude-bypass | claude-prompted | claude-restricted
 
     def to_dict(self) -> dict:
         """Convert to dictionary for YAML serialization."""
@@ -182,8 +181,7 @@ class Template:
             "name": self.name,
             "description": self.description,
             "initial_prompt": self.initial_prompt,
-            "bypass_permissions": self.bypass_permissions,
-            "restricted": self.restricted,
+            "type": self.type,
         }
         if self.roles:
             d["roles"] = self.roles
@@ -196,11 +194,7 @@ class Template:
     @classmethod
     def from_dict(cls, data: dict) -> "Template":
         """Create Template from dictionary."""
-        # Support both old 'role' (single) and new 'roles' (array) format
         roles_data = data.get("roles", [])
-        if not roles_data and data.get("role"):
-            # Backwards compat: convert single role to array
-            roles_data = [data["role"]]
         return cls(
             name=data.get("name", ""),
             description=data.get("description", ""),
@@ -208,8 +202,7 @@ class Template:
             voice=data.get("voice"),
             project=data.get("project"),
             initial_prompt=data.get("initial_prompt", ""),
-            bypass_permissions=data.get("bypass_permissions", True),
-            restricted=data.get("restricted", False),
+            type=data.get("type", "claude-bypass"),
         )
 
     def expand_variables(self, variables: dict[str, str]) -> str:

@@ -89,16 +89,6 @@ class SessionConfig:
         if self.roles is None:
             self.roles = []
 
-    @property
-    def bypass_permissions(self) -> bool:
-        """Backwards compat: True if type is claude-bypass."""
-        return self.type == "claude-bypass"
-
-    @property
-    def restricted(self) -> bool:
-        """Backwards compat: True if type is claude-restricted."""
-        return self.type == "claude-restricted"
-
 
 @dataclass
 class PendingPermission:
@@ -297,16 +287,6 @@ class AgentWireServer:
         configs = self._load_session_configs()
         if name in configs:
             cfg = configs[name]
-            # Handle both old format (bypass_permissions/restricted) and new format (type)
-            session_type = cfg.get("type")
-            if not session_type:
-                # Convert from old format
-                if cfg.get("restricted"):
-                    session_type = "claude-restricted"
-                elif cfg.get("bypass_permissions", True):
-                    session_type = "claude-bypass"
-                else:
-                    session_type = "claude-prompted"
             return SessionConfig(
                 voice=cfg.get("voice", self.config.tts.default_voice),
                 exaggeration=cfg.get("exaggeration", 0.5),
@@ -314,7 +294,7 @@ class AgentWireServer:
                 machine=cfg.get("machine"),
                 path=cfg.get("path"),
                 claude_session_id=cfg.get("claude_session_id"),
-                type=session_type,
+                type=cfg.get("type", "claude-bypass"),
                 roles=cfg.get("roles", []),
                 spawned_by=cfg.get("spawned_by"),
             )
@@ -1174,9 +1154,8 @@ class AgentWireServer:
                     "path": path,
                     "machine": machine_id,
                     "voice": config.get("voice", self.config.tts.default_voice),
-                    "type": get_project_type(Path(path)) if Path(path).exists() else "scratch",
-                    "bypass_permissions": config.get("bypass_permissions", True),
-                    "restricted": config.get("restricted", False),
+                    "project_type": get_project_type(Path(path)) if Path(path).exists() else "scratch",
+                    "type": config.get("type", "claude-bypass"),
                     "activity": activity_status,
                 }
 
@@ -1383,8 +1362,7 @@ class AgentWireServer:
             name: Base session/project name (required)
             path: Custom project path (optional, ignored if worktree=true)
             voice: TTS voice for this session
-            bypass_permissions: Whether to skip permission prompts
-            restricted: Whether to use restricted mode (only say allowed)
+            type: Session type (claude-bypass | claude-prompted | claude-restricted)
             machine: Machine ID ('local' or remote machine ID)
             worktree: Whether to create a worktree session
             branch: Branch name for worktree sessions
@@ -1400,8 +1378,7 @@ class AgentWireServer:
             name = data.get("name", "").strip()
             custom_path = data.get("path")
             voice = data.get("voice", self.config.tts.default_voice)
-            bypass_permissions = data.get("bypass_permissions", True)  # Default True
-            restricted = data.get("restricted", False)  # Default False
+            session_type = data.get("type", "claude-bypass")
             machine = data.get("machine", "local")
             worktree = data.get("worktree", False)
             branch = data.get("branch", "").strip()
@@ -1432,11 +1409,12 @@ class AgentWireServer:
             # Pass template if provided
             if template_name:
                 args.extend(["-t", template_name])
-            # Restricted mode implies --no-bypass (needs permission hook to work)
-            if restricted:
+            # Set session type via CLI flags
+            if session_type == "claude-restricted":
                 args.append("--restricted")
-            elif not bypass_permissions:
+            elif session_type == "claude-prompted":
                 args.append("--no-bypass")
+            # claude-bypass is default, no flag needed
 
             # Call CLI
             success, result = await self.run_agentwire_cmd(args)
@@ -1445,7 +1423,7 @@ class AgentWireServer:
                 error_msg = result.get("error", "Failed to create session")
                 return web.json_response({"error": error_msg})
 
-            # CLI updates sessions.json with bypass_permissions/restricted and template voice
+            # CLI updates sessions.json with type and template voice
             # We may still need to set voice/path if user selected explicitly
             session_name = result.get("session", cli_session)
             session_path = result.get("path")
@@ -1859,12 +1837,11 @@ projects:
             template = Template(
                 name=name,
                 description=data.get("description", ""),
-                role=data.get("role"),
+                roles=data.get("roles", []),
                 voice=data.get("voice"),
                 project=data.get("project"),
                 initial_prompt=data.get("initial_prompt", ""),
-                bypass_permissions=data.get("bypass_permissions", True),
-                restricted=data.get("restricted", False),
+                type=data.get("type", "claude-bypass"),
             )
 
             if save_template(template):
@@ -2319,7 +2296,7 @@ projects:
             session = self.active_sessions[name]
 
             # Check restricted mode - auto-handle without user interaction
-            if session.config.restricted:
+            if session.config.type == "claude-restricted":
                 # Parse session name to handle local vs remote
                 project, branch, machine = parse_session_name(name)
                 if branch:
@@ -2515,15 +2492,15 @@ projects:
             # Get old config for inheriting settings (before CLI deletes it)
             configs = self._load_session_configs()
             old_config = configs.get(name, {})
-            bypass_permissions = old_config.get("bypass_permissions", True)
-            restricted = old_config.get("restricted", False)
+            session_type = old_config.get("type", "claude-bypass")
 
             # Build CLI args
             args = ["recreate", "-s", name]
-            if restricted:
+            if session_type == "claude-restricted":
                 args.append("--restricted")
-            elif not bypass_permissions:
+            elif session_type == "claude-prompted":
                 args.append("--no-bypass")
+            # claude-bypass is default, no flag needed
 
             # Call CLI - handles kill, worktree removal, git pull, new worktree, new session
             success, result = await self.run_agentwire_cmd(args)
@@ -2542,7 +2519,7 @@ projects:
                     session.output_task.cancel()
                 del self.active_sessions[name]
 
-            # CLI updates sessions.json with bypass_permissions, add voice and path
+            # CLI updates sessions.json with type, add voice and path
             configs = self._load_session_configs()
             if new_session_name not in configs:
                 configs[new_session_name] = {}
@@ -2574,8 +2551,7 @@ projects:
             # Get old config for inheriting settings
             configs = self._load_session_configs()
             old_config = configs.get(name, {})
-            bypass_permissions = old_config.get("bypass_permissions", True)
-            restricted = old_config.get("restricted", False)
+            session_type = old_config.get("type", "claude-bypass")
 
             # Build new session name: project/session-<timestamp>[@machine]
             new_branch = f"session-{int(time.time())}"
@@ -2585,10 +2561,11 @@ projects:
 
             # Build CLI args - use `agentwire new` with the sibling session name
             args = ["new", "-s", new_session_name]
-            if restricted:
+            if session_type == "claude-restricted":
                 args.append("--restricted")
-            elif not bypass_permissions:
+            elif session_type == "claude-prompted":
                 args.append("--no-bypass")
+            # claude-bypass is default, no flag needed
 
             # Call CLI - handles worktree creation and session setup
             success, result = await self.run_agentwire_cmd(args)
@@ -2600,7 +2577,7 @@ projects:
             session_name = result.get("session", new_session_name)
             session_path = result.get("path")
 
-            # CLI updates sessions.json with bypass_permissions, add voice and path
+            # CLI updates sessions.json with type, add voice and path
             configs = self._load_session_configs()
             if session_name not in configs:
                 configs[session_name] = {}
@@ -2650,10 +2627,11 @@ projects:
 
             # Build CLI args
             args = ["fork", "-s", name, "-t", target_session]
-            if session_config.restricted:
+            if session_config.type == "claude-restricted":
                 args.append("--restricted")
-            elif not session_config.bypass_permissions:
+            elif session_config.type == "claude-prompted":
                 args.append("--no-bypass")
+            # claude-bypass is default, no flag needed
 
             # Call CLI - handles worktree creation and session setup
             success, result = await self.run_agentwire_cmd(args)
@@ -2665,7 +2643,7 @@ projects:
             session_name = result.get("session", target_session)
             session_path = result.get("path")
 
-            # CLI updates sessions.json with bypass_permissions, add voice and path
+            # CLI updates sessions.json with type, add voice and path
             configs = self._load_session_configs()
             if session_name not in configs:
                 configs[session_name] = {}

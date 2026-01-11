@@ -2,31 +2,29 @@
   "api": {
     "voice": "default",
     "path": "~/projects/api",
-    "model": "sonnet",
-    "bypass_permissions": true
+    "type": "claude-bypass"
   },
   "frontend": {
     "voice": "default",
     "path": "~/projects/frontend",
-    "bypass_permissions": true
+    "type": "claude-bypass"
   },
   "ml": {
     "voice": "default",
     "machine": "gpu-server",
     "path": "/home/developer/projects/ml-training",
-    "bypass_permissions": true
+    "type": "claude-bypass"
   },
   "untrusted-lib": {
     "voice": "tiny-tina",
-    "model": "opus",
     "exaggeration": 0.7,
     "cfg_weight": 0.5,
-    "bypass_permissions": false
+    "type": "claude-prompted"
   },
   "bible-study": {
     "voice": "default",
     "machine": "mac-mini",
     "path": "/Users/dotdev/projects/bible-study",
-    "bypass_permissions": true
+    "type": "claude-bypass"
   }
 }

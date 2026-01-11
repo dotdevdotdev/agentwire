@@ -660,7 +660,7 @@ function renderSessionCard(session, machineId) {
 
     // Determine session type badge: bare | claude-bypass | claude-prompted | claude-restricted
     let typeBadge;
-    const sessionType = session.type || 'claude-bypass';  // Default for backwards compat
+    const sessionType = session.type || 'claude-bypass';
     switch (sessionType) {
         case 'bare':
             typeBadge = '<span class="session-badge bare-type">Bare</span>';
@@ -980,10 +980,10 @@ async function createSession() {
     const worktree = gitOptionsVisible && worktreeCheckbox?.checked;
     const branch = worktree ? (branchInput?.value.trim() || '') : '';
 
-    // Permission mode: bypass (default), normal (prompted), or restricted
+    // Permission mode → session type
     const permissionMode = permissionModeRadio?.value || 'bypass';
-    const bypassPermissions = permissionMode === 'bypass';
-    const restricted = permissionMode === 'restricted';
+    const sessionTypeMap = { 'bypass': 'claude-bypass', 'normal': 'claude-prompted', 'restricted': 'claude-restricted' };
+    const sessionType = sessionTypeMap[permissionMode] || 'claude-bypass';
 
     // Validate session name first
     const validation = validateSessionName(name);
@@ -1004,8 +1004,7 @@ async function createSession() {
             machine: machine !== 'local' ? machine : null,
             worktree,
             branch,
-            bypass_permissions: bypassPermissions,
-            restricted: restricted,
+            type: sessionType,
             template: template || null
         })
     });
@@ -1258,18 +1257,19 @@ function onTemplateChange() {
         }
     }
 
-    // Set permission mode from template
+    // Set permission mode from template type
     const bypassRadio = document.querySelector('input[name="permissionMode"][value="bypass"]');
     const normalRadio = document.querySelector('input[name="permissionMode"][value="normal"]');
     const restrictedRadio = document.querySelector('input[name="permissionMode"][value="restricted"]');
 
-    if (template.restricted && restrictedRadio) {
+    const templateType = template.type || 'claude-bypass';
+    if (templateType === 'claude-restricted' && restrictedRadio) {
         restrictedRadio.checked = true;
         updateRadioSelection(restrictedRadio);
-    } else if (!template.bypass_permissions && normalRadio) {
+    } else if (templateType === 'claude-prompted' && normalRadio) {
         normalRadio.checked = true;
         updateRadioSelection(normalRadio);
-    } else if (template.bypass_permissions && bypassRadio) {
+    } else if (bypassRadio) {
         bypassRadio.checked = true;
         updateRadioSelection(bypassRadio);
     }
