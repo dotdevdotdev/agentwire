@@ -4084,6 +4084,140 @@ def cmd_template_install_samples(args) -> int:
     return 0
 
 
+# =============================================================================
+# Roles Commands
+# =============================================================================
+
+
+def cmd_roles_list(args) -> int:
+    """List available roles from all sources."""
+    from .roles import parse_role_file
+
+    json_mode = getattr(args, 'json', False)
+
+    # Collect roles from all sources
+    roles_data = []
+
+    # User roles (~/.agentwire/roles/)
+    user_roles_dir = Path.home() / ".agentwire" / "roles"
+    if user_roles_dir.exists():
+        for role_file in user_roles_dir.glob("*.md"):
+            role = parse_role_file(role_file)
+            if role:
+                roles_data.append({
+                    "name": role.name,
+                    "description": role.description,
+                    "source": "user",
+                    "path": str(role_file),
+                    "disallowed_tools": role.disallowed_tools,
+                    "model": role.model,
+                })
+
+    # Bundled roles (agentwire/roles/)
+    try:
+        bundled_dir = Path(__file__).parent / "roles"
+        if bundled_dir.exists():
+            for role_file in bundled_dir.glob("*.md"):
+                # Skip if user already has this role
+                if any(r["name"] == role_file.stem for r in roles_data):
+                    continue
+                role = parse_role_file(role_file)
+                if role:
+                    roles_data.append({
+                        "name": role.name,
+                        "description": role.description,
+                        "source": "bundled",
+                        "path": str(role_file),
+                        "disallowed_tools": role.disallowed_tools,
+                        "model": role.model,
+                    })
+    except Exception:
+        pass
+
+    if json_mode:
+        _output_json({"roles": roles_data})
+        return 0
+
+    if not roles_data:
+        print("No roles found.")
+        print(f"Create roles in: ~/.agentwire/roles/")
+        return 0
+
+    # Print table
+    print("Available Roles:")
+    print()
+    print(f"{'Name':<20} {'Source':<10} {'Description':<40}")
+    print("-" * 70)
+    for r in sorted(roles_data, key=lambda x: x["name"]):
+        desc = r["description"][:37] + "..." if len(r["description"]) > 40 else r["description"]
+        print(f"{r['name']:<20} {r['source']:<10} {desc:<40}")
+
+    print()
+    print(f"User roles: ~/.agentwire/roles/")
+    print(f"Use 'agentwire roles show <name>' for details")
+    return 0
+
+
+def cmd_roles_show(args) -> int:
+    """Show details for a specific role."""
+    from .roles import discover_role, parse_role_file
+
+    name = args.name
+    json_mode = getattr(args, 'json', False)
+
+    # Discover role
+    role_path = discover_role(name)
+    if not role_path:
+        if json_mode:
+            _output_json({"error": f"Role '{name}' not found"})
+        else:
+            print(f"Role '{name}' not found.", file=sys.stderr)
+            print(f"Available locations:")
+            print(f"  User: ~/.agentwire/roles/{name}.md")
+            print(f"  Bundled: agentwire/roles/{name}.md")
+        return 1
+
+    role = parse_role_file(role_path)
+    if not role:
+        if json_mode:
+            _output_json({"error": f"Failed to parse role file"})
+        else:
+            print(f"Failed to parse role file: {role_path}", file=sys.stderr)
+        return 1
+
+    if json_mode:
+        _output_json({
+            "name": role.name,
+            "description": role.description,
+            "path": str(role_path),
+            "tools": role.tools,
+            "disallowed_tools": role.disallowed_tools,
+            "model": role.model,
+            "color": role.color,
+            "instructions": role.instructions,
+        })
+        return 0
+
+    print(f"Role: {role.name}")
+    print(f"Description: {role.description or '(none)'}")
+    print(f"Path: {role_path}")
+    print(f"Model: {role.model or 'inherit'}")
+    if role.tools:
+        print(f"Tools (whitelist): {', '.join(role.tools)}")
+    if role.disallowed_tools:
+        print(f"Disallowed Tools: {', '.join(role.disallowed_tools)}")
+    print()
+    if role.instructions:
+        print("Instructions:")
+        print("-" * 40)
+        print(role.instructions)
+        print("-" * 40)
+    else:
+        print("Instructions: (none)")
+
+    return 0
+
+
 def get_hooks_source() -> Path:
     """Get the path to the hooks directory in the installed package."""
     # First try: hooks directory inside the agentwire package
@@ -5004,6 +5138,23 @@ def main() -> int:
     template_install_samples.add_argument("-f", "--force", action="store_true", help="Overwrite existing templates")
     template_install_samples.add_argument("--json", action="store_true", help="Output as JSON")
     template_install_samples.set_defaults(func=cmd_template_install_samples)
+
+    # === roles command group ===
+    roles_parser = subparsers.add_parser(
+        "roles", help="Manage composable roles"
+    )
+    roles_subparsers = roles_parser.add_subparsers(dest="roles_command")
+
+    # roles list
+    roles_list = roles_subparsers.add_parser("list", help="List available roles")
+    roles_list.add_argument("--json", action="store_true", help="Output as JSON")
+    roles_list.set_defaults(func=cmd_roles_list)
+
+    # roles show <name>
+    roles_show = roles_subparsers.add_parser("show", help="Show role details")
+    roles_show.add_argument("name", help="Role name")
+    roles_show.add_argument("--json", action="store_true", help="Output as JSON")
+    roles_show.set_defaults(func=cmd_roles_show)
 
     # === skills command group ===
     skills_parser = subparsers.add_parser(
