@@ -19,7 +19,7 @@
 set -e
 
 TEXT="$1"
-VOICE="${2:-dotdev}"
+CLI_VOICE="$2"  # Explicit CLI voice (may be empty)
 PORTAL_URL="${AGENTWIRE_PORTAL_URL:-https://localhost:8765}"
 OUTPUT="/tmp/say_output.wav"
 
@@ -48,8 +48,22 @@ find_agentwire_config() {
 get_room_from_config() {
     local config_file="$1"
     if [ -f "$config_file" ]; then
-        # Simple YAML parsing - look for "room: value"
-        grep -E "^room:" "$config_file" 2>/dev/null | sed 's/^room:[[:space:]]*//' | tr -d '"'"'" || true
+        # Simple YAML parsing - look for "room: value" or "session: value"
+        local room=$(grep -E "^room:" "$config_file" 2>/dev/null | sed 's/^room:[[:space:]]*//' | tr -d '"'"'" || true)
+        if [ -z "$room" ]; then
+            # Fallback to session: field
+            room=$(grep -E "^session:" "$config_file" 2>/dev/null | sed 's/^session:[[:space:]]*//' | tr -d '"'"'" || true)
+        fi
+        echo "$room"
+    fi
+}
+
+# Extract voice from .agentwire.yml
+get_voice_from_config() {
+    local config_file="$1"
+    if [ -f "$config_file" ]; then
+        # Simple YAML parsing - look for "voice: value"
+        grep -E "^voice:" "$config_file" 2>/dev/null | sed 's/^voice:[[:space:]]*//' | tr -d '"'"'" || true
     fi
 }
 
@@ -177,6 +191,18 @@ play_local() {
 }
 
 # Main logic - smart routing
+
+# Resolve voice: CLI arg > .agentwire.yml > default
+if [ -n "$CLI_VOICE" ]; then
+    VOICE="$CLI_VOICE"
+else
+    CONFIG_FILE=$(find_agentwire_config)
+    if [ -n "$CONFIG_FILE" ]; then
+        VOICE=$(get_voice_from_config "$CONFIG_FILE")
+    fi
+fi
+VOICE="${VOICE:-dotdev}"  # Fallback to default
+
 ROOM=$(get_room)
 CONNECTED_ROOM=$(check_portal_connections "$ROOM") && HAS_CONNECTIONS=true || HAS_CONNECTIONS=false
 
