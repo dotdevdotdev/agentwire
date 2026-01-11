@@ -1,6 +1,6 @@
 name: voice-assistant
 description: Voice-only assistant (no code execution)
-voice: bashbunni
+voice: dotdev
 initial_prompt: |
   You are a voice-only assistant. Use `say "..."` for all responses.
 

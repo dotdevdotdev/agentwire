@@ -60,14 +60,14 @@ None - this is pure implementation work.
 
 ## Completion Criteria
 
-- [ ] `agentwire say "hello"` reads voice from `.agentwire.yml` in cwd
-- [ ] `say "hello"` (wrapper script) works without explicit room/voice flags
-- [ ] Portal startup scans tmux sessions and reads project configs
-- [ ] Portal shows sessions that exist in tmux even if not in sessions.json
-- [ ] Sessions without `.agentwire.yml` show with default type/roles
-- [ ] Remote sessions are scanned and included in cache
-- [ ] `POST /api/sessions/refresh` triggers cache rebuild
-- [ ] Dashboard displays all sessions correctly
+- [x] `agentwire say "hello"` reads voice from `.agentwire.yml` in cwd
+- [x] `say "hello"` (wrapper script) works without explicit room/voice flags
+- [x] Portal startup scans tmux sessions and reads project configs
+- [x] Portal shows sessions that exist in tmux even if not in sessions.json
+- [x] Sessions without `.agentwire.yml` show with default type/roles
+- [x] Remote sessions are scanned and included in cache
+- [x] `POST /api/sessions/refresh` triggers cache rebuild
+- [x] Dashboard displays all sessions correctly
 
 ## Technical Notes
 
@@ -86,7 +86,7 @@ done
   "myproject": {
     "type": "claude-bypass",
     "roles": ["agentwire"],
-    "voice": "bashbunni",
+    "voice": "dotdev",
     "path": "/Users/dotdev/projects/myproject",
     "source": "yaml"  // or "default" if no yaml found
   }

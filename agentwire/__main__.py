@@ -18,7 +18,7 @@ from . import __version__
 from .worktree import parse_session_name, get_session_path, ensure_worktree, remove_worktree
 from . import cli_safety
 from .roles import RoleConfig, load_roles, merge_roles
-from .project_config import ProjectConfig, SessionType, save_project_config
+from .project_config import ProjectConfig, SessionType, save_project_config, get_voice_from_config
 
 # Default config directory
 CONFIG_DIR = Path.home() / ".agentwire"
@@ -1214,7 +1214,8 @@ def cmd_say(args) -> int:
 
     config = load_config()
     tts_config = config.get("tts", {})
-    voice = args.voice or tts_config.get("default_voice", "bashbunni")
+    # Voice priority: CLI flag > .agentwire.yml > global config default
+    voice = args.voice or get_voice_from_config() or tts_config.get("default_voice", "dotdev")
     exaggeration = args.exaggeration if args.exaggeration is not None else tts_config.get("exaggeration", 0.5)
     cfg_weight = args.cfg if args.cfg is not None else tts_config.get("cfg_weight", 0.5)
 

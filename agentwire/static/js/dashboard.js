@@ -6,7 +6,7 @@
 import * as ws from '/static/js/websocket.js';
 
 // Get default voice from the page (set by Jinja2)
-const DEFAULT_VOICE = window.AGENTWIRE_CONFIG?.defaultVoice || 'bashbunni';
+const DEFAULT_VOICE = window.AGENTWIRE_CONFIG?.defaultVoice || 'dotdev';
 
 // Path check debounce timeout
 let pathCheckTimeout = null;

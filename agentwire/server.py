@@ -31,6 +31,7 @@ from aiohttp import web
 
 from .config import Config, load_config
 from .worktree import get_project_type, parse_session_name
+from .project_config import load_project_config, ProjectConfig
 
 __version__ = "0.1.0"
 
@@ -181,6 +182,7 @@ class AgentWireServer:
         self.app.router.add_get("/api/config", self.api_get_config)
         self.app.router.add_post("/api/config", self.api_save_config)
         self.app.router.add_post("/api/config/reload", self.api_reload_config)
+        self.app.router.add_post("/api/sessions/refresh", self.api_refresh_sessions)
         # Template management
         self.app.router.add_get("/api/templates", self.api_list_templates)
         self.app.router.add_get("/api/templates/{name}", self.api_get_template)
@@ -325,6 +327,178 @@ class AgentWireServer:
                 spawned_by=cfg.get("spawned_by"),
             )
         return RoomConfig(voice=self.config.tts.default_voice)
+
+    async def _rebuild_session_cache(self) -> dict[str, dict]:
+        """Rebuild sessions.json by scanning tmux sessions and reading project configs.
+
+        This scans all tmux sessions (local and remote), gets their working directories,
+        and reads .agentwire.yml from each to build the session cache.
+
+        Returns:
+            Dict mapping session names to their config dicts.
+        """
+        if not self.agent:
+            return {}
+
+        cache = {}
+        in_container = os.path.exists('/.dockerenv')
+
+        # Get local machine ID
+        if in_container:
+            local_machine_id = "local"
+        else:
+            import socket
+            local_machine_id = socket.gethostname().split('.')[0]
+
+        # Scan local tmux sessions with their working directories
+        result = subprocess.run(
+            ["tmux", "list-sessions", "-F", "#{session_name}:#{pane_current_path}"],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            for line in result.stdout.strip().split("\n"):
+                if ":" in line:
+                    parts = line.split(":", 1)
+                    session_name = parts[0]
+                    session_path = parts[1] if len(parts) > 1 else None
+
+                    # Build qualified session name
+                    qualified_name = f"{session_name}@{local_machine_id}"
+
+                    # Try to load project config from session path
+                    config_entry = self._build_cache_entry(session_path)
+                    cache[qualified_name] = config_entry
+
+        # Scan remote machines
+        if hasattr(self.agent, 'machines'):
+            for machine in self.agent.machines:
+                machine_id = machine.get('id')
+                if not machine_id:
+                    continue
+                # Skip local machine (already scanned)
+                if not in_container and machine_id == local_machine_id:
+                    continue
+
+                host = machine.get('host')
+                if not host:
+                    continue
+
+                # Get remote sessions with their paths
+                try:
+                    cmd = "tmux list-sessions -F '#{session_name}:#{pane_current_path}' 2>/dev/null || echo ''"
+                    ssh_result = subprocess.run(
+                        ["ssh", "-o", "ConnectTimeout=5", "-o", "BatchMode=yes", host, cmd],
+                        capture_output=True,
+                        text=True,
+                        timeout=10,
+                    )
+                    if ssh_result.returncode == 0 and ssh_result.stdout.strip():
+                        for line in ssh_result.stdout.strip().split("\n"):
+                            if ":" in line:
+                                parts = line.split(":", 1)
+                                session_name = parts[0]
+                                session_path = parts[1] if len(parts) > 1 else None
+
+                                qualified_name = f"{session_name}@{machine_id}"
+
+                                # For remote sessions, we'd need to read the remote yaml
+                                # For now, just record the path and use defaults
+                                config_entry = self._build_cache_entry_remote(
+                                    session_path, host
+                                )
+                                cache[qualified_name] = config_entry
+                except (subprocess.TimeoutExpired, Exception) as e:
+                    logger.warning(f"Failed to scan sessions on {machine_id}: {e}")
+
+        # Save the rebuilt cache
+        self._save_session_configs(cache)
+        logger.info(f"Rebuilt session cache: {len(cache)} sessions")
+
+        return cache
+
+    def _build_cache_entry(self, session_path: str | None) -> dict:
+        """Build a cache entry for a local session.
+
+        Args:
+            session_path: Working directory of the session.
+
+        Returns:
+            Dict with session config (type, roles, voice, path, source).
+        """
+        entry = {
+            "type": "claude-bypass",  # Default
+            "roles": [],
+            "path": session_path,
+            "source": "default",
+        }
+
+        if session_path:
+            # Try to load .agentwire.yml from session path
+            config = load_project_config(Path(session_path))
+            if config:
+                entry["type"] = config.type.value
+                entry["roles"] = config.roles
+                if config.voice:
+                    entry["voice"] = config.voice
+                entry["source"] = "yaml"
+
+        return entry
+
+    def _build_cache_entry_remote(self, session_path: str | None, host: str) -> dict:
+        """Build a cache entry for a remote session.
+
+        For remote sessions, we attempt to read .agentwire.yml via SSH.
+
+        Args:
+            session_path: Working directory of the session on remote machine.
+            host: SSH host for the remote machine.
+
+        Returns:
+            Dict with session config.
+        """
+        entry = {
+            "type": "claude-bypass",
+            "roles": [],
+            "path": session_path,
+            "source": "default",
+        }
+
+        if session_path:
+            # Try to read .agentwire.yml from remote machine
+            try:
+                yaml_path = f"{session_path}/.agentwire.yml"
+                result = subprocess.run(
+                    ["ssh", "-o", "ConnectTimeout=3", "-o", "BatchMode=yes", host, f"cat {yaml_path}"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
+                if result.returncode == 0 and result.stdout.strip():
+                    import yaml
+                    data = yaml.safe_load(result.stdout)
+                    if data:
+                        entry["type"] = data.get("type", "claude-bypass")
+                        entry["roles"] = data.get("roles", [])
+                        if data.get("voice"):
+                            entry["voice"] = data["voice"]
+                        entry["source"] = "yaml"
+            except Exception:
+                pass  # Use defaults
+
+        return entry
+
+    async def _start_cache_refresh_task(self):
+        """Start background task to periodically refresh session cache."""
+        async def refresh_loop():
+            while True:
+                await asyncio.sleep(30)  # Refresh every 30 seconds
+                try:
+                    await self._rebuild_session_cache()
+                except Exception as e:
+                    logger.warning(f"Cache refresh failed: {e}")
+
+        asyncio.create_task(refresh_loop())
 
     async def _get_voices(self) -> list[str]:
         """Get available TTS voices."""
@@ -1593,7 +1767,7 @@ server:
 tts:
   backend: "chatterbox"
   url: "http://localhost:8100"
-  default_voice: "bashbunni"
+  default_voice: "dotdev"
 
 stt:
   backend: "whisperkit"  # whisperkit | whispercpp | openai | none
@@ -1642,6 +1816,18 @@ projects:
 
             return web.json_response({"success": True})
         except Exception as e:
+            return web.json_response({"error": str(e)})
+
+    async def api_refresh_sessions(self, request: web.Request) -> web.Response:
+        """Refresh session cache by scanning tmux sessions and project configs."""
+        try:
+            cache = await self._rebuild_session_cache()
+            return web.json_response({
+                "success": True,
+                "sessions": len(cache),
+            })
+        except Exception as e:
+            logger.error(f"Failed to refresh session cache: {e}")
             return web.json_response({"error": str(e)})
 
     async def api_list_templates(self, request: web.Request) -> web.Response:
@@ -2642,6 +2828,12 @@ async def run_server(config: Config):
 
     # Cleanup old uploads on startup
     await server.cleanup_old_uploads()
+
+    # Rebuild session cache from tmux sessions and project configs
+    await server._rebuild_session_cache()
+
+    # Start periodic cache refresh (every 30s)
+    await server._start_cache_refresh_task()
 
     # Setup SSL if configured
     ssl_context = None

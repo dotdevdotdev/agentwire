@@ -78,7 +78,7 @@ class TTSConfig:
 
     backend: str = "chatterbox"  # chatterbox | runpod | none
     url: str | None = None  # TTS server URL (required for chatterbox backend)
-    default_voice: str = "bashbunni"
+    default_voice: str = "dotdev"
     # Voice parameters (applies to all backends)
     exaggeration: float = 0.5
     cfg_weight: float = 0.5
@@ -372,7 +372,7 @@ def _dict_to_config(data: dict) -> Config:
     tts = TTSConfig(
         backend=tts_data.get("backend", "chatterbox"),
         url=tts_data.get("url"),
-        default_voice=tts_data.get("default_voice", "bashbunni"),
+        default_voice=tts_data.get("default_voice", "dotdev"),
         runpod_endpoint_id=tts_data.get("runpod_endpoint_id", ""),
         runpod_api_key=tts_data.get("runpod_api_key", ""),
         runpod_timeout=tts_data.get("runpod_timeout", 60),

@@ -14,18 +14,18 @@
 #   - If portal has browser connections for the room, sends to portal
 #   - Otherwise, generates TTS locally and plays via afplay
 #
-# Default voice: bashbunni
+# Default voice: dotdev
 
 set -e
 
 TEXT="$1"
-VOICE="${2:-bashbunni}"
+VOICE="${2:-dotdev}"
 PORTAL_URL="${AGENTWIRE_PORTAL_URL:-https://localhost:8765}"
 OUTPUT="/tmp/say_output.wav"
 
 if [ -z "$TEXT" ]; then
     echo "Usage: say \"Your message\" [voice]"
-    echo "       say \"[laugh] That's funny\" bashbunni"
+    echo "       say \"[laugh] That's funny\" dotdev"
     exit 1
 fi
 
