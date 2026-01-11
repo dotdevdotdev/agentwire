@@ -239,14 +239,14 @@ Replace the current orchestrator/worker system with composable roles that follow
 - Stop setting `AGENTWIRE_ROOM` at session creation
 - Update any code that reads this env var
 
-**Task 7.7: Add 'bare' as 4th permission mode**
+**Task 7.7: Consolidate to single `type` field**
 - Files: `agentwire/__main__.py`
-- Add `--bare` flag to `agentwire new`
-- Bare sessions: create tmux session without launching Claude
-- Useful for log viewers, monitoring, manual work
-- Permission modes become: bypass | prompted | restricted | bare
-- In `.agentwire.yml`: `bare: true` (no Claude)
-- Portal shows bare sessions with appropriate badge
+- Replace separate bool flags with single `type` field
+- Session types: `bare` | `claude-bypass` | `claude-prompted` | `claude-restricted`
+- CLI flags: `--bare`, `--prompted`, `--restricted` (default is `claude-bypass`)
+- In `.agentwire.yml`: `type: claude-bypass` (single field)
+- Remove old `bypass_permissions`, `restricted` bool fields
+- Portal shows session type badge
 
 ## Completion Criteria
 
@@ -273,8 +273,8 @@ Replace the current orchestrator/worker system with composable roles that follow
 - [ ] `AGENTWIRE_SESSION_TYPE` env var removed
 - [ ] `rooms.json` renamed to `sessions.json` (runtime cache)
 - [ ] Portal rebuilds cache from tmux sessions + yaml files
-- [ ] `--bare` flag creates tmux session without Claude
-- [ ] 4 permission modes: bypass | prompted | restricted | bare
+- [ ] Single `type` field replaces separate bool flags
+- [ ] Session types: bare | claude-bypass | claude-prompted | claude-restricted
 
 **Documentation:**
 - [ ] Documentation updated
@@ -341,14 +341,18 @@ Result:
 **.agentwire.yml (source of truth - lives in project root):**
 ```yaml
 session: myapp                # tmux session name (required)
-roles: [worker, code-review]  # composable roles (optional)
+type: claude-bypass           # session type (see below)
+roles: [worker, code-review]  # composable roles (optional, ignored if bare)
 voice: bashbunni              # TTS voice (optional)
-# Permission mode (pick one, default is bypass):
-bypass_permissions: true      # Claude with no permission prompts
-# prompted: true              # Claude with permission hook
-# restricted: true            # Claude with only say allowed
-# bare: true                  # No Claude, just tmux session
 ```
+
+**Session types:**
+| Type | CLI Flag | Description |
+|------|----------|-------------|
+| `bare` | `--bare` | No Claude, just tmux session |
+| `claude-bypass` | (default) | Claude with `--dangerously-skip-permissions` |
+| `claude-prompted` | `--prompted` | Claude with permission hook |
+| `claude-restricted` | `--restricted` | Claude, only `say` allowed |
 
 **sessions.json (runtime cache - rebuilt from tmux + yaml files):**
 ```json
