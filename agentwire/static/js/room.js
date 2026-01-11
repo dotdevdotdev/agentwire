@@ -320,7 +320,7 @@ async function handleRecordingComplete(audioBlob) {
         await fetch('/send/' + ROOM, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text: '[Remote voice - use say "message"] ' + text })
+            body: JSON.stringify({ text: '[Voice] ' + text })
         });
 
         processingTimeout = setTimeout(() => {
