@@ -1,0 +1,189 @@
+#!/bin/bash
+# Smart TTS with portal routing
+# Usage: say "Hello world"
+#        say "[laugh] That's funny"
+#        say "Message" voicename
+#
+# Room detection priority:
+#   1. AGENTWIRE_ROOM environment variable
+#   2. .agentwire.yml in current or parent directory (room: field)
+#   3. Infer from directory path (~/projects/{room} or worktrees)
+#   4. tmux session name
+#
+# Smart routing:
+#   - If portal has browser connections for the room, sends to portal
+#   - Otherwise, generates TTS locally and plays via afplay
+#
+# Default voice: bashbunni
+
+set -e
+
+TEXT="$1"
+VOICE="${2:-bashbunni}"
+PORTAL_URL="${AGENTWIRE_PORTAL_URL:-https://localhost:8765}"
+OUTPUT="/tmp/say_output.wav"
+
+if [ -z "$TEXT" ]; then
+    echo "Usage: say \"Your message\" [voice]"
+    echo "       say \"[laugh] That's funny\" bashbunni"
+    exit 1
+fi
+
+# Find .agentwire.yml in current or parent directories
+find_agentwire_config() {
+    local dir="$PWD"
+    local home="$HOME"
+
+    while [ "$dir" != "/" ] && [ "$dir" != "$home" ]; do
+        if [ -f "$dir/.agentwire.yml" ]; then
+            echo "$dir/.agentwire.yml"
+            return 0
+        fi
+        dir=$(dirname "$dir")
+    done
+    return 1
+}
+
+# Extract room name from .agentwire.yml
+get_room_from_config() {
+    local config_file="$1"
+    if [ -f "$config_file" ]; then
+        # Simple YAML parsing - look for "room: value"
+        grep -E "^room:" "$config_file" 2>/dev/null | sed 's/^room:[[:space:]]*//' | tr -d '"'"'" || true
+    fi
+}
+
+# Infer room name from directory path
+# Convention: ~/projects/{room} or ~/projects/{room}-worktrees/{branch}
+infer_room_from_path() {
+    local cwd="$PWD"
+    local projects_dir="$HOME/projects"
+
+    # Check if we're under ~/projects
+    if [[ "$cwd" == "$projects_dir"* ]]; then
+        # Get path relative to projects dir
+        local rel_path="${cwd#$projects_dir/}"
+
+        # Check for worktree pattern: {project}-worktrees/{branch}
+        if [[ "$rel_path" =~ ^([^/]+)-worktrees/([^/]+) ]]; then
+            local project="${BASH_REMATCH[1]}"
+            local branch="${BASH_REMATCH[2]}"
+            echo "${project}/${branch}"
+            return 0
+        fi
+
+        # Simple project: first directory component
+        local project=$(echo "$rel_path" | cut -d'/' -f1)
+        if [ -n "$project" ]; then
+            echo "$project"
+            return 0
+        fi
+    fi
+    return 1
+}
+
+# Get current room name with multi-source detection
+get_room() {
+    # 1. Environment variable (highest priority)
+    if [ -n "$AGENTWIRE_ROOM" ]; then
+        echo "$AGENTWIRE_ROOM"
+        return
+    fi
+
+    # 2. .agentwire.yml config file
+    local config_file=$(find_agentwire_config)
+    if [ -n "$config_file" ]; then
+        local room=$(get_room_from_config "$config_file")
+        if [ -n "$room" ]; then
+            echo "$room"
+            return
+        fi
+    fi
+
+    # 3. Infer from directory path
+    local inferred=$(infer_room_from_path)
+    if [ -n "$inferred" ]; then
+        echo "$inferred"
+        return
+    fi
+
+    # 4. tmux session name (fallback)
+    if [ -n "$TMUX" ]; then
+        tmux display-message -p '#S' 2>/dev/null
+        return
+    fi
+
+    echo ""
+}
+
+# Check if portal has browser connections for a room
+# Returns 0 if connected, 1 if not
+check_portal_connections() {
+    local room="$1"
+    if [ -z "$room" ]; then
+        return 1
+    fi
+
+    # Get hostname for machine-qualified room names
+    local hostname=$(hostname -s 2>/dev/null || hostname | cut -d. -f1)
+
+    # Try room variants: as-is, with hostname, with @local
+    for try_room in "$room" "${room}@${hostname}" "${room}@local"; do
+        local encoded_room=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$try_room', safe=''))")
+        local result=$(curl -sk "$PORTAL_URL/api/rooms/$encoded_room/connections" 2>/dev/null)
+        if echo "$result" | grep -q '"has_connections": true'; then
+            echo "$try_room"
+            return 0
+        fi
+    done
+    return 1
+}
+
+# Send TTS to portal (plays on browser clients)
+send_to_portal() {
+    local room="$1"
+    local text="$2"
+    local encoded_room=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$room', safe=''))")
+    local json=$(python3 -c "import json; print(json.dumps({'text': '''$text'''}))")
+
+    curl -sk -X POST "$PORTAL_URL/api/say/$encoded_room" \
+        -H "Content-Type: application/json" \
+        -d "$json" > /dev/null 2>&1
+}
+
+# Generate and play TTS locally via portal's RunPod backend
+# The portal plays the audio server-side and returns JSON status
+play_local() {
+    local text="$1"
+    local voice="$2"
+    local room="$3"
+
+    # Use portal's local-tts endpoint (plays audio server-side)
+    local encoded_room=$(python3 -c "import urllib.parse; print(urllib.parse.quote('${room:-default}', safe=''))")
+    local json=$(python3 -c "import json; print(json.dumps({'text': '''$text''', 'voice': '$voice'}))")
+
+    # Send to portal - it plays audio and returns JSON status
+    local result=$(curl -sk -X POST "$PORTAL_URL/api/local-tts/$encoded_room" \
+        -H "Content-Type: application/json" \
+        -d "$json")
+
+    if echo "$result" | grep -q '"success": true'; then
+        # Audio played on server
+        :
+    else
+        echo "TTS Error: $result"
+        exit 1
+    fi
+}
+
+# Main logic - smart routing
+ROOM=$(get_room)
+CONNECTED_ROOM=$(check_portal_connections "$ROOM") && HAS_CONNECTIONS=true || HAS_CONNECTIONS=false
+
+if [ "$HAS_CONNECTIONS" = true ]; then
+    # Browser connected - send to portal for playback there
+    send_to_portal "$CONNECTED_ROOM" "$TEXT"
+else
+    # No browser connected - play locally via portal's TTS backend
+    play_local "$TEXT" "$VOICE" "$ROOM"
+fi
