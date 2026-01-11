@@ -31,8 +31,8 @@ torch.set_float32_matmul_precision('high')  # TensorFloat-32 on Ampere GPUs
 model = None
 whisper_model = None
 
-# Voice profiles directory - configurable via env var or defaults to ~/.agentwire/voices
-VOICES_DIR = Path(os.environ.get("AGENTWIRE_VOICES_DIR", Path.home() / ".agentwire" / "voices"))
+# Voice profiles directory
+VOICES_DIR = Path.home() / ".agentwire" / "voices"
 
 
 @asynccontextmanager

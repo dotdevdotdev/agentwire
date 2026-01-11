@@ -79,6 +79,7 @@ class TTSConfig:
     backend: str = "chatterbox"  # chatterbox | runpod | none
     url: str | None = None  # TTS server URL (required for chatterbox backend)
     default_voice: str = "dotdev"
+    voices_dir: Path = field(default_factory=lambda: Path.home() / ".agentwire" / "voices")
     # Voice parameters (applies to all backends)
     exaggeration: float = 0.5
     cfg_weight: float = 0.5
@@ -86,6 +87,9 @@ class TTSConfig:
     runpod_endpoint_id: str = ""
     runpod_api_key: str = ""
     runpod_timeout: int = 60
+
+    def __post_init__(self):
+        self.voices_dir = _expand_path(self.voices_dir) or Path.home() / ".agentwire" / "voices"
 
 
 @dataclass
