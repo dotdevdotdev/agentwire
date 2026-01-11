@@ -200,11 +200,10 @@ Replace the current orchestrator/worker system with composable roles that follow
 - Full session config lives in project root
 - Fields:
   ```yaml
-  session: myapp              # tmux session name
-  roles: [worker, code-review] # composable roles
-  voice: bashbunni            # TTS voice
-  bypass_permissions: true    # permission mode
-  restricted: false           # restricted mode
+  session: myapp               # tmux session name (required)
+  type: claude-bypass          # session type (see Task 7.7)
+  roles: [worker, code-review] # composable roles (optional, ignored if bare)
+  voice: bashbunni             # TTS voice (optional)
   ```
 - Parser in `agentwire/config.py` or new `agentwire/project_config.py`
 
