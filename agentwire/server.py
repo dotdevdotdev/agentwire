@@ -72,8 +72,8 @@ def _is_allowed_in_restricted_mode(tool_name: str, tool_input: dict) -> bool:
 
 
 @dataclass
-class RoomConfig:
-    """Runtime configuration for a room/session."""
+class SessionConfig:
+    """Runtime configuration for a session."""
 
     voice: str = "default"
     exaggeration: float = 0.5
@@ -110,11 +110,11 @@ class PendingPermission:
 
 
 @dataclass
-class Room:
-    """Active room with connected clients."""
+class Session:
+    """Active session with connected clients."""
 
     name: str
-    config: RoomConfig
+    config: SessionConfig
     clients: set = field(default_factory=set)
     locked_by: str | None = None
     last_output: str = ""
@@ -126,12 +126,16 @@ class Room:
     is_active: bool = False  # Current active/idle state for transition detection
 
 
+# Backwards compat alias
+Room = Session
+
+
 class AgentWireServer:
-    """Main server managing rooms, WebSockets, and agent sessions."""
+    """Main server managing sessions, WebSockets, and agent backends."""
 
     def __init__(self, config: Config):
         self.config = config
-        self.rooms: dict[str, Room] = {}
+        self.rooms: dict[str, Session] = {}  # Active sessions with connected clients
         self.session_activity: dict[str, dict] = {}  # Global activity tracking for all sessions
         self.tts = None
         self.stt = None
@@ -161,18 +165,24 @@ class AgentWireServer:
         self.app.router.add_get("/api/check-path", self.api_check_path)
         self.app.router.add_get("/api/check-branches", self.api_check_branches)
         self.app.router.add_post("/api/create", self.api_create_session)
-        self.app.router.add_post("/api/room/{name:.+}/config", self.api_room_config)
+        self.app.router.add_post("/api/session/{name:.+}/config", self.api_session_config)
+        self.app.router.add_post("/api/room/{name:.+}/config", self.api_session_config)  # Backwards compat
         self.app.router.add_post("/transcribe", self.handle_transcribe)
         self.app.router.add_post("/upload", self.handle_upload)
         self.app.router.add_post("/send/{name:.+}", self.handle_send)
         self.app.router.add_post("/api/say/{name:.+}", self.api_say)
-        self.app.router.add_get("/api/rooms/{name:.+}/connections", self.api_room_connections)
+        self.app.router.add_get("/api/sessions/{name:.+}/connections", self.api_session_connections)
+        self.app.router.add_get("/api/rooms/{name:.+}/connections", self.api_session_connections)  # Backwards compat
         self.app.router.add_post("/api/local-tts/{name:.+}", self.api_local_tts)
         self.app.router.add_post("/api/answer/{name:.+}", self.api_answer)
-        self.app.router.add_post("/api/room/{name:.+}/recreate", self.api_recreate_session)
-        self.app.router.add_post("/api/room/{name:.+}/spawn-sibling", self.api_spawn_sibling)
-        self.app.router.add_post("/api/room/{name:.+}/fork", self.api_fork_session)
-        self.app.router.add_post("/api/room/{name:.+}/restart-service", self.api_restart_service)
+        self.app.router.add_post("/api/session/{name:.+}/recreate", self.api_recreate_session)
+        self.app.router.add_post("/api/room/{name:.+}/recreate", self.api_recreate_session)  # Backwards compat
+        self.app.router.add_post("/api/session/{name:.+}/spawn-sibling", self.api_spawn_sibling)
+        self.app.router.add_post("/api/room/{name:.+}/spawn-sibling", self.api_spawn_sibling)  # Backwards compat
+        self.app.router.add_post("/api/session/{name:.+}/fork", self.api_fork_session)
+        self.app.router.add_post("/api/room/{name:.+}/fork", self.api_fork_session)  # Backwards compat
+        self.app.router.add_post("/api/session/{name:.+}/restart-service", self.api_restart_service)
+        self.app.router.add_post("/api/room/{name:.+}/restart-service", self.api_restart_service)  # Backwards compat
         self.app.router.add_get("/api/voices", self.api_voices)
         self.app.router.add_delete("/api/sessions/{name:.+}", self.api_close_session)
         self.app.router.add_get("/api/sessions/archive", self.api_archived_sessions)
@@ -293,15 +303,8 @@ class AgentWireServer:
         with open(sessions_file, "w") as f:
             json.dump(configs, f, indent=2)
 
-    # Backwards compat aliases
-    def _load_room_configs(self) -> dict[str, dict]:
-        return self._load_session_configs()
-
-    def _save_room_configs(self, configs: dict[str, dict]):
-        return self._save_session_configs(configs)
-
-    def _get_room_config(self, name: str) -> RoomConfig:
-        """Get or create room/session configuration."""
+    def _get_session_config(self, name: str) -> SessionConfig:
+        """Get or create session configuration."""
         configs = self._load_session_configs()
         if name in configs:
             cfg = configs[name]
@@ -315,7 +318,7 @@ class AgentWireServer:
                     session_type = "claude-bypass"
                 else:
                     session_type = "claude-prompted"
-            return RoomConfig(
+            return SessionConfig(
                 voice=cfg.get("voice", self.config.tts.default_voice),
                 exaggeration=cfg.get("exaggeration", 0.5),
                 cfg_weight=cfg.get("cfg_weight", 0.5),
@@ -326,7 +329,7 @@ class AgentWireServer:
                 roles=cfg.get("roles", []),
                 spawned_by=cfg.get("spawned_by"),
             )
-        return RoomConfig(voice=self.config.tts.default_voice)
+        return SessionConfig(voice=self.config.tts.default_voice)
 
     async def _rebuild_session_cache(self) -> dict[str, dict]:
         """Rebuild sessions.json by scanning tmux sessions and reading project configs.
@@ -636,7 +639,7 @@ class AgentWireServer:
     async def handle_room(self, request: web.Request) -> web.Response:
         """Serve a room page."""
         name = request.match_info["name"]
-        room_config = self._get_room_config(name)
+        session_config = self._get_session_config(name)
         voices = await self._get_voices()
         is_system_session = self._is_system_session(name)
 
@@ -644,7 +647,7 @@ class AgentWireServer:
             "room_name": name,
             "config": room_config,
             "voices": voices,
-            "current_voice": room_config.voice,
+            "current_voice": session_config.voice,
             "is_system_session": is_system_session,
             "is_project_session": not is_system_session,
             "is_system_session_js": "true" if is_system_session else "false",
@@ -659,9 +662,9 @@ class AgentWireServer:
         ws = web.WebSocketResponse()
         await ws.prepare(request)
 
-        # Get or create room
+        # Get or create session
         if name not in self.rooms:
-            self.rooms[name] = Room(name=name, config=self._get_room_config(name))
+            self.rooms[name] = Room(name=name, config=self._get_session_config(name))
 
         room = self.rooms[name]
         client_id = str(id(ws))
@@ -954,7 +957,7 @@ class AgentWireServer:
         msg_type = data.get("type")
 
         if msg_type == "recording_started":
-            # Try to lock the room
+            # Try to lock the session
             if room.locked_by is None:
                 room.locked_by = client_id
                 # Notify others
@@ -1018,7 +1021,7 @@ class AgentWireServer:
         return options
 
     async def _poll_output(self, room: Room):
-        """Poll agent output and broadcast to room clients."""
+        """Poll agent output and broadcast to session clients."""
         while room.clients:
             try:
                 # Run sync get_output in thread pool to avoid blocking
@@ -1140,7 +1143,7 @@ class AgentWireServer:
             await asyncio.sleep(0.5)
 
     async def _broadcast(self, room: Room, message: dict):
-        """Broadcast message to all room clients."""
+        """Broadcast message to all session clients."""
         dead_clients = set()
         for client in room.clients:
             try:
@@ -1171,10 +1174,10 @@ class AgentWireServer:
 
                 config = room_configs.get(name, {})
 
-                # Use path from room config if available (set during creation)
+                # Use path from session config if available (set during creation)
                 path = config.get("path", str(self.config.projects.dir / project))
 
-                # Calculate activity status from global tracking (works even without active room)
+                # Calculate activity status from global tracking (works even without active session)
                 activity_status = self._get_global_session_activity(name)
 
                 session_data = {
@@ -1453,7 +1456,7 @@ class AgentWireServer:
                 error_msg = result.get("error", "Failed to create session")
                 return web.json_response({"error": error_msg})
 
-            # CLI updates rooms.json with bypass_permissions/restricted and template voice
+            # CLI updates sessions.json with bypass_permissions/restricted and template voice
             # We may still need to set voice/path if user selected explicitly
             session_name = result.get("session", cli_session)
             session_path = result.get("path")
@@ -1523,7 +1526,7 @@ class AgentWireServer:
             archive = archive[:50]
             self._save_archive(archive)
 
-            # Clean up room if exists
+            # Clean up session if exists
             if name in self.rooms:
                 room = self.rooms[name]
                 if room.output_task:
@@ -1541,12 +1544,12 @@ class AgentWireServer:
         archive = self._load_archive()
         return web.json_response(archive)
 
-    async def api_room_config(self, request: web.Request) -> web.Response:
-        """Update room configuration."""
+    async def api_session_config(self, request: web.Request) -> web.Response:
+        """Update session configuration."""
         name = request.match_info["name"]
         try:
             data = await request.json()
-            configs = self._load_room_configs()
+            configs = self._load_session_configs()
 
             if name not in configs:
                 configs[name] = {}
@@ -1555,17 +1558,17 @@ class AgentWireServer:
                 if key in data:
                     configs[name][key] = data[key]
 
-            self._save_room_configs(configs)
+            self._save_session_configs(configs)
 
-            # Update live room if exists
+            # Update live session if exists
             if name in self.rooms:
-                room = self.rooms[name]
+                session = self.rooms[name]
                 if "voice" in data:
-                    room.config.voice = data["voice"]
+                    session.config.voice = data["voice"]
                 if "exaggeration" in data:
-                    room.config.exaggeration = data["exaggeration"]
+                    session.config.exaggeration = data["exaggeration"]
                 if "cfg_weight" in data:
-                    room.config.cfg_weight = data["cfg_weight"]
+                    session.config.cfg_weight = data["cfg_weight"]
 
             return web.json_response({"success": True})
         except Exception as e:
@@ -1710,7 +1713,7 @@ class AgentWireServer:
                 json.dump({"machines": machines}, f, indent=2)
                 f.write("\n")
 
-            # Clean up rooms.json entries for this machine
+            # Clean up sessions.json entries for this machine
             rooms_file = self.config.rooms.file
             rooms_removed = []
             if rooms_file.exists():
@@ -1718,7 +1721,7 @@ class AgentWireServer:
                     with open(rooms_file) as f:
                         rooms_data = json.load(f)
 
-                    # Find rooms matching *@machine_id pattern
+                    # Find sessions matching *@machine_id pattern
                     rooms_to_remove = [
                         room for room in rooms_data.keys()
                         if room.endswith(f"@{machine_id}")
@@ -2098,11 +2101,11 @@ projects:
             return wav_data
 
     async def _say_to_room(self, room_name: str, text: str):
-        """Generate TTS audio and send to room clients (internal)."""
+        """Generate TTS audio and send to session clients (internal)."""
         await self.speak(room_name, text)
 
     async def api_say(self, request: web.Request) -> web.Response:
-        """POST /api/say/{room} - Generate TTS and broadcast to room."""
+        """POST /api/say/{session} - Generate TTS and broadcast to session."""
         name = request.match_info["name"]
         try:
             data = await request.json()
@@ -2111,9 +2114,9 @@ projects:
             if not text:
                 return web.json_response({"error": "No text provided"}, status=400)
 
-            # Ensure room exists (create if not)
+            # Ensure session exists (create if not)
             if name not in self.rooms:
-                self.rooms[name] = Room(name=name, config=self._get_room_config(name))
+                self.rooms[name] = Room(name=name, config=self._get_session_config(name))
 
             room = self.rooms[name]
 
@@ -2133,16 +2136,16 @@ projects:
             logger.error(f"Say API failed: {e}")
             return web.json_response({"error": str(e)}, status=500)
 
-    async def api_room_connections(self, request: web.Request) -> web.Response:
-        """GET /api/rooms/{room}/connections - Check if room has active browser connections."""
+    async def api_session_connections(self, request: web.Request) -> web.Response:
+        """GET /api/sessions/{session}/connections - Check if session has active browser connections."""
         name = request.match_info["name"]
         try:
             has_connections = False
             connection_count = 0
 
             if name in self.rooms:
-                room = self.rooms[name]
-                connection_count = len(room.clients)
+                session = self.rooms[name]
+                connection_count = len(session.clients)
                 has_connections = connection_count > 0
 
             return web.json_response({
@@ -2151,11 +2154,11 @@ projects:
             })
 
         except Exception as e:
-            logger.error(f"Room connections check failed: {e}")
+            logger.error(f"Session connections check failed: {e}")
             return web.json_response({"error": str(e)}, status=500)
 
     async def api_local_tts(self, request: web.Request) -> web.Response:
-        """POST /api/local-tts/{room} - Generate TTS and return audio for local playback."""
+        """POST /api/local-tts/{session} - Generate TTS and return audio for local playback."""
         name = request.match_info["name"]
         try:
             data = await request.json()
@@ -2165,12 +2168,12 @@ projects:
             if not text:
                 return web.json_response({"error": "No text provided"}, status=400)
 
-            # Get room config for defaults
-            room_config = self._get_room_config(name)
+            # Get session config for defaults
+            session_config = self._get_session_config(name)
             if voice is None:
-                voice = room_config.voice
-            exaggeration = room_config.exaggeration
-            cfg_weight = room_config.cfg_weight
+                voice = session_config.voice
+            exaggeration = session_config.exaggeration
+            cfg_weight = session_config.cfg_weight
 
             logger.info(f"[{name}] Local TTS: {text[:50]}... (voice={voice})")
 
@@ -2258,7 +2261,7 @@ projects:
             return web.json_response({"success": False, "error": str(e)}, status=500)
 
     async def api_answer(self, request: web.Request) -> web.Response:
-        """POST /api/answer/{room} - Answer an AskUserQuestion prompt."""
+        """POST /api/answer/{session} - Answer an AskUserQuestion prompt."""
         name = request.match_info["name"]
         try:
             data = await request.json()
@@ -2302,7 +2305,7 @@ projects:
             return web.json_response({"error": str(e)}, status=500)
 
     async def api_permission_request(self, request: web.Request) -> web.Response:
-        """POST /api/permission/{room} - Handle permission request from Claude Code hook.
+        """POST /api/permission/{session} - Handle permission request from Claude Code hook.
 
         This endpoint is called by the permission hook script when Claude Code
         needs permission for an action. It broadcasts the request to connected
@@ -2320,9 +2323,9 @@ projects:
 
             logger.info(f"[{name}] Permission request: {tool_name}")
 
-            # Ensure room exists
+            # Ensure session exists
             if name not in self.rooms:
-                self.rooms[name] = Room(name=name, config=self._get_room_config(name))
+                self.rooms[name] = Room(name=name, config=self._get_session_config(name))
 
             room = self.rooms[name]
 
@@ -2411,7 +2414,7 @@ projects:
             )
 
     async def api_permission_respond(self, request: web.Request) -> web.Response:
-        """POST /api/permission/{room}/respond - User responds to permission request.
+        """POST /api/permission/{session}/respond - User responds to permission request.
 
         Called by the portal UI when user clicks Allow or Deny.
         """
@@ -2515,7 +2518,7 @@ projects:
         await self._say_to_room(room_name, text)
 
     async def api_recreate_session(self, request: web.Request) -> web.Response:
-        """POST /api/room/{name}/recreate - Destroy session/worktree and create fresh one via CLI."""
+        """POST /api/session/{name}/recreate - Destroy session/worktree and create fresh one via CLI."""
         name = request.match_info["name"]
         try:
             logger.info(f"[{name}] Recreating session...")
@@ -2550,7 +2553,7 @@ projects:
                     room.output_task.cancel()
                 del self.rooms[name]
 
-            # CLI updates rooms.json with bypass_permissions, add voice and path
+            # CLI updates sessions.json with bypass_permissions, add voice and path
             configs = self._load_room_configs()
             if new_session_name not in configs:
                 configs[new_session_name] = {}
@@ -2567,7 +2570,7 @@ projects:
             return web.json_response({"error": str(e)}, status=500)
 
     async def api_spawn_sibling(self, request: web.Request) -> web.Response:
-        """POST /api/room/{name}/spawn-sibling - Create a new session in same project via CLI.
+        """POST /api/session/{name}/spawn-sibling - Create a new session in same project via CLI.
 
         Creates a parallel session in a new worktree without destroying the current one.
         Useful for working on multiple features in the same project simultaneously.
@@ -2608,7 +2611,7 @@ projects:
             session_name = result.get("session", new_session_name)
             session_path = result.get("path")
 
-            # CLI updates rooms.json with bypass_permissions, add voice and path
+            # CLI updates sessions.json with bypass_permissions, add voice and path
             configs = self._load_room_configs()
             if session_name not in configs:
                 configs[session_name] = {}
@@ -2625,14 +2628,14 @@ projects:
             return web.json_response({"error": str(e)}, status=500)
 
     async def api_fork_session(self, request: web.Request) -> web.Response:
-        """POST /api/room/{name}/fork - Fork the Claude Code session via CLI.
+        """POST /api/session/{name}/fork - Fork the Claude Code session via CLI.
 
         Creates a new session that continues from the current conversation context.
         """
         name = request.match_info["name"]
         try:
-            # Get current room config for inheriting settings
-            room_config = self._get_room_config(name)
+            # Get current session config for inheriting settings
+            session_config = self._get_session_config(name)
 
             logger.info(f"[{name}] Forking session...")
 
@@ -2658,9 +2661,9 @@ projects:
 
             # Build CLI args
             args = ["fork", "-s", name, "-t", target_session]
-            if room_config.restricted:
+            if session_config.restricted:
                 args.append("--restricted")
-            elif not room_config.bypass_permissions:
+            elif not session_config.bypass_permissions:
                 args.append("--no-bypass")
 
             # Call CLI - handles worktree creation and session setup
@@ -2673,11 +2676,11 @@ projects:
             session_name = result.get("session", target_session)
             session_path = result.get("path")
 
-            # CLI updates rooms.json with bypass_permissions, add voice and path
+            # CLI updates sessions.json with bypass_permissions, add voice and path
             configs = self._load_room_configs()
             if session_name not in configs:
                 configs[session_name] = {}
-            configs[session_name]["voice"] = room_config.voice
+            configs[session_name]["voice"] = session_config.voice
             if session_path:
                 configs[session_name]["path"] = session_path
             self._save_room_configs(configs)
@@ -2690,7 +2693,7 @@ projects:
             return web.json_response({"error": str(e)}, status=500)
 
     async def api_restart_service(self, request: web.Request) -> web.Response:
-        """POST /api/room/{name}/restart-service - Restart a system service.
+        """POST /api/session/{name}/restart-service - Restart a system service.
 
         For system sessions (agentwire, agentwire-portal, agentwire-tts),
         this properly restarts the service.
@@ -2777,7 +2780,7 @@ projects:
             return web.json_response({"error": str(e)}, status=500)
 
     async def speak(self, room_name: str, text: str):
-        """Generate TTS audio and send to room clients."""
+        """Generate TTS audio and send to session clients."""
         if room_name not in self.rooms:
             logger.warning(f"[{room_name}] speak: room not found")
             return
@@ -2815,7 +2818,7 @@ projects:
         except Exception as e:
             logger.error(f"TTS failed for {room_name}: {e}")
         finally:
-            # Unlock room after TTS
+            # Unlock session after TTS
             if room.locked_by:
                 room.locked_by = None
                 await self._broadcast(room, {"type": "room_unlocked"})

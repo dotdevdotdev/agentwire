@@ -125,14 +125,14 @@ Session identity fallback chain:
 - [x] Remote sessions are scanned and included in cache
 - [x] `POST /api/sessions/refresh` triggers cache rebuild
 - [x] Dashboard displays all sessions correctly
-- [ ] `RoomConfig` renamed to `SessionConfig`
-- [ ] `AGENTWIRE_ROOM` env var removed (use yaml/tmux)
-- [ ] `AGENTWIRE_URL` / `AGENTWIRE_PORTAL_URL` replaced with global config
-- [ ] `AGENTWIRE_VOICES_DIR` replaced with `tts.voices_dir` config
-- [ ] Permission hook uses tmux + yaml instead of env var
-- [ ] API uses `/api/sessions/` consistently
-- [ ] No "room" terminology in function names (except backwards compat aliases)
-- [ ] Comments use "session" terminology
+- [x] `RoomConfig` renamed to `SessionConfig`
+- [x] `AGENTWIRE_ROOM` env var removed (use yaml/tmux)
+- [x] `AGENTWIRE_URL` / `AGENTWIRE_PORTAL_URL` replaced with global config
+- [x] `AGENTWIRE_VOICES_DIR` replaced with `tts.voices_dir` config
+- [x] Permission hook uses tmux + yaml instead of env var
+- [x] API uses `/api/sessions/` consistently
+- [x] No "room" terminology in function names (except backwards compat aliases)
+- [x] Comments use "session" terminology
 
 ## Technical Notes
 

@@ -983,8 +983,8 @@ def _get_current_tmux_session() -> str | None:
     return None
 
 
-def _get_room_from_yml() -> str | None:
-    """Get room name from .agentwire.yml in current directory."""
+def _get_session_from_yml() -> str | None:
+    """Get session name from .agentwire.yml in current directory."""
     yml_path = Path.cwd() / ".agentwire.yml"
     if not yml_path.exists():
         return None
@@ -993,13 +993,14 @@ def _get_room_from_yml() -> str | None:
         import yaml
         with open(yml_path) as f:
             config = yaml.safe_load(f)
-        return config.get("room") if config else None
+        # Check session: field (primary) or room: for backwards compat
+        return config.get("session") or config.get("room") if config else None
     except Exception:
         return None
 
 
-def _infer_room_from_path() -> str | None:
-    """Infer room name from current working directory.
+def _infer_session_from_path() -> str | None:
+    """Infer session name from current working directory.
 
     ~/projects/myapp -> myapp
     ~/projects/myapp-worktrees/feature -> myapp/feature
@@ -1025,48 +1026,48 @@ def _infer_room_from_path() -> str | None:
     return None
 
 
-def _check_portal_connections(room: str, portal_url: str) -> tuple[bool, str]:
-    """Check if portal has active browser connections for a room.
+def _check_portal_connections(session: str, portal_url: str) -> tuple[bool, str]:
+    """Check if portal has active browser connections for a session.
 
-    Tries room name variants: as-is, with hostname, with @local (Docker).
+    Tries session name variants: as-is, with hostname, with @local (Docker).
 
     Returns:
-        Tuple of (has_connections, actual_room_name)
+        Tuple of (has_connections, actual_session_name)
         - has_connections: True if there are connections (audio should go to portal)
-        - actual_room_name: The room name that has connections (may include @machine)
+        - actual_session_name: The session name that has connections (may include @machine)
     """
     import urllib.request
     import ssl
     import socket
 
-    # Try room variants: as-is, with hostname, with @local
-    room_variants = [room]
-    if "@" not in room:
+    # Try session variants: as-is, with hostname, with @local
+    session_variants = [session]
+    if "@" not in session:
         hostname = socket.gethostname().split('.')[0]
-        room_variants.append(f"{room}@{hostname}")
-        room_variants.append(f"{room}@local")
+        session_variants.append(f"{session}@{hostname}")
+        session_variants.append(f"{session}@local")
 
     ctx = ssl.create_default_context()
     ctx.check_hostname = False
     ctx.verify_mode = ssl.CERT_NONE
 
-    for room_name in room_variants:
+    for session_name in session_variants:
         try:
             req = urllib.request.Request(
-                f"{portal_url}/api/rooms/{room_name}/connections",
+                f"{portal_url}/api/sessions/{session_name}/connections",
                 headers={"Accept": "application/json"},
             )
 
             with urllib.request.urlopen(req, context=ctx, timeout=5) as response:
                 result = json.loads(response.read().decode())
                 if result.get("has_connections", False):
-                    return True, room_name
+                    return True, session_name
 
         except Exception:
             continue
 
     # No connections found in any variant
-    return False, room
+    return False, session
 
 
 def _local_say_runpod(
@@ -1201,8 +1202,8 @@ def cmd_say(args) -> int:
     """Generate TTS audio and play it.
 
     Smart routing:
-    1. Determine room (--room, AGENTWIRE_ROOM env var, or tmux session name)
-    2. Check if portal has browser connections for that room
+    1. Determine session (--session flag, .agentwire.yml, path inference, or tmux)
+    2. Check if portal has browser connections for that session
     3. If connections exist → send to portal (plays on browser/tablet)
     4. If no connections → generate locally and play via system audio
     """
@@ -1219,20 +1220,20 @@ def cmd_say(args) -> int:
     exaggeration = args.exaggeration if args.exaggeration is not None else tts_config.get("exaggeration", 0.5)
     cfg_weight = args.cfg if args.cfg is not None else tts_config.get("cfg_weight", 0.5)
 
-    # Determine room name (priority: flag > env > .agentwire.yml > path inference > tmux)
-    room = args.room or os.environ.get("AGENTWIRE_ROOM") or _get_room_from_yml() or _infer_room_from_path() or _get_current_tmux_session()
+    # Determine session name (priority: flag > .agentwire.yml > path inference > tmux)
+    session = args.session or _get_session_from_yml() or _infer_session_from_path() or _get_current_tmux_session()
 
-    # Try portal first if we have a room
-    if room:
+    # Try portal first if we have a session
+    if session:
         portal_url = _get_portal_url()
-        has_connections, actual_room = _check_portal_connections(room, portal_url)
+        has_connections, actual_session = _check_portal_connections(session, portal_url)
 
         if has_connections:
             # Send to portal - browser will play the audio
-            # Use actual_room which may include @local suffix for Docker portal
-            return _remote_say(text, actual_room, portal_url)
+            # Use actual_session which may include @local suffix for Docker portal
+            return _remote_say(text, actual_session, portal_url)
 
-    # No portal connections (or no room) - generate locally
+    # No portal connections (or no session) - generate locally
     return _local_say_runpod(text, voice, exaggeration, cfg_weight, tts_config)
 
 
@@ -1291,8 +1292,8 @@ def _local_say(text: str, voice: str, exaggeration: float, cfg_weight: float, tt
         return 1
 
 
-def _remote_say(text: str, room: str, portal_url: str) -> int:
-    """Send TTS to a room via the portal (for remote sessions)."""
+def _remote_say(text: str, session: str, portal_url: str) -> int:
+    """Send TTS to a session via the portal (for remote sessions)."""
     import urllib.request
     import ssl
 
@@ -1304,7 +1305,7 @@ def _remote_say(text: str, room: str, portal_url: str) -> int:
 
         data = json.dumps({"text": text}).encode()
         req = urllib.request.Request(
-            f"{portal_url}/api/say/{room}",
+            f"{portal_url}/api/say/{session}",
             data=data,
             headers={"Content-Type": "application/json"},
         )
@@ -2269,14 +2270,10 @@ def cmd_recreate(args) -> int:
         # Restricted mode implies no bypass (uses hook for permission handling)
         bypass_flag = "" if (restricted or no_bypass) else " --dangerously-skip-permissions"
         session_path = worktree_path if branch else project_path
-        # AGENTWIRE_ROOM must include @machine so portal can find room config
-        room_name = f"{session_name}@{machine_id}"
 
         create_cmd = (
             f"tmux new-session -d -s {shlex.quote(session_name)} -c {shlex.quote(session_path)} && "
             f"tmux send-keys -t {shlex.quote(session_name)} 'cd {shlex.quote(session_path)}' Enter && "
-            f"sleep 0.1 && "
-            f"tmux send-keys -t {shlex.quote(session_name)} 'export AGENTWIRE_ROOM={shlex.quote(room_name)}' Enter && "
             f"sleep 0.1 && "
             f"tmux send-keys -t {shlex.quote(session_name)} 'claude{bypass_flag}' Enter"
         )
@@ -2380,12 +2377,6 @@ def cmd_recreate(args) -> int:
     # Ensure Claude starts in correct directory
     subprocess.run(
         ["tmux", "send-keys", "-t", session_name, f"cd {shlex.quote(str(session_path))}", "Enter"],
-        check=True
-    )
-    time.sleep(0.1)
-
-    subprocess.run(
-        ["tmux", "send-keys", "-t", session_name, f"export AGENTWIRE_ROOM={session_name}", "Enter"],
         check=True
     )
     time.sleep(0.1)
@@ -2526,13 +2517,9 @@ def cmd_fork(args) -> int:
         no_bypass = getattr(args, 'no_bypass', False)
         # Restricted mode implies no bypass (uses hook for permission handling)
         bypass_flag = "" if (restricted or no_bypass) else " --dangerously-skip-permissions"
-        # AGENTWIRE_ROOM must include @machine so portal can find room config
-        room_name = f"{target_session}@{machine_id}"
         create_session_cmd = (
             f"tmux new-session -d -s {shlex.quote(target_session)} -c {shlex.quote(target_path)} && "
             f"tmux send-keys -t {shlex.quote(target_session)} 'cd {shlex.quote(target_path)}' Enter && "
-            f"sleep 0.1 && "
-            f"tmux send-keys -t {shlex.quote(target_session)} 'export AGENTWIRE_ROOM={shlex.quote(room_name)}' Enter && "
             f"sleep 0.1 && "
             f"tmux send-keys -t {shlex.quote(target_session)} 'claude{bypass_flag}' Enter"
         )
@@ -2615,12 +2602,6 @@ def cmd_fork(args) -> int:
         # Ensure Claude starts in correct directory
         subprocess.run(
             ["tmux", "send-keys", "-t", target_session, f"cd {shlex.quote(str(fork_path))}", "Enter"],
-            check=True
-        )
-        time.sleep(0.1)
-
-        subprocess.run(
-            ["tmux", "send-keys", "-t", target_session, f"export AGENTWIRE_ROOM={target_session}", "Enter"],
             check=True
         )
         time.sleep(0.1)
@@ -2729,12 +2710,6 @@ def cmd_fork(args) -> int:
     # Ensure Claude starts in correct directory
     subprocess.run(
         ["tmux", "send-keys", "-t", target_session, f"cd {shlex.quote(str(target_path))}", "Enter"],
-        check=True
-    )
-    time.sleep(0.1)
-
-    subprocess.run(
-        ["tmux", "send-keys", "-t", target_session, f"export AGENTWIRE_ROOM={target_session}", "Enter"],
         check=True
     )
     time.sleep(0.1)
@@ -3036,13 +3011,6 @@ def cmd_dev(args) -> int:
     subprocess.run([
         "tmux", "new-session", "-d", "-s", session_name, "-c", str(project_dir),
     ])
-
-    # Set env vars (used by permission hook)
-    subprocess.run([
-        "tmux", "send-keys", "-t", session_name,
-        f"export AGENTWIRE_ROOM={session_name}", "Enter",
-    ])
-    time.sleep(0.1)
 
     # Start Claude with agentwire config
     subprocess.run([
@@ -4953,7 +4921,7 @@ def main() -> int:
     say_parser = subparsers.add_parser("say", help="Speak text via TTS")
     say_parser.add_argument("text", nargs="*", help="Text to speak")
     say_parser.add_argument("-v", "--voice", type=str, help="Voice name")
-    say_parser.add_argument("-r", "--room", type=str, help="Room name (auto-detected from AGENTWIRE_ROOM or tmux session)")
+    say_parser.add_argument("-s", "--session", type=str, help="Session name (auto-detected from .agentwire.yml or tmux)")
     say_parser.add_argument("--exaggeration", type=float, help="Voice exaggeration (0-1)")
     say_parser.add_argument("--cfg", type=float, help="CFG weight (0-1)")
     say_parser.set_defaults(func=cmd_say)
