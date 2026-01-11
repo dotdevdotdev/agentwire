@@ -67,11 +67,35 @@ Consolidate on "session" terminology throughout the codebase. "Room" is legacy f
 - Rename `RoomConfig` → `SessionConfig`
 - Update all references
 
-**Task 4.2: Remove AGENTWIRE_ROOM env var**
-- Files: `agentwire/__main__.py`, `scripts/say`
-- Remove `AGENTWIRE_ROOM` checks entirely
-- Project yaml is now the source of truth for session identity
-- Fallback: CLI flag → `.agentwire.yml` → path inference → tmux session name
+**Task 4.2: Replace env vars with yaml config**
+
+Env vars to remove (replaced by `.agentwire.yml` or global config):
+
+| Env Var | Replacement | Notes |
+|---------|-------------|-------|
+| `AGENTWIRE_ROOM` | `.agentwire.yml` `session:` field | Or tmux session name |
+| `AGENTWIRE_URL` | Global config `server.url` | For hooks/scripts |
+| `AGENTWIRE_PORTAL_URL` | Global config `server.url` | Same as above |
+| `AGENTWIRE_VOICES_DIR` | Global config `tts.voices_dir` | Currently hardcoded fallback |
+
+Env vars to KEEP (legitimate uses):
+- `AGENTWIRE_SERVER__PORT` etc. - Config overrides for deployment (12-factor)
+- `OPENAI_API_KEY` - External secrets should stay as env vars
+- `TMUX` - System detection, not ours
+
+Files to update:
+- `agentwire/__main__.py` - Remove AGENTWIRE_ROOM exports and checks
+- `agentwire/agents/tmux.py` - Stop exporting AGENTWIRE_ROOM on session create
+- `agentwire/hooks/agentwire-permission.sh` - Use tmux + yaml instead of env var
+- `scripts/say` - Remove AGENTWIRE_ROOM check
+- `agentwire/tts_server.py` - Use config for voices dir
+- `agentwire/config.py` - Add `voices_dir` to TTSConfig
+
+Session identity fallback chain:
+1. CLI flag `--session`
+2. `.agentwire.yml` `session:` field
+3. Path inference (`~/projects/{name}`)
+4. `tmux display-message -p '#S'`
 
 **Task 4.3: Rename API endpoints**
 - Files: `agentwire/server.py`
@@ -102,7 +126,10 @@ Consolidate on "session" terminology throughout the codebase. "Room" is legacy f
 - [x] `POST /api/sessions/refresh` triggers cache rebuild
 - [x] Dashboard displays all sessions correctly
 - [ ] `RoomConfig` renamed to `SessionConfig`
-- [ ] `AGENTWIRE_ROOM` env var removed
+- [ ] `AGENTWIRE_ROOM` env var removed (use yaml/tmux)
+- [ ] `AGENTWIRE_URL` / `AGENTWIRE_PORTAL_URL` replaced with global config
+- [ ] `AGENTWIRE_VOICES_DIR` replaced with `tts.voices_dir` config
+- [ ] Permission hook uses tmux + yaml instead of env var
 - [ ] API uses `/api/sessions/` consistently
 - [ ] No "room" terminology in function names (except backwards compat aliases)
 - [ ] Comments use "session" terminology
