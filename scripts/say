@@ -4,28 +4,46 @@
 #        say "[laugh] That's funny"
 #        say "Message" voicename
 #
-# Room detection priority:
-#   1. AGENTWIRE_ROOM environment variable
-#   2. .agentwire.yml in current or parent directory (room: field)
-#   3. Infer from directory path (~/projects/{room} or worktrees)
-#   4. tmux session name
+# Session detection priority:
+#   1. .agentwire.yml in current or parent directory (session: field)
+#   2. Infer from directory path (~/projects/{session} or worktrees)
+#   3. tmux session name
 #
 # Smart routing:
-#   - If portal has browser connections for the room, sends to portal
+#   - If portal has browser connections for the session, sends to portal
 #   - Otherwise, generates TTS locally and plays via afplay
 #
-# Default voice: bashbunni
+# Default voice: dotdev
 
 set -e
 
 TEXT="$1"
-VOICE="${2:-bashbunni}"
-PORTAL_URL="${AGENTWIRE_PORTAL_URL:-https://localhost:8765}"
+CLI_VOICE="$2"  # Explicit CLI voice (may be empty)
 OUTPUT="/tmp/say_output.wav"
+
+# Get portal URL from global config
+get_portal_url() {
+    # Try config.yaml first
+    if [ -f "$HOME/.agentwire/config.yaml" ]; then
+        local url=$(grep -E "^\s*url:" "$HOME/.agentwire/config.yaml" 2>/dev/null | head -1 | sed 's/.*url:[[:space:]]*//' | tr -d '"'"'" || true)
+        if [ -n "$url" ]; then
+            echo "$url"
+            return
+        fi
+    fi
+    # Fallback to portal_url file
+    if [ -f "$HOME/.agentwire/portal_url" ]; then
+        cat "$HOME/.agentwire/portal_url" | tr -d '\n'
+        return
+    fi
+    # Default
+    echo "https://localhost:8765"
+}
+PORTAL_URL=$(get_portal_url)
 
 if [ -z "$TEXT" ]; then
     echo "Usage: say \"Your message\" [voice]"
-    echo "       say \"[laugh] That's funny\" bashbunni"
+    echo "       say \"[laugh] That's funny\" dotdev"
     exit 1
 fi
 
@@ -44,18 +62,27 @@ find_agentwire_config() {
     return 1
 }
 
-# Extract room name from .agentwire.yml
-get_room_from_config() {
+# Extract session name from .agentwire.yml
+get_session_from_config() {
     local config_file="$1"
     if [ -f "$config_file" ]; then
-        # Simple YAML parsing - look for "room: value"
-        grep -E "^room:" "$config_file" 2>/dev/null | sed 's/^room:[[:space:]]*//' | tr -d '"'"'" || true
+        # Simple YAML parsing - look for "session: value"
+        grep -E "^session:" "$config_file" 2>/dev/null | sed 's/^session:[[:space:]]*//' | tr -d '"'"'" || true
     fi
 }
 
-# Infer room name from directory path
-# Convention: ~/projects/{room} or ~/projects/{room}-worktrees/{branch}
-infer_room_from_path() {
+# Extract voice from .agentwire.yml
+get_voice_from_config() {
+    local config_file="$1"
+    if [ -f "$config_file" ]; then
+        # Simple YAML parsing - look for "voice: value"
+        grep -E "^voice:" "$config_file" 2>/dev/null | sed 's/^voice:[[:space:]]*//' | tr -d '"'"'" || true
+    fi
+}
+
+# Infer session name from directory path
+# Convention: ~/projects/{session} or ~/projects/{session}-worktrees/{branch}
+infer_session_from_path() {
     local cwd="$PWD"
     local projects_dir="$HOME/projects"
 
@@ -82,32 +109,26 @@ infer_room_from_path() {
     return 1
 }
 
-# Get current room name with multi-source detection
-get_room() {
-    # 1. Environment variable (highest priority)
-    if [ -n "$AGENTWIRE_ROOM" ]; then
-        echo "$AGENTWIRE_ROOM"
-        return
-    fi
-
-    # 2. .agentwire.yml config file
+# Get current session name with multi-source detection
+get_session() {
+    # 1. .agentwire.yml config file
     local config_file=$(find_agentwire_config)
     if [ -n "$config_file" ]; then
-        local room=$(get_room_from_config "$config_file")
-        if [ -n "$room" ]; then
-            echo "$room"
+        local session=$(get_session_from_config "$config_file")
+        if [ -n "$session" ]; then
+            echo "$session"
             return
         fi
     fi
 
-    # 3. Infer from directory path
-    local inferred=$(infer_room_from_path)
+    # 2. Infer from directory path
+    local inferred=$(infer_session_from_path)
     if [ -n "$inferred" ]; then
         echo "$inferred"
         return
     fi
 
-    # 4. tmux session name (fallback)
+    # 3. tmux session name (fallback)
     if [ -n "$TMUX" ]; then
         tmux display-message -p '#S' 2>/dev/null
         return
@@ -116,23 +137,23 @@ get_room() {
     echo ""
 }
 
-# Check if portal has browser connections for a room
+# Check if portal has browser connections for a session
 # Returns 0 if connected, 1 if not
 check_portal_connections() {
-    local room="$1"
-    if [ -z "$room" ]; then
+    local session="$1"
+    if [ -z "$session" ]; then
         return 1
     fi
 
-    # Get hostname for machine-qualified room names
+    # Get hostname for machine-qualified session names
     local hostname=$(hostname -s 2>/dev/null || hostname | cut -d. -f1)
 
-    # Try room variants: as-is, with hostname, with @local
-    for try_room in "$room" "${room}@${hostname}" "${room}@local"; do
-        local encoded_room=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$try_room', safe=''))")
-        local result=$(curl -sk "$PORTAL_URL/api/rooms/$encoded_room/connections" 2>/dev/null)
+    # Try session variants: as-is, with hostname, with @local
+    for try_session in "$session" "${session}@${hostname}" "${session}@local"; do
+        local encoded_session=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$try_session', safe=''))")
+        local result=$(curl -sk "$PORTAL_URL/api/sessions/$encoded_session/connections" 2>/dev/null)
         if echo "$result" | grep -q '"has_connections": true'; then
-            echo "$try_room"
+            echo "$try_session"
             return 0
         fi
     done
@@ -141,12 +162,12 @@ check_portal_connections() {
 
 # Send TTS to portal (plays on browser clients)
 send_to_portal() {
-    local room="$1"
+    local session="$1"
     local text="$2"
-    local encoded_room=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$room', safe=''))")
+    local encoded_session=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$session', safe=''))")
     local json=$(python3 -c "import json; print(json.dumps({'text': '''$text'''}))")
 
-    curl -sk -X POST "$PORTAL_URL/api/say/$encoded_room" \
+    curl -sk -X POST "$PORTAL_URL/api/say/$encoded_session" \
         -H "Content-Type: application/json" \
         -d "$json" > /dev/null 2>&1
 }
@@ -156,14 +177,14 @@ send_to_portal() {
 play_local() {
     local text="$1"
     local voice="$2"
-    local room="$3"
+    local session="$3"
 
     # Use portal's local-tts endpoint (plays audio server-side)
-    local encoded_room=$(python3 -c "import urllib.parse; print(urllib.parse.quote('${room:-default}', safe=''))")
+    local encoded_session=$(python3 -c "import urllib.parse; print(urllib.parse.quote('${session:-default}', safe=''))")
     local json=$(python3 -c "import json; print(json.dumps({'text': '''$text''', 'voice': '$voice'}))")
 
     # Send to portal - it plays audio and returns JSON status
-    local result=$(curl -sk -X POST "$PORTAL_URL/api/local-tts/$encoded_room" \
+    local result=$(curl -sk -X POST "$PORTAL_URL/api/local-tts/$encoded_session" \
         -H "Content-Type: application/json" \
         -d "$json")
 
@@ -177,13 +198,25 @@ play_local() {
 }
 
 # Main logic - smart routing
-ROOM=$(get_room)
-CONNECTED_ROOM=$(check_portal_connections "$ROOM") && HAS_CONNECTIONS=true || HAS_CONNECTIONS=false
+
+# Resolve voice: CLI arg > .agentwire.yml > default
+if [ -n "$CLI_VOICE" ]; then
+    VOICE="$CLI_VOICE"
+else
+    CONFIG_FILE=$(find_agentwire_config)
+    if [ -n "$CONFIG_FILE" ]; then
+        VOICE=$(get_voice_from_config "$CONFIG_FILE")
+    fi
+fi
+VOICE="${VOICE:-dotdev}"  # Fallback to default
+
+SESSION=$(get_session)
+CONNECTED_SESSION=$(check_portal_connections "$SESSION") && HAS_CONNECTIONS=true || HAS_CONNECTIONS=false
 
 if [ "$HAS_CONNECTIONS" = true ]; then
     # Browser connected - send to portal for playback there
-    send_to_portal "$CONNECTED_ROOM" "$TEXT"
+    send_to_portal "$CONNECTED_SESSION" "$TEXT"
 else
     # No browser connected - play locally via portal's TTS backend
-    play_local "$TEXT" "$VOICE" "$ROOM"
+    play_local "$TEXT" "$VOICE" "$SESSION"
 fi

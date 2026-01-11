@@ -24,7 +24,7 @@ Interactive wizard for removing a machine from the AgentWire network.
 The `agentwire machine remove` command handles:
 - Remove from `~/.agentwire/machines.json`
 - Kill autossh tunnel process
-- Clean up `~/.agentwire/rooms.json` entries
+- Clean up `~/.agentwire/sessions.json` entries
 
 ### Manual Steps (wizard guides through)
 
@@ -150,7 +150,7 @@ The wizard ensures all these are handled:
 
 - [ ] Tunnel stopped
 - [ ] Removed from machines.json
-- [ ] Room configs cleaned
+- [ ] Session configs cleaned
 - [ ] SSH config entry removed
 - [ ] GitHub deploy keys deleted
 - [ ] Remote machine destroyed (if requested)

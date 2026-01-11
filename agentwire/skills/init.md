@@ -33,7 +33,7 @@ ls ~/.agentwire/config.yaml 2>/dev/null
 ```
 Welcome to AgentWire Setup!
 
-AgentWire is a multi-room voice interface for AI coding agents.
+AgentWire is a multi-session voice interface for AI coding agents.
 I'll walk you through configuring:
 
   1. Project directory (where your code projects live)
@@ -108,25 +108,15 @@ Which TTS backend?
 
 ```
 Speech-to-Text converts your voice to text for sending to agents.
+STT uses agentwire-stt server (Docker or standalone).
 
-Available backends:
+STT server URL (leave empty to disable): http://localhost:8100
 ```
 
-**Detect platform and show relevant options:**
+**If URL provided:**
+- Confirm STT will use that URL
 
-| Platform | Options |
-|----------|---------|
-| macOS | WhisperKit (fast, local), OpenAI API, None |
-| Linux/WSL | whisper.cpp, faster-whisper, OpenAI API, None |
-
-**If local backend:**
-- Ask for model path or use default
-- Offer to download models if not present
-
-**If OpenAI:**
-- Note: Requires OPENAI_API_KEY environment variable
-
-**If None:**
+**If empty:**
 - Confirm typing-only mode (no voice input)
 
 #### Section 5: SSL Certificates
@@ -196,8 +186,7 @@ tts:
   default_voice: "{tts_voice}"
 
 stt:
-  backend: "{stt_backend}"
-  language: "en"
+  url: "{stt_url}"  # agentwire-stt server URL
 
 agent:
   command: "{agent_command}"
@@ -212,11 +201,11 @@ agent:
 }
 ```
 
-**~/.agentwire/rooms.json:**
+**~/.agentwire/sessions.json:**
 ```json
 {
   "agentwire": {
-    "role": "orchestrator",
+    "role": "agentwire",
     "voice": "{default_voice}"
   }
 }
@@ -232,7 +221,7 @@ agent:
 Created:
   ~/.agentwire/config.yaml
   ~/.agentwire/machines.json
-  ~/.agentwire/rooms.json
+  ~/.agentwire/sessions.json
   ~/.agentwire/cert.pem (if generated)
   ~/.agentwire/key.pem (if generated)
 
@@ -240,7 +229,7 @@ Your setup:
   Projects:    ~/projects
   Agent:       claude --dangerously-skip-permissions
   TTS:         Chatterbox @ http://localhost:8100
-  STT:         WhisperKit (local)
+  STT:         http://localhost:8100
   Machines:    Local only
 
 Next steps:
@@ -262,7 +251,7 @@ Current settings:
   Projects:    ~/projects
   Agent:       claude --dangerously-skip-permissions
   TTS:         Chatterbox @ http://localhost:8100
-  STT:         WhisperKit
+  STT:         http://localhost:8100
   Machines:    2 configured (devbox-1, gpu-server)
 
 What would you like to do?

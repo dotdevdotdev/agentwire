@@ -29,9 +29,7 @@ tts:
 
 # Speech-to-text settings
 stt:
-  backend: "whisperkit"         # STT backend: whisperkit | whispercpp | openai | none
-  model_path: "~/models/whisperkit/large-v3"  # Model path (for local backends)
-  language: "en"                # Language code for transcription
+  url: "http://localhost:8100"  # agentwire-stt server URL (empty = disabled)
 
 # Agent settings
 agent:
@@ -69,7 +67,6 @@ Environment variables override config file settings:
 | `AGENTWIRE_CONFIG` | Config file path |
 | `AGENTWIRE_PORT` | Server port |
 | `AGENTWIRE_HOST` | Server bind address |
-| `OPENAI_API_KEY` | For OpenAI STT backend |
 | `ELEVENLABS_API_KEY` | For ElevenLabs TTS backend |
 
 ## SSL Certificates
@@ -152,10 +149,8 @@ If no config file exists, AgentWire uses these defaults:
 | Host | 0.0.0.0 |
 | Projects dir | ~/projects |
 | TTS backend | none |
-| STT backend | Platform-dependent* |
+| STT | Disabled (no URL) |
 | Agent command | claude |
-
-*STT default: `whisperkit` on macOS, `whispercpp` on Linux/WSL2
 
 ## Session Templates
 

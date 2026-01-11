@@ -50,7 +50,7 @@
 │  ┌────────────────┐ │                      │  │                       │    │
 │  │ anna           │ │                      │  │  Chatterbox TTS       │    │
 │  │ Claude Code    │ │                      │  │  Voice cloning        │    │
-│  │ + chatbot role │ │                      │  │  GPU inference        │    │
+│  │ + agentwire    │ │                      │  │  GPU inference        │    │
 │  └───────┬────────┘ │                      │  └───────────────────────┘    │
 │          │          │                      │                               │
 │          │          │                      └───────────────────────────────┘
@@ -129,6 +129,6 @@ First match with has_connections: true wins
 ├── config.yaml      # TTS/STT backend settings, RunPod credentials
 ├── machines.json    # SSH targets (host.docker.internal, dotdev-pc)
 ├── rooms.json       # Per-room voice settings
-├── roles/           # Role instructions (orchestrator.md, chatbot.md)
+├── roles/           # Role instructions (agentwire.md for main session, worker.md for workers)
 └── hooks/           # PreToolUse security hooks
 ```

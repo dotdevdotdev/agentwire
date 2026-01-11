@@ -7,7 +7,7 @@ def get_template(name: str) -> str:
     """Load a template file by name.
     
     Args:
-        name: Template name (e.g., 'dashboard.html', 'room.html')
+        name: Template name (e.g., 'dashboard.html', 'session.html')
         
     Returns:
         Template content as string

@@ -6,7 +6,7 @@
 import * as ws from '/static/js/websocket.js';
 
 // Get default voice from the page (set by Jinja2)
-const DEFAULT_VOICE = window.AGENTWIRE_CONFIG?.defaultVoice || 'bashbunni';
+const DEFAULT_VOICE = window.AGENTWIRE_CONFIG?.defaultVoice || 'dotdev';
 
 // Path check debounce timeout
 let pathCheckTimeout = null;
@@ -192,9 +192,9 @@ function updateSessionIndicator(sessionName, activityState) {
         const link = card.querySelector('a');
         if (!link) continue;
 
-        // Extract session name from href: /room/{name}
+        // Extract session name from href: /session/{name}
         const href = link.getAttribute('href');
-        const match = href?.match(/\/room\/(.+)/);
+        const match = href?.match(/\/session\/(.+)/);
         if (!match) continue;
 
         const cardSessionName = decodeURIComponent(match[1]);
@@ -658,25 +658,36 @@ function renderSessionCard(session, machineId) {
     const isExpanded = isSessionExpanded(session.name);
     const expandIcon = isExpanded ? '▼' : '▶';
 
-    // Determine permission badge: restricted > prompted > bypass
-    let permissionBadge;
-    if (session.restricted) {
-        permissionBadge = '<span class="session-badge restricted">Restricted</span>';
-    } else if (session.bypass_permissions === false) {
-        permissionBadge = '<span class="session-badge prompted">Prompted</span>';
+    // Determine session type badge: bare | claude-bypass | claude-prompted | claude-restricted
+    let typeBadge;
+    const sessionType = session.type || 'claude-bypass';  // Default for backwards compat
+    switch (sessionType) {
+        case 'bare':
+            typeBadge = '<span class="session-badge bare-type">Bare</span>';
+            break;
+        case 'claude-restricted':
+            typeBadge = '<span class="session-badge restricted">Restricted</span>';
+            break;
+        case 'claude-prompted':
+            typeBadge = '<span class="session-badge prompted">Prompted</span>';
+            break;
+        case 'claude-bypass':
+        default:
+            typeBadge = '<span class="session-badge bypass">Bypass</span>';
+            break;
+    }
+
+    // Role badges: show all roles from the roles array
+    let rolesBadges = '';
+    if (session.roles && session.roles.length > 0) {
+        rolesBadges = session.roles.map(role =>
+            `<span class="session-badge role">${role}</span>`
+        ).join('');
     } else {
-        permissionBadge = '<span class="session-badge bypass">Bypass</span>';
+        rolesBadges = '<span class="session-badge bare">bare</span>';
     }
 
-    // Session type badge: worker or orchestrator
-    let typeBadge = '';
-    if (session.type === 'worker') {
-        typeBadge = '<span class="session-badge worker">Worker</span>';
-    } else if (session.type === 'orchestrator') {
-        typeBadge = '<span class="session-badge orchestrator">Orchestrator</span>';
-    }
-
-    const badge = typeBadge + permissionBadge;
+    const badge = rolesBadges + typeBadge;
 
     // Strip @machine from display name if present (avoid doubling)
     let displayName = session.name;
@@ -702,7 +713,7 @@ function renderSessionCard(session, machineId) {
                     ${badge}
                 </div>
                 <div class="session-header-right">
-                    <a href="/room/${encodeURIComponent(session.name)}" class="session-action-btn goto-btn" title="Go to room">→</a>
+                    <a href="/session/${encodeURIComponent(session.name)}" class="session-action-btn goto-btn" title="Go to session">→</a>
                     <button class="session-action-btn close-btn" data-session="${session.name}" title="Close session">×</button>
                 </div>
             </div>
@@ -1004,7 +1015,7 @@ async function createSession() {
         if (errorEl) errorEl.textContent = data.error;
     } else {
         // Use the session name returned by server (includes branch@machine if applicable)
-        window.location.href = '/room/' + encodeURIComponent(data.name);
+        window.location.href = '/session/' + encodeURIComponent(data.name);
     }
 }
 
@@ -1164,8 +1175,8 @@ async function removeMachine(id) {
         alert('Failed to remove machine: ' + data.error);
     } else {
         loadMachines();
-        if (data.rooms_removed && data.rooms_removed.length > 0) {
-            console.log('Removed room configs:', data.rooms_removed);
+        if (data.sessions_removed && data.sessions_removed.length > 0) {
+            console.log('Removed session configs:', data.sessions_removed);
         }
     }
 }
@@ -1631,7 +1642,7 @@ export function init() {
     loadArchive();
 
     // Connect WebSocket for real-time activity updates
-    // Use 'dashboard' as a special room name for global session updates
+    // Use 'dashboard' as a special session name for global session updates
     ws.connect('dashboard', {
         onSessionActivity: handleSessionActivity,
         onConnect: () => {

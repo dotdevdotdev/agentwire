@@ -60,21 +60,6 @@ def load_config() -> dict:
     return {}
 
 
-def get_whisperkit_model_path() -> str:
-    """Get WhisperKit model path from config or default."""
-    config = load_config()
-    model_path = config.get("stt", {}).get("model_path")
-    if model_path:
-        return str(Path(model_path).expanduser())
-
-    # Default macOS WhisperKit path
-    default = Path.home() / "Library/Application Support/MacWhisper/models/whisperkit/models/argmaxinc/whisperkit-coreml/openai_whisper-large-v3-v20240930"
-    if default.exists():
-        return str(default)
-
-    return ""
-
-
 def get_audio_device() -> str:
     """Get audio input device from config. Returns device index for ffmpeg."""
     config = load_config()
@@ -171,79 +156,51 @@ def stop_recording(session: str, voice_prompt: bool = True) -> int:
     log("Transcribing...")
     notify("Transcribing...")
 
-    # Get config
+    # Get STT URL from config
     config = load_config()
-    stt_backend = config.get("stt", {}).get("backend", "whisperkit")
+    stt_url = config.get("stt", {}).get("url")
+    if not stt_url:
+        log("ERROR: stt.url not configured")
+        notify("STT URL not configured in config.yaml")
+        beep("error")
+        return 1
 
-    # Transcribe based on backend
+    # Transcribe via remote STT server
+    import urllib.request
+
+    transcribe_url = f"{stt_url}/transcribe"
     text = ""
-    if stt_backend == "whisperkit":
-        model_path = get_whisperkit_model_path()
-        if not model_path:
-            log("ERROR: No WhisperKit model path")
-            notify("WhisperKit model not found")
-            beep("error")
-            return 1
 
-        result = subprocess.run(
-            ["whisperkit-cli", "transcribe",
-             "--audio-path", str(AUDIO_FILE),
-             "--model-path", model_path,
-             "--language", "en",
-             "--skip-special-tokens"],
-            capture_output=True, text=True,
+    try:
+        # Read audio file
+        with open(AUDIO_FILE, 'rb') as f:
+            audio_data = f.read()
+
+        # Create multipart form data
+        boundary = '----WebKitFormBoundary' + os.urandom(16).hex()
+        body = (
+            f'--{boundary}\r\n'
+            f'Content-Disposition: form-data; name="file"; filename="audio.wav"\r\n'
+            f'Content-Type: audio/wav\r\n\r\n'
+        ).encode('utf-8') + audio_data + f'\r\n--{boundary}--\r\n'.encode('utf-8')
+
+        # POST to STT server
+        req = urllib.request.Request(
+            transcribe_url,
+            data=body,
+            headers={
+                'Content-Type': f'multipart/form-data; boundary={boundary}',
+                'Content-Length': str(len(body))
+            }
         )
-        text = result.stdout.strip()
 
-    elif stt_backend == "remote":
-        # Use remote STT server (Docker container)
-        import urllib.request
-        import urllib.parse
+        with urllib.request.urlopen(req, timeout=30) as response:
+            result = json.loads(response.read().decode('utf-8'))
+            text = result.get("text", "")
 
-        stt_url = config.get("stt", {}).get("url")
-        if not stt_url:
-            log("ERROR: stt.url not configured")
-            notify("STT URL not configured in config.yaml")
-            beep("error")
-            return 1
-        transcribe_url = f"{stt_url}/transcribe"
-
-        try:
-            # Read audio file
-            with open(AUDIO_FILE, 'rb') as f:
-                audio_data = f.read()
-
-            # Create multipart form data
-            boundary = '----WebKitFormBoundary' + os.urandom(16).hex()
-            body = (
-                f'--{boundary}\r\n'
-                f'Content-Disposition: form-data; name="file"; filename="audio.wav"\r\n'
-                f'Content-Type: audio/wav\r\n\r\n'
-            ).encode('utf-8') + audio_data + f'\r\n--{boundary}--\r\n'.encode('utf-8')
-
-            # POST to STT server
-            req = urllib.request.Request(
-                transcribe_url,
-                data=body,
-                headers={
-                    'Content-Type': f'multipart/form-data; boundary={boundary}',
-                    'Content-Length': str(len(body))
-                }
-            )
-
-            with urllib.request.urlopen(req, timeout=30) as response:
-                result = json.loads(response.read().decode('utf-8'))
-                text = result.get("text", "")
-
-        except Exception as e:
-            log(f"ERROR: Remote STT failed: {e}")
-            notify(f"Transcription failed: {e}")
-            beep("error")
-            return 1
-
-    else:
-        log(f"ERROR: Unknown STT backend: {stt_backend}")
-        notify(f"Unknown STT backend: {stt_backend}")
+    except Exception as e:
+        log(f"ERROR: STT failed: {e}")
+        notify(f"Transcription failed: {e}")
         beep("error")
         return 1
 

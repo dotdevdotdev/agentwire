@@ -78,7 +78,8 @@ class TTSConfig:
 
     backend: str = "chatterbox"  # chatterbox | runpod | none
     url: str | None = None  # TTS server URL (required for chatterbox backend)
-    default_voice: str = "bashbunni"
+    default_voice: str = "dotdev"
+    voices_dir: Path = field(default_factory=lambda: Path.home() / ".agentwire" / "voices")
     # Voice parameters (applies to all backends)
     exaggeration: float = 0.5
     cfg_weight: float = 0.5
@@ -87,27 +88,19 @@ class TTSConfig:
     runpod_api_key: str = ""
     runpod_timeout: int = 60
 
+    def __post_init__(self):
+        self.voices_dir = _expand_path(self.voices_dir) or Path.home() / ".agentwire" / "voices"
+
 
 @dataclass
 class STTConfig:
-    """Speech-to-text configuration."""
+    """Speech-to-text configuration.
 
-    backend: str = field(default_factory=lambda: _default_stt_backend())
-    model_path: Path | None = None
-    language: str = "en"
-    # Remote STT server configuration
-    url: str | None = None  # STT server URL (required for remote backend)
+    STT uses a remote server (agentwire-stt). Configure url to enable.
+    """
+
+    url: str | None = None  # STT server URL (e.g., http://localhost:8100)
     timeout: int = 30
-
-    def __post_init__(self):
-        self.model_path = _expand_path(self.model_path)
-
-
-def _default_stt_backend() -> str:
-    """Default STT backend based on platform."""
-    if platform.system() == "Darwin":
-        return "whisperkit"  # macOS - uses Apple Neural Engine
-    return "openai"  # Linux/other - use OpenAI API
 
 
 @dataclass
@@ -130,11 +123,11 @@ class MachinesConfig:
 
 
 @dataclass
-class RoomsConfig:
-    """Room configurations file path."""
+class SessionsConfig:
+    """Session configurations file path."""
 
     file: Path = field(
-        default_factory=lambda: Path.home() / ".agentwire" / "rooms.json"
+        default_factory=lambda: Path.home() / ".agentwire" / "sessions.json"
     )
 
     def __post_init__(self):
@@ -176,7 +169,7 @@ class Template:
 
     name: str
     description: str = ""
-    role: str | None = None  # Role file from ~/.agentwire/roles/
+    roles: list[str] = field(default_factory=list)  # Composable roles array
     voice: str | None = None  # TTS voice
     project: str | None = None  # Default project path
     initial_prompt: str = ""  # Context sent to Claude on session start
@@ -192,8 +185,8 @@ class Template:
             "bypass_permissions": self.bypass_permissions,
             "restricted": self.restricted,
         }
-        if self.role:
-            d["role"] = self.role
+        if self.roles:
+            d["roles"] = self.roles
         if self.voice:
             d["voice"] = self.voice
         if self.project:
@@ -203,10 +196,15 @@ class Template:
     @classmethod
     def from_dict(cls, data: dict) -> "Template":
         """Create Template from dictionary."""
+        # Support both old 'role' (single) and new 'roles' (array) format
+        roles_data = data.get("roles", [])
+        if not roles_data and data.get("role"):
+            # Backwards compat: convert single role to array
+            roles_data = [data["role"]]
         return cls(
             name=data.get("name", ""),
             description=data.get("description", ""),
-            role=data.get("role"),
+            roles=roles_data if isinstance(roles_data, list) else [roles_data],
             voice=data.get("voice"),
             project=data.get("project"),
             initial_prompt=data.get("initial_prompt", ""),
@@ -263,7 +261,7 @@ class Config:
     stt: STTConfig = field(default_factory=STTConfig)
     agent: AgentConfig = field(default_factory=AgentConfig)
     machines: MachinesConfig = field(default_factory=MachinesConfig)
-    rooms: RoomsConfig = field(default_factory=RoomsConfig)
+    sessions: SessionsConfig = field(default_factory=SessionsConfig)
     uploads: UploadsConfig = field(default_factory=UploadsConfig)
     portal: PortalConfig = field(default_factory=PortalConfig)
     services: ServicesConfig = field(default_factory=ServicesConfig)
@@ -367,7 +365,7 @@ def _dict_to_config(data: dict) -> Config:
     tts = TTSConfig(
         backend=tts_data.get("backend", "chatterbox"),
         url=tts_data.get("url"),
-        default_voice=tts_data.get("default_voice", "bashbunni"),
+        default_voice=tts_data.get("default_voice", "dotdev"),
         runpod_endpoint_id=tts_data.get("runpod_endpoint_id", ""),
         runpod_api_key=tts_data.get("runpod_api_key", ""),
         runpod_timeout=tts_data.get("runpod_timeout", 60),
@@ -376,9 +374,6 @@ def _dict_to_config(data: dict) -> Config:
     # STT
     stt_data = data.get("stt", {})
     stt = STTConfig(
-        backend=stt_data.get("backend", _default_stt_backend()),
-        model_path=stt_data.get("model_path"),
-        language=stt_data.get("language", "en"),
         url=stt_data.get("url"),
         timeout=stt_data.get("timeout", 30),
     )
@@ -395,10 +390,10 @@ def _dict_to_config(data: dict) -> Config:
         file=machines_data.get("file", "~/.agentwire/machines.json"),
     )
 
-    # Rooms
-    rooms_data = data.get("rooms", {})
-    rooms = RoomsConfig(
-        file=rooms_data.get("file", "~/.agentwire/rooms.json"),
+    # Sessions
+    sessions_data = data.get("sessions", {})
+    sessions = SessionsConfig(
+        file=sessions_data.get("file", "~/.agentwire/sessions.json"),
     )
 
     # Uploads
@@ -449,7 +444,7 @@ def _dict_to_config(data: dict) -> Config:
         stt=stt,
         agent=agent,
         machines=machines,
-        rooms=rooms,
+        sessions=sessions,
         uploads=uploads,
         portal=portal,
         services=services,

@@ -40,17 +40,17 @@ All in `~/.agentwire/`:
 | `hooks/` | PreToolUse hooks (damage-control, session-type) |
 | `templates/*.yaml` | Session templates |
 
-## Session Types
+## Session Roles
 
-| Type | Created With | Restrictions |
+| Role | Created With | Restrictions |
 |------|--------------|--------------|
-| Orchestrator | `agentwire new -s name` | None (guided by role instructions) |
-| Worker | `agentwire new -s name --worker` | No voice, no AskUserQuestion |
+| agentwire | `agentwire new -s name` or `--roles agentwire` | None (guided by role instructions) |
+| worker | `agentwire new -s name --roles worker` | No voice, no AskUserQuestion |
 
 ## Key Patterns
 
-- **Orchestrators** coordinate via voice, delegate to workers for multi-file work
-- **Workers** execute autonomously, report factual results
+- **agentwire sessions** coordinate via voice, delegate to workers for multi-file work
+- **worker sessions** execute autonomously, report factual results
 - **Damage-control hooks** block dangerous ops (`rm -rf`, `git push --force`, etc.)
 - **Smart TTS routing** - audio goes to browser if connected, local speakers if not
 

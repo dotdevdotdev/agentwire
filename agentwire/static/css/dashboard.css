@@ -540,14 +540,19 @@
   color: var(--text-muted);
 }
 
-.session-badge.worker {
+.session-badge.role {
   background: rgba(139, 92, 246, 0.15); /* Purple tint */
   color: rgb(139, 92, 246);
 }
 
-.session-badge.orchestrator {
-  background: rgba(59, 130, 246, 0.15); /* Blue tint */
-  color: rgb(59, 130, 246);
+.session-badge.bare {
+  background: var(--bg-hover); /* Level 3: visible but subtle */
+  color: var(--text-muted);
+}
+
+.session-badge.bare-type {
+  background: var(--bg-hover); /* Level 3: visible but subtle */
+  color: var(--text-muted);
 }
 
 .no-sessions {

@@ -13,7 +13,7 @@ agentwire
 │   list       List sessions (local + all machines)                       │
 │   recreate   Destroy session, fresh worktree, restart                   │
 │   fork       Clone session with conversation context                    │
-│   dev        Start/attach to agentwire orchestrator                     │
+│   dev        Start/attach to agentwire session                          │
 │                                                                          │
 ├── Voice Commands ───────────────────────────────────────────────────────┤
 │   say        Speak text (routes to browser or local)                    │
@@ -47,7 +47,7 @@ agentwire
 
 | Command | Parameters |
 |---------|-----------|
-| `new` | `-s SESSION` (req), `-p PATH`, `-t TEMPLATE`, `-f`, `--no-bypass`, `--restricted`, `--worker`, `--orchestrator`, `--json` |
+| `new` | `-s SESSION` (req), `-p PATH`, `-t TEMPLATE`, `-f`, `--no-bypass`, `--restricted`, `--roles ROLES`, `--json` |
 | `send` | `-s SESSION` (req), `PROMPT`, `--json` |
 | `send-keys` | `-s SESSION` (req), `KEYS...` |
 | `output` | `-s SESSION` (req), `-n LINES`, `--json` |
@@ -125,11 +125,11 @@ agentwire
 ### `agentwire new -s <session>`
 
 ```
-┌─────────────────┐
-│  agentwire new  │
-│  -s anna        │
-│  --orchestrator │
-└────────┬────────┘
+┌─────────────────────────┐
+│  agentwire new          │
+│  -s anna                │
+│  --roles agentwire      │
+└────────────┬────────────┘
          │
          │ Parse session name
          │   anna           → local, ~/projects/anna
@@ -151,8 +151,8 @@ agentwire
 │     Read ~/.agentwire/templates/<name>.yaml  │                          │
 │                                              │                          │
 │  4. Load role instructions                   │                          │
-│     --orchestrator → roles/orchestrator.md   │                          │
-│     --worker → roles/worker.md               │                          │
+│     --roles agentwire → roles/agentwire.md   │                          │
+│     --roles worker → roles/worker.md         │                          │
 │                                              │                          │
 │  5. Create tmux session                      │                          │
 │     tmux new-session -d -s anna -c <path>    │                          │
@@ -162,7 +162,7 @@ agentwire
 │                                              │                          │
 │  7. Set environment                          │                          │
 │     AGENTWIRE_ROOM=anna                      │                          │
-│     AGENTWIRE_SESSION_TYPE=orchestrator      │                          │
+│     AGENTWIRE_SESSION_TYPE=agentwire         │                          │
 │                                              │                          │
 └──────────────────────────────────────────────┴──────────────────────────┘
 ```
@@ -477,9 +477,8 @@ agentwire
 │       └── permissions  # Access control
 │
 ├── roles/               # Role instructions
-│   ├── orchestrator.md  # Voice-first coordinator
-│   ├── worker.md        # Autonomous executor
-│   └── chatbot.md       # Conversational agent
+│   ├── agentwire.md     # Voice-first main session
+│   └── worker.md        # Autonomous executor
 │
 ├── templates/           # Session templates
 │   └── <name>.yaml

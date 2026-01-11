@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <strong>Multi-room voice web interface for AI coding agents</strong>
+  <strong>Multi-session voice web interface for AI coding agents</strong>
 </p>
 
 <p align="center">
@@ -19,13 +19,13 @@ Push-to-talk voice input from any device to tmux sessions running Claude Code or
 ## Features
 
 - **Three Portal Modes** - Ambient (voice + orb), Monitor (read-only terminal), Terminal (full interactive xterm.js) - all work simultaneously
-- **Voice Rooms** - One room per AI agent session (tmux + your agent)
+- **Voice Sessions** - One session per AI agent (tmux + your agent)
 - **Push-to-Talk** - Hold to speak, release to send transcription
 - **Multiline Input** - Auto-expanding textarea with Enter/Shift+Enter support
 - **TTS Playback** - Agent responses spoken back via browser audio
 - **Interactive Terminal** - Full xterm.js terminal with vim, readline, tab completion (desktop browsers)
 - **Multi-Device** - Access from phone, tablet, laptop on your network
-- **Room Locking** - One person talks at a time per room
+- **Session Locking** - One person talks at a time per session
 - **Git Worktrees** - Multiple agents work same project in parallel (CLI + UI support)
 - **Remote Machines** - Orchestrate agents on remote servers
 - **Session Templates** - Pre-configured session setups with initial prompts, voice, and permission modes
@@ -156,7 +156,7 @@ agentwire tts status        # Check if running
 
 # Voice
 agentwire say "Hello"           # Speak locally
-agentwire say --room api "Done" # Send TTS to a room
+agentwire say --session api "Done" # Send TTS to a session
 
 # Voice Cloning
 agentwire voiceclone start      # Start recording voice sample
@@ -190,7 +190,7 @@ agentwire machine add <id>      # Add a machine
 agentwire machine remove <id>   # Remove a machine
 
 # Development
-agentwire dev               # Start orchestrator session
+agentwire dev               # Start agentwire session
 ```
 
 ## Configuration
@@ -213,9 +213,7 @@ tts:
   default_voice: "default"
 
 stt:
-  backend: "whisperkit"  # whisperkit | whispercpp | openai | none
-  model_path: "~/models/whisperkit/large-v3"
-  language: "en"
+  url: "http://localhost:8100"  # agentwire-stt server URL
 
 agent:
   command: "claude --dangerously-skip-permissions"
@@ -295,7 +293,7 @@ agentwire template create my-template
 
 Templates can include:
 - **Initial prompts** - Auto-sent when session starts
-- **Voice settings** - Default TTS voice for the room
+- **Voice settings** - Default TTS voice for the session
 - **Permission modes** - bypass (fast) or restricted (voice-only)
 - **Variable expansion** - `{{project_name}}`, `{{branch}}`
 
@@ -358,10 +356,10 @@ say "Hello world"  # Automatically routes to browser or local speakers
 ```
 
 **How it works:**
-- `say` automatically detects if a browser is connected to the room
+- `say` automatically detects if a browser is connected to the session
 - If connected: streams audio to browser (tablet/phone/laptop)
 - If not connected: plays audio locally (Mac speakers)
-- Room detection uses `AGENTWIRE_ROOM` env var (set automatically when session is created)
+- Session detection uses `AGENTWIRE_SESSION` env var (set automatically when session is created)
 - For remote machines, configure portal URL in `~/.agentwire/portal_url`
 
 
@@ -381,15 +379,23 @@ tts:
   backend: "none"
 ```
 
-## STT Backends
+## STT (Speech-to-Text)
 
-| Backend | Platforms | Setup |
-|---------|-----------|-------|
-| `whisperkit` | macOS (Apple Silicon) | Install MacWhisper |
-| `whispercpp` | All | Install whisper.cpp |
-| `openai` | All | Set `OPENAI_API_KEY` |
-| `remote` | All | Containerized deployment (use STT container URL) |
-| `none` | All | Typing only, no voice |
+STT uses agentwire-stt server. Run it via Docker or standalone:
+
+```bash
+# Docker (recommended)
+docker-compose up stt
+
+# Or standalone
+python -m agentwire.stt.stt_server
+```
+
+Configure the URL in `config.yaml`:
+```yaml
+stt:
+  url: "http://localhost:8100"
+```
 
 ## Architecture
 

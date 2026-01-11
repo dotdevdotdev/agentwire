@@ -137,18 +137,18 @@ Full interactive terminal via xterm.js attached to tmux session.
 - tmux allows multiple simultaneous attachments
 - All modes read from the same tmux session
 
-## Room UI Controls
+## Session UI Controls
 
-The room page header provides device and voice controls:
+The session page header provides device and voice controls:
 
 | Control | Purpose |
 |---------|---------|
 | Mode tabs | Switch between Ambient, Monitor, and Terminal modes |
 | Mic selector | Choose audio input device (saved to localStorage) |
 | Speaker selector | Choose audio output device (Chrome/Edge only) |
-| Voice selector | TTS voice for this room (saved to rooms.json) |
+| Voice selector | TTS voice for this session (saved to sessions.json) |
 
-**Mode persistence:** Last selected mode is remembered per room in localStorage. Reloading the page restores your previous mode.
+**Mode persistence:** Last selected mode is remembered per session in localStorage. Reloading the page restores your previous mode.
 
 **Activity detection:** The portal auto-detects session activity - if any output appears (even from manual commands), the orb switches to Processing state. Returns to Ready after 10s of inactivity.
 
@@ -190,22 +190,22 @@ Claude (or users) can trigger TTS using the unified `agentwire say` command:
 ```bash
 agentwire say "Hello world"          # Smart routing to browser or local
 agentwire say "Message" -v voice     # Specify voice
-agentwire say "Message" -r room      # Specify room
+agentwire say "Message" -s session   # Specify session
 ```
 
 **How it works:**
 
-1. Command detects room from `--room`, `AGENTWIRE_ROOM` env var, or tmux session name
-2. Checks if portal has active browser connections for that room
+1. Command detects session from `--session`, `AGENTWIRE_SESSION` env var, or tmux session name
+2. Checks if portal has active browser connections for that session
 3. If connected -> Sends to portal (plays on browser/tablet)
 4. If not connected -> Generates locally and plays via system audio
 
-**Room detection priority:**
-1. `--room` argument (explicit)
-2. `AGENTWIRE_ROOM` env var (set automatically when session is created)
+**Session detection priority:**
+1. `--session` argument (explicit)
+2. `AGENTWIRE_SESSION` env var (set automatically when session is created)
 3. Current tmux session name (if running in tmux)
 
-**For remote sessions:** `AGENTWIRE_ROOM` includes `@machine` suffix (e.g., `myproject@dotdev-pc`)
+**For remote sessions:** `AGENTWIRE_SESSION` includes `@machine` suffix (e.g., `myproject@dotdev-pc`)
 
 TTS audio includes 300ms silence padding to prevent first-syllable cutoff.
 
@@ -226,7 +226,7 @@ In monitor mode, a menu button appears above the mic button. Hover over action b
 
 | Action | Icon | Description |
 |--------|------|-------------|
-| New Room | + | Creates a sibling session in a new worktree, opens in new tab (parallel work) |
+| New Session | + | Creates a sibling session in a new worktree, opens in new tab (parallel work) |
 | Fork Session | Fork | Forks the Claude Code conversation context into a new session (preserves history) |
 | Recreate Session | Refresh | Destroys current session/worktree, pulls latest, creates fresh worktree and Claude Code session |
 
@@ -236,7 +236,7 @@ In monitor mode, a menu button appears above the mic button. Hover over action b
 
 | Action | Icon | Description |
 |--------|------|-------------|
-| Restart Service | Refresh | Properly restarts the service (portal schedules delayed restart, TTS stops/starts, orchestrator restarts Claude) |
+| Restart Service | Refresh | Properly restarts the service (portal schedules delayed restart, TTS stops/starts, agentwire session restarts Claude) |
 
 ## Create Session Form
 
@@ -247,7 +247,7 @@ The dashboard's Create Session form supports machine selection, input validation
 | Session Name | Project name (blocks `@ / \ : * ? " < > |` and spaces) |
 | Machine | Dropdown: Local or any configured remote machine |
 | Project Path | Auto-fills to `{projectsDir}/{sessionName}` (editable) |
-| Voice | TTS voice for the room |
+| Voice | TTS voice for the session |
 | Permission Mode | Bypass (recommended) or Normal (prompted) |
 
 **Git Repository Detection:**
@@ -285,22 +285,22 @@ When the project path points to a git repo, additional options appear:
 | `/api/check-path` | GET | Check if path exists and is git repo |
 | `/api/check-branches` | GET | Get existing branches matching prefix |
 
-### Room Management
+### Session Management
 
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
-| `/api/room/{name}/config` | POST | Update room config (voice, etc.) |
-| `/api/room/{name}/recreate` | POST | Destroy and recreate session with fresh worktree |
-| `/api/room/{name}/spawn-sibling` | POST | Create parallel session in new worktree |
-| `/api/room/{name}/fork` | POST | Fork Claude Code session (preserves conversation) |
-| `/api/room/{name}/restart-service` | POST | Restart system service |
-| `/api/rooms/{name}/connections` | GET | Get connection count for room |
+| `/api/session/{name}/config` | POST | Update session config (voice, etc.) |
+| `/api/session/{name}/recreate` | POST | Destroy and recreate session with fresh worktree |
+| `/api/session/{name}/spawn-sibling` | POST | Create parallel session in new worktree |
+| `/api/session/{name}/fork` | POST | Fork Claude Code session (preserves conversation) |
+| `/api/session/{name}/restart-service` | POST | Restart system service |
+| `/api/sessions/{name}/connections` | GET | Get connection count for session |
 
 ### Voice & Input
 
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
-| `/api/say/{name}` | POST | Generate TTS and broadcast to room |
+| `/api/say/{name}` | POST | Generate TTS and broadcast to session |
 | `/api/local-tts/{name}` | POST | Generate TTS for local playback |
 | `/api/answer/{name}` | POST | Submit answer to AskUserQuestion |
 | `/api/voices` | GET | List available TTS voices |
@@ -340,5 +340,5 @@ When the project path points to a git repo, additional options appear:
 
 | Endpoint | Purpose |
 |----------|---------|
-| `/ws/{name}` | Main room WebSocket (ambient/monitor modes) |
+| `/ws/{name}` | Main session WebSocket (ambient/monitor modes) |
 | `/ws/terminal/{name}` | Terminal attach WebSocket (xterm.js) |

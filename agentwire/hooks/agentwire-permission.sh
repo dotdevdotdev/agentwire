@@ -5,34 +5,112 @@
 # check is needed. It reads the permission request JSON from stdin,
 # posts it to the AgentWire portal, and returns the decision.
 #
-# Environment:
-#   AGENTWIRE_ROOM - The room name for this session (required)
-#   AGENTWIRE_URL  - Base URL of the portal (default: https://localhost:8765)
+# Session detection (no env vars required):
+#   1. .agentwire.yml in current or parent directory
+#   2. Infer from directory path (~/projects/{session})
+#   3. tmux session name
 
 set -e
 
 # Read JSON from stdin
 input=$(cat)
 
-# Get room from environment
-room="${AGENTWIRE_ROOM:-}"
-if [ -z "$room" ]; then
-    echo '{"decision": "deny", "message": "AGENTWIRE_ROOM environment variable not set"}' >&2
+# Find .agentwire.yml in current or parent directories
+find_agentwire_config() {
+    local dir="$PWD"
+    local home="$HOME"
+    while [ "$dir" != "/" ] && [ "$dir" != "$home" ]; do
+        if [ -f "$dir/.agentwire.yml" ]; then
+            echo "$dir/.agentwire.yml"
+            return 0
+        fi
+        dir=$(dirname "$dir")
+    done
+    return 1
+}
+
+# Extract session name from .agentwire.yml
+get_session_from_config() {
+    local config_file="$1"
+    if [ -f "$config_file" ]; then
+        grep -E "^session:" "$config_file" 2>/dev/null | sed 's/^session:[[:space:]]*//' | tr -d '"'"'" || true
+    fi
+}
+
+# Infer session from directory path
+infer_session_from_path() {
+    local cwd="$PWD"
+    local projects_dir="$HOME/projects"
+    if [[ "$cwd" == "$projects_dir"* ]]; then
+        local rel_path="${cwd#$projects_dir/}"
+        if [[ "$rel_path" =~ ^([^/]+)-worktrees/([^/]+) ]]; then
+            echo "${BASH_REMATCH[1]}/${BASH_REMATCH[2]}"
+            return 0
+        fi
+        local project=$(echo "$rel_path" | cut -d'/' -f1)
+        if [ -n "$project" ]; then
+            echo "$project"
+            return 0
+        fi
+    fi
+    return 1
+}
+
+# Get session name
+get_session() {
+    # 1. .agentwire.yml config file
+    local config_file=$(find_agentwire_config)
+    if [ -n "$config_file" ]; then
+        local session=$(get_session_from_config "$config_file")
+        if [ -n "$session" ]; then
+            echo "$session"
+            return
+        fi
+    fi
+    # 2. Infer from directory path
+    local inferred=$(infer_session_from_path)
+    if [ -n "$inferred" ]; then
+        echo "$inferred"
+        return
+    fi
+    # 3. tmux session name (fallback)
+    if [ -n "$TMUX" ]; then
+        tmux display-message -p '#S' 2>/dev/null
+        return
+    fi
+    echo ""
+}
+
+session=$(get_session)
+if [ -z "$session" ]; then
+    echo '{"decision": "deny", "message": "Could not determine session (no .agentwire.yml, not in project dir, not in tmux)"}' >&2
     exit 1
 fi
 
-# Get portal URL
-# Priority: 1. AGENTWIRE_URL env var, 2. ~/.agentwire/portal_url file, 3. localhost
-if [ -n "${AGENTWIRE_URL:-}" ]; then
-    base_url="$AGENTWIRE_URL"
-elif [ -f "$HOME/.agentwire/portal_url" ]; then
-    base_url=$(cat "$HOME/.agentwire/portal_url" | tr -d '\n')
-else
-    base_url="https://localhost:8765"
-fi
+# Get portal URL from global config
+# Priority: 1. ~/.agentwire/config.yaml server.url, 2. ~/.agentwire/portal_url file, 3. localhost
+get_portal_url() {
+    # Try config.yaml first
+    if [ -f "$HOME/.agentwire/config.yaml" ]; then
+        local url=$(grep -E "^\s*url:" "$HOME/.agentwire/config.yaml" 2>/dev/null | head -1 | sed 's/.*url:[[:space:]]*//' | tr -d '"'"'" || true)
+        if [ -n "$url" ]; then
+            echo "$url"
+            return
+        fi
+    fi
+    # Fallback to portal_url file
+    if [ -f "$HOME/.agentwire/portal_url" ]; then
+        cat "$HOME/.agentwire/portal_url" | tr -d '\n'
+        return
+    fi
+    # Default
+    echo "https://localhost:8765"
+}
+
+base_url=$(get_portal_url)
 
 # POST to portal and wait for response (5 minute timeout)
-response=$(curl -s -X POST "${base_url}/api/permission/${room}" \
+response=$(curl -s -X POST "${base_url}/api/permission/${session}" \
     -H "Content-Type: application/json" \
     -d "$input" \
     --max-time 300 \

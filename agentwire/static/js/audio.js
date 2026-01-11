@@ -1,5 +1,5 @@
 /**
- * Audio handling module for AgentWire room.
+ * Audio handling module for AgentWire session.
  *
  * Provides push-to-talk recording, TTS playback, and device selection.
  *

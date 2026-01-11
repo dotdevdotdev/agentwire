@@ -1,7 +1,7 @@
 /**
- * Room Page Orchestrator
+ * Session Page Orchestrator
  *
- * Imports and wires together all room modules:
+ * Imports and wires together all session modules:
  * - WebSocket connection and message routing
  * - Audio recording and TTS playback
  * - Orb state visualization
@@ -21,7 +21,7 @@ import { TerminalMode } from './terminal.js';
 // ============================================
 
 /** @type {string} */
-let ROOM = '';
+let SESSION = '';
 
 /** @type {boolean} */
 let IS_SYSTEM_SESSION = false;
@@ -317,7 +317,7 @@ async function handleRecordingComplete(audioBlob) {
         const text = data.text.trim();
         showUserBubble(text);
 
-        await fetch('/send/' + ROOM, {
+        await fetch('/send/' + SESSION_NAME, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ text: '[Voice] ' + text })
@@ -387,7 +387,7 @@ function showQuestionModal(header, question, options) {
                 ? { answer, option_number: optionNumber }
                 : { answer, custom: false };
 
-            await fetch(`/api/answer/${ROOM}`, {
+            await fetch(`/api/answer/${SESSION_NAME}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body)
@@ -398,7 +398,7 @@ function showQuestionModal(header, question, options) {
     });
 
     // Speak the question
-    fetch(`/api/say/${ROOM}`, {
+    fetch(`/api/say/${SESSION_NAME}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: question })
@@ -476,7 +476,7 @@ async function respondToPermission(decision, message = '') {
     }
 
     try {
-        await fetch(`/api/permission/${ROOM}/respond`, {
+        await fetch(`/api/permission/${SESSION_NAME}/respond`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ decision, message })
@@ -612,7 +612,7 @@ function switchToMode(mode) {
 
     // Save preference to localStorage
     try {
-        localStorage.setItem(`agentwire-mode-${ROOM}`, mode);
+        localStorage.setItem(`agentwire-mode-${SESSION_NAME}`, mode);
     } catch (e) {
         console.warn('Failed to save mode preference:', e);
     }
@@ -657,7 +657,7 @@ async function sendTextInput() {
             removeImage();
         }
 
-        await fetch('/send/' + ROOM, {
+        await fetch('/send/' + SESSION_NAME, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ text: '[Remote text - use say "message"] ' + finalText })
@@ -802,7 +802,7 @@ function updateSpeaker() {
 
 async function updateVoice() {
     if (!elements.voiceSelect) return;
-    await fetch('/api/room/' + ROOM + '/config', {
+    await fetch('/api/session/' + SESSION_NAME + '/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ voice: elements.voiceSelect.value })
@@ -812,7 +812,7 @@ async function updateVoice() {
 async function updateTTS() {
     const exag = elements.exaggeration ? parseFloat(elements.exaggeration.value) : 0.3;
     const cfg = elements.cfgWeight ? parseFloat(elements.cfgWeight.value) : 0.5;
-    await fetch('/api/room/' + ROOM + '/config', {
+    await fetch('/api/session/' + SESSION_NAME + '/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ exaggeration: exag, cfg_weight: cfg })
@@ -835,34 +835,34 @@ function closeActionsMenu() {
     if (elements.actionsBtn) elements.actionsBtn.classList.remove('active');
 }
 
-async function actionNewRoom() {
+async function actionNewSession() {
     closeActionsMenu();
     try {
-        const resp = await fetch(`/api/room/${ROOM}/spawn-sibling`, {
+        const resp = await fetch(`/api/session/${SESSION_NAME}/spawn-sibling`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' }
         });
         const data = await resp.json();
         if (resp.ok && data.session) {
-            window.open(`/room/${data.session}`, '_blank');
+            window.open(`/session/${data.session}`, '_blank');
         } else {
-            alert('Failed to create new room: ' + (data.error || 'Unknown error'));
+            alert('Failed to create new session: ' + (data.error || 'Unknown error'));
         }
     } catch (e) {
-        alert('Failed to create new room');
+        alert('Failed to create new session');
     }
 }
 
 async function actionForkSession() {
     closeActionsMenu();
     try {
-        const resp = await fetch(`/api/room/${ROOM}/fork`, {
+        const resp = await fetch(`/api/session/${SESSION_NAME}/fork`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' }
         });
         const data = await resp.json();
         if (resp.ok && data.session) {
-            window.open(`/room/${data.session}`, '_blank');
+            window.open(`/session/${data.session}`, '_blank');
         } else {
             alert('Failed to fork session: ' + (data.error || 'Unknown error'));
         }
@@ -877,14 +877,14 @@ async function actionRecreateSession() {
         return;
     }
     try {
-        const resp = await fetch(`/api/room/${ROOM}/recreate`, {
+        const resp = await fetch(`/api/session/${SESSION_NAME}/recreate`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' }
         });
         const data = await resp.json();
         if (resp.ok) {
-            if (data.session && data.session !== ROOM) {
-                window.location.href = `/room/${data.session}`;
+            if (data.session && data.session !== SESSION_NAME) {
+                window.location.href = `/session/${data.session}`;
             } else {
                 window.location.reload();
             }
@@ -898,11 +898,11 @@ async function actionRecreateSession() {
 
 async function actionRestartService() {
     closeActionsMenu();
-    const serviceName = ROOM.split('@')[0];
+    const serviceName = SESSION_NAME.split('@')[0];
     if (!confirm(`Restart the ${serviceName} service?`)) return;
 
     try {
-        const resp = await fetch(`/api/room/${ROOM}/restart-service`, {
+        const resp = await fetch(`/api/session/${SESSION_NAME}/restart-service`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' }
         });
@@ -993,7 +993,7 @@ function bindEvents() {
 // ============================================
 
 export function init(config) {
-    ROOM = config.room;
+    SESSION_NAME = config.session;
     IS_SYSTEM_SESSION = config.isSystemSession || false;
 
     cacheElements();
@@ -1012,10 +1012,10 @@ export function init(config) {
     });
 
     // Initialize terminal mode
-    terminalMode = new TerminalMode(ROOM);
+    terminalMode = new TerminalMode(SESSION_NAME);
 
     // Connect WebSocket
-    ws.connect(ROOM, {
+    ws.connect(SESSION_NAME, {
         onOutput: handleOutput,
         onTts: handleTts,
         onAsk: handleAsk,
@@ -1030,7 +1030,7 @@ export function init(config) {
 
     // Load saved mode preference from localStorage
     try {
-        const savedMode = localStorage.getItem(`agentwire-mode-${ROOM}`);
+        const savedMode = localStorage.getItem(`agentwire-mode-${SESSION_NAME}`);
         if (savedMode && (savedMode === 'ambient' || savedMode === 'monitor')) {
             switchToMode(savedMode);
         }
@@ -1049,7 +1049,7 @@ export function init(config) {
     window.triggerFileInput = triggerFileInput;
     window.removeImage = removeImage;
     window.toggleActionsMenu = toggleActionsMenu;
-    window.actionNewRoom = actionNewRoom;
+    window.actionNewSession = actionNewSession;
     window.actionForkSession = actionForkSession;
     window.actionRecreateSession = actionRecreateSession;
     window.actionRestartService = actionRestartService;
@@ -1062,7 +1062,7 @@ export function init(config) {
 
 // Auto-init when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
-    if (window.ROOM_CONFIG) {
-        init(window.ROOM_CONFIG);
+    if (window.SESSION_CONFIG) {
+        init(window.SESSION_CONFIG);
     }
 });

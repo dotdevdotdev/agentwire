@@ -23,15 +23,15 @@ Create a new Claude Code session in a tmux session, either locally or on a remot
 
 | File | Purpose |
 |------|---------|
-| `~/.agentwire/rooms.json` | Session definitions with roles |
+| `~/.agentwire/sessions.json` | Session definitions with roles |
 | `~/.agentwire/roles/{role}.md` | Role context files |
 | `~/.agentwire/machines.json` | Remote machine config |
 
 ## Behavior
 
 1. **Parse arguments** - Extract name, optional path, optional @machine
-2. **Look up role in rooms.json** - Get role for this session name (defaults to "worker")
-3. **Enforce orchestrator singleton** - If role is "orchestrator", check if tmux session "agentwire" already exists
+2. **Look up role in sessions.json** - Get role for this session name (defaults to "worker")
+3. **Enforce agentwire singleton** - If role is "agentwire", check if tmux session "agentwire" already exists
 4. **Check if session exists** - Fail early if tmux session with that name already exists
 5. **Resolve path** - Use provided path or default to projects directory
 6. **Create tmux session** - Start detached session in the target directory
@@ -40,26 +40,26 @@ Create a new Claude Code session in a tmux session, either locally or on a remot
 
 ## Implementation
 
-### Reading Room Config
+### Reading Session Config
 
 ```bash
-ROOMS_FILE=~/.agentwire/rooms.json
+SESSIONS_FILE=~/.agentwire/sessions.json
 ROLES_DIR=~/.agentwire/roles
 
 # Get role for session (default to "worker" if not defined)
-ROLE=$(jq -r --arg name "<name>" '.[$name].role // "worker"' "$ROOMS_FILE")
+ROLE=$(jq -r --arg name "<name>" '.[$name].role // "worker"' "$SESSIONS_FILE")
 
 # Build context file path
 ROLE_FILE="$ROLES_DIR/$ROLE.md"
 ```
 
-### Orchestrator Singleton Check
+### Agentwire Singleton Check
 
 ```bash
-# If creating orchestrator session, check for existing agentwire session
-if [ "$ROLE" = "orchestrator" ]; then
+# If creating agentwire session, check for existing agentwire session
+if [ "$ROLE" = "agentwire" ]; then
   if tmux has-session -t agentwire 2>/dev/null; then
-    echo "Orchestrator session 'agentwire' already exists. Use /jump agentwire to attach."
+    echo "Agentwire session 'agentwire' already exists. Use /jump agentwire to attach."
     exit 1
   fi
 fi
@@ -133,7 +133,7 @@ Creates:
 
 | Error | Message |
 |-------|---------|
-| Orchestrator exists | "Orchestrator session 'agentwire' already exists. Use /jump agentwire to attach." |
+| Agentwire exists | "Agentwire session 'agentwire' already exists. Use /jump agentwire to attach." |
 | Session exists (local) | "Session 'name' already exists locally. Use `/jump name` to attach." |
 | Session exists (remote) | "Session 'name' already exists on machine. Use `/jump name@machine` to attach." |
 | Machine not found | "Machine 'machine' not found in ~/.agentwire/machines.json" |

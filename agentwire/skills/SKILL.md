@@ -47,7 +47,7 @@ All config lives in `~/.agentwire/`:
 |------|---------|
 | `config.yaml` | Main configuration |
 | `machines.json` | Remote machine registry |
-| `rooms.json` | Per-session settings (voice, model, role) |
+| `sessions.json` | Per-session settings (voice, model, role) |
 | `roles/*.md` | Role context files for Claude sessions |
 
 ### machines.json
@@ -60,7 +60,7 @@ All config lives in `~/.agentwire/`:
 }
 ```
 
-### rooms.json
+### sessions.json
 
 ```json
 {

@@ -7,7 +7,7 @@ All session commands support the `session@machine` format for remote operations 
 ```bash
 # Initialize configuration
 agentwire init                    # Interactive setup wizard
-agentwire init --quick            # Skip orchestrator setup at end
+agentwire init --quick            # Skip agentwire session setup at end
 
 # Portal (web server)
 agentwire portal start            # Start in tmux (agentwire-portal)
@@ -59,8 +59,8 @@ agentwire new -s <name> [-p path] [-f]      # Create Claude Code session
 agentwire new -s <name> -t <template>       # Create session with template
 agentwire new -s <name> --no-bypass         # Normal mode (permission prompts)
 agentwire new -s <name> --restricted        # Restricted mode (voice-only)
-agentwire new -s <name> --worker            # Worker session (autonomous)
-agentwire new -s <name> --orchestrator      # Orchestrator session (voice-first)
+agentwire new -s <name> --roles worker      # Worker session (autonomous)
+agentwire new -s <name> --roles agentwire   # agentwire session (voice-first)
 agentwire new -s <name> --json              # JSON output
 agentwire output -s <session> [-n lines]    # Read recent session output
 agentwire kill -s <session>                 # Clean shutdown (/exit then kill)
@@ -89,7 +89,7 @@ agentwire template show <name> --json       # JSON output
 agentwire template create <name>            # Create new template (interactive)
 agentwire template create <name> --description "desc"  # Set description
 agentwire template create <name> --voice bashbunni     # Set voice
-agentwire template create <name> --role orchestrator   # Set role file
+agentwire template create <name> --roles worker        # Set roles
 agentwire template create <name> --project ~/projects/foo  # Default path
 agentwire template create <name> --prompt "initial prompt"  # Initial prompt
 agentwire template create <name> --no-bypass   # Use normal permission mode
@@ -132,7 +132,11 @@ agentwire doctor --yes                # Auto-fix without prompting
 agentwire doctor --dry-run            # Show what would be fixed
 
 # Development
-agentwire dev              # Start orchestrator session (agentwire)
+agentwire dev              # Start agentwire session
+
+# Roles
+agentwire roles list       # List available roles
+agentwire roles show <name> # Show role details
 agentwire rebuild          # Clear uv cache and reinstall from source
 agentwire uninstall        # Clear uv cache and remove tool
 agentwire generate-certs   # Generate SSL certificates
@@ -173,9 +177,22 @@ agentwire generate-certs   # Generate SSL certificates
 | Option | Description |
 |--------|-------------|
 | `-v, --voice NAME` | Voice name for TTS |
-| `-r, --room NAME` | Room name (auto-detected from env/tmux) |
+| `-s, --session NAME` | Session name (auto-detected from env/tmux) |
 | `--exaggeration FLOAT` | Voice exaggeration 0-1 (default: varies by voice) |
 | `--cfg FLOAT` | CFG weight 0-1 (default: varies by voice) |
+
+### Session New Options
+
+| Option | Description |
+|--------|-------------|
+| `-s, --session NAME` | Session name (required) |
+| `-p, --path PATH` | Project path (defaults to ~/projects/{name}) |
+| `-t, --template NAME` | Use session template |
+| `-f, --force` | Overwrite existing session |
+| `--no-bypass` | Normal mode (permission prompts) |
+| `--restricted` | Restricted mode (voice-only) |
+| `--roles ROLES` | Comma-separated role names (e.g., `worker`, `agentwire`) |
+| `--json` | JSON output |
 
 ### Machine Add Options
 
@@ -198,6 +215,13 @@ agentwire generate-certs   # Generate SSL certificates
 | `--restricted` | Use restricted mode |
 | `-f, --force` | Overwrite existing template |
 | `--json` | Non-interactive JSON mode |
+
+### Roles Commands
+
+| Command | Description |
+|---------|-------------|
+| `agentwire roles list` | List available roles |
+| `agentwire roles show <name>` | Show role file contents |
 
 ### Safety Logs Options
 
@@ -488,4 +512,72 @@ agentwire fork -s api -t api-fork-1 --json
   "forked": true,
   "path": "/Users/dotdev/projects/api"
 }
+```
+
+## Role Files
+
+Roles are markdown files in `~/.agentwire/roles/` that provide instructions appended to Claude Code sessions.
+
+### Built-in Roles
+
+| Role | File | Purpose |
+|------|------|---------|
+| `agentwire` | `agentwire.md` | Voice-first main session, coordinates work, delegates to workers |
+| `worker` | `worker.md` | Autonomous executor, no voice, no AskUserQuestion |
+
+### Role File Format
+
+Role files are markdown documents with instructions for Claude Code. Example:
+
+```markdown
+# Worker Role
+
+You are a worker agent executing a specific task.
+
+## Constraints
+
+- Do NOT use voice (no `say` command)
+- Do NOT use AskUserQuestion tool
+- Report results factually
+- Focus on the assigned task only
+
+## Output
+
+When complete, summarize what was done in plain text.
+```
+
+### Using Roles
+
+```bash
+# Create session with agentwire role (default for new sessions)
+agentwire new -s myproject --roles agentwire
+
+# Create session with worker role
+agentwire new -s myproject/task-1 --roles worker
+
+# Create session with multiple roles
+agentwire new -s myproject --roles agentwire,custom-role
+
+# List available roles
+agentwire roles list
+
+# View a role's contents
+agentwire roles show worker
+```
+
+### Custom Roles
+
+Create custom role files in `~/.agentwire/roles/`:
+
+```bash
+# Create a custom role
+cat > ~/.agentwire/roles/reviewer.md << 'EOF'
+# Code Reviewer Role
+
+Focus on code review. Analyze code quality, suggest improvements.
+Do not make changes directly - provide recommendations only.
+EOF
+
+# Use it
+agentwire new -s review-session --roles reviewer
 ```

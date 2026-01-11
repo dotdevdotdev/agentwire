@@ -70,7 +70,7 @@ Look up host from `~/.agentwire/machines.json`:
 
 ## Safety Considerations
 
-- Warn if trying to kill the orchestrator session (`agentwire`)
+- Warn if trying to kill the main agentwire session (`agentwire`)
 - Check session exists before attempting to kill
 
 ## Error Handling

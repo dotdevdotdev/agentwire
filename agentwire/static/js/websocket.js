@@ -1,5 +1,5 @@
 /**
- * WebSocket handling module for AgentWire room connections.
+ * WebSocket handling module for AgentWire session connections.
  *
  * Provides connection management with auto-reconnect and exponential backoff.
  *
@@ -10,7 +10,7 @@
 let ws = null;
 
 /** @type {string|null} */
-let roomName = null;
+let sessionName = null;
 
 /** @type {Object|null} */
 let handlers = null;
@@ -42,21 +42,21 @@ function getReconnectDelay() {
 }
 
 /**
- * Connect to the WebSocket server for a specific room.
+ * Connect to the WebSocket server for a specific session.
  *
- * @param {string} room - The room name to connect to
+ * @param {string} session - The session name to connect to
  * @param {Object} eventHandlers - Handlers for various message types
  * @param {Function} [eventHandlers.onOutput] - Called when terminal output is received
  * @param {Function} [eventHandlers.onTts] - Called when TTS data is received (tts_start, audio)
  * @param {Function} [eventHandlers.onAsk] - Called when a question or permission request is received
- * @param {Function} [eventHandlers.onState] - Called when room state changes (locked/unlocked)
+ * @param {Function} [eventHandlers.onState] - Called when session state changes (locked/unlocked)
  * @param {Function} [eventHandlers.onConnect] - Called when connection is established
  * @param {Function} [eventHandlers.onDisconnect] - Called when connection is lost
- * @param {Function} [eventHandlers.onActivity] - Called when session activity is detected (room-specific)
+ * @param {Function} [eventHandlers.onActivity] - Called when session activity is detected (session-specific)
  * @param {Function} [eventHandlers.onSessionActivity] - Called when any session's activity changes (dashboard global updates)
  */
-export function connect(room, eventHandlers) {
-    roomName = room;
+export function connect(session, eventHandlers) {
+    sessionName = session;
     handlers = eventHandlers || {};
     intentionalDisconnect = false;
 
@@ -73,7 +73,7 @@ export function connect(room, eventHandlers) {
     }
 
     const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const url = `${protocol}//${location.host}/ws/${roomName}`;
+    const url = `${protocol}//${location.host}/ws/${sessionName}`;
 
     try {
         ws = new WebSocket(url);
@@ -84,7 +84,7 @@ export function connect(room, eventHandlers) {
     }
 
     ws.onopen = () => {
-        console.log('[WebSocket] Connected to', roomName);
+        console.log('[WebSocket] Connected to', sessionName);
         reconnectAttempts = 0;  // Reset backoff on successful connection
 
         if (handlers.onConnect) {
@@ -195,13 +195,13 @@ function handleMessage(msg) {
             }
             break;
 
-        case 'room_locked':
+        case 'session_locked':
             if (handlers.onState) {
                 handlers.onState('locked');
             }
             break;
 
-        case 'room_unlocked':
+        case 'session_unlocked':
             if (handlers.onState) {
                 handlers.onState('unlocked');
             }
@@ -227,8 +227,8 @@ function scheduleReconnect() {
 
     reconnectTimeout = setTimeout(() => {
         reconnectTimeout = null;
-        if (roomName && !intentionalDisconnect) {
-            connect(roomName, handlers);
+        if (sessionName && !intentionalDisconnect) {
+            connect(sessionName, handlers);
         }
     }, delay);
 }
@@ -274,7 +274,7 @@ export function disconnect() {
         ws = null;
     }
 
-    roomName = null;
+    sessionName = null;
     handlers = null;
     reconnectAttempts = 0;
 }
@@ -288,9 +288,9 @@ export function isConnected() {
 }
 
 /**
- * Get the current room name.
- * @returns {string|null} The room name or null if not connected
+ * Get the current session name.
+ * @returns {string|null} The session name or null if not connected
  */
 export function getRoom() {
-    return roomName;
+    return sessionName;
 }

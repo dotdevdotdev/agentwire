@@ -6,8 +6,8 @@
  */
 
 export class TerminalMode {
-  constructor(roomName) {
-    this.roomName = roomName;
+  constructor(sessionName) {
+    this.sessionName = sessionName;
     this.term = null;
     this.socket = null;
     this.fitAddon = null;
@@ -101,7 +101,7 @@ export class TerminalMode {
 
   async connect() {
     const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const url = `${protocol}//${location.host}/ws/terminal/${this.roomName}`;
+    const url = `${protocol}//${location.host}/ws/terminal/${this.sessionName}`;
 
     console.log('[Terminal] Connecting to', url);
 
