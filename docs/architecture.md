@@ -14,12 +14,12 @@
                               │
 ┌─────────────────────────────────────────────────────────────┐
 │  AgentWire Portal (agentwire-portal tmux session)           │
-│  ├── HTTP routes (dashboard, room pages)                    │
-│  ├── WebSocket /ws/{room} (ambient/monitor modes)           │
-│  ├── WebSocket /ws/terminal/{room} (terminal mode attach)   │
+│  ├── HTTP routes (dashboard, session pages)                 │
+│  ├── WebSocket /ws/{session} (ambient/monitor modes)           │
+│  ├── WebSocket /ws/terminal/{session} (terminal mode attach)   │
 │  ├── /transcribe (STT)                                      │
-│  ├── /send/{room} (prompt forwarding)                       │
-│  └── /api/say/{room} (TTS broadcast)                        │
+│  ├── /send/{session} (prompt forwarding)                       │
+│  └── /api/say/{session} (TTS broadcast)                        │
 └─────────────────────────────────────────────────────────────┘
                               │
               ┌───────────────┴───────────────┐
@@ -47,7 +47,7 @@ Voice-first, minimal UI focused on conversational interaction.
 
 Read-only terminal output with text input for sending prompts.
 
-- **Input:** Text area → `/send/{room}` HTTP → tmux send-keys
+- **Input:** Text area → `/send/{session}` HTTP → tmux send-keys
 - **Output:** Polling (`tmux capture-pane` every 500ms) → WebSocket → display
 - **Interaction:** Same modals as Ambient mode
 
@@ -55,7 +55,7 @@ Read-only terminal output with text input for sending prompts.
 
 Full interactive terminal via xterm.js attached to tmux session.
 
-- **Input:** xterm.js → WebSocket (`/ws/terminal/{room}`) → tmux attach stdin
+- **Input:** xterm.js → WebSocket (`/ws/terminal/{session}`) → tmux attach stdin
 - **Output:** tmux attach stdout → WebSocket → xterm.js
 - **Bidirectional:** Full duplex communication over single WebSocket
 - **Resize:** Browser resize → WebSocket message → `tmux resize-window`
@@ -139,7 +139,7 @@ Browser (xterm.js)              Portal (server.py)              tmux session
 The pattern for adding new agent-to-client communication:
 
 1. **Create a CLI command** (e.g., `agentwire notify "title" "body"`)
-2. **Command POSTs to API** (e.g., `/api/notify/{room}`)
+2. **Command POSTs to API** (e.g., `/api/notify/{session}`)
 3. **Server broadcasts via WebSocket** to connected clients
 4. **Browser handles message type** and renders UI
 

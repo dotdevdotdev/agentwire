@@ -1,6 +1,6 @@
 # AgentWire
 
-Multi-room voice interface for AI coding agents. Push-to-talk from any device to tmux sessions running Claude Code.
+Voice interface for AI coding agents. Push-to-talk from any device to tmux sessions running Claude Code.
 
 **No Backwards Compatibility** - Pre-launch, no customers. Change things completely, no legacy fallbacks.
 
@@ -35,7 +35,7 @@ All in `~/.agentwire/`:
 | File | Purpose |
 |------|---------|
 | `config.yaml` | Main config (TTS/STT backends, ports) |
-| `rooms.json` | Per-session settings (voice, permissions) |
+| `sessions.json` | Per-session settings (voice, permissions) |
 | `roles/*.md` | Role instructions appended to sessions |
 | `hooks/` | PreToolUse hooks (damage-control, session-type) |
 | `templates/*.yaml` | Session templates |
@@ -58,7 +58,7 @@ All in `~/.agentwire/`:
 
 | Topic | Location |
 |-------|----------|
-| CLI reference | `docs/CLI-REFERENCE.md` |
+| CLI | `agentwire --help`, `agentwire <cmd> --help` |
 | Portal modes/API | `docs/PORTAL.md` |
 | Architecture | `docs/architecture.md` |
 | Installation | `docs/installation.md` |

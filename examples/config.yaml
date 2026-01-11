@@ -68,9 +68,9 @@ services:
 machines:
   file: "~/.agentwire/machines.json"
 
-# === Room Configurations ===
-rooms:
-  file: "~/.agentwire/rooms.json"
+# === Session Configurations ===
+sessions:
+  file: "~/.agentwire/sessions.json"
 
 # === Image Uploads ===
 uploads:
