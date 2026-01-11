@@ -192,9 +192,9 @@ function updateSessionIndicator(sessionName, activityState) {
         const link = card.querySelector('a');
         if (!link) continue;
 
-        // Extract session name from href: /room/{name}
+        // Extract session name from href: /session/{name}
         const href = link.getAttribute('href');
-        const match = href?.match(/\/room\/(.+)/);
+        const match = href?.match(/\/session\/(.+)/);
         if (!match) continue;
 
         const cardSessionName = decodeURIComponent(match[1]);
@@ -713,7 +713,7 @@ function renderSessionCard(session, machineId) {
                     ${badge}
                 </div>
                 <div class="session-header-right">
-                    <a href="/room/${encodeURIComponent(session.name)}" class="session-action-btn goto-btn" title="Go to room">→</a>
+                    <a href="/session/${encodeURIComponent(session.name)}" class="session-action-btn goto-btn" title="Go to session">→</a>
                     <button class="session-action-btn close-btn" data-session="${session.name}" title="Close session">×</button>
                 </div>
             </div>
@@ -1015,7 +1015,7 @@ async function createSession() {
         if (errorEl) errorEl.textContent = data.error;
     } else {
         // Use the session name returned by server (includes branch@machine if applicable)
-        window.location.href = '/room/' + encodeURIComponent(data.name);
+        window.location.href = '/session/' + encodeURIComponent(data.name);
     }
 }
 
@@ -1175,8 +1175,8 @@ async function removeMachine(id) {
         alert('Failed to remove machine: ' + data.error);
     } else {
         loadMachines();
-        if (data.rooms_removed && data.rooms_removed.length > 0) {
-            console.log('Removed room configs:', data.rooms_removed);
+        if (data.sessions_removed && data.sessions_removed.length > 0) {
+            console.log('Removed session configs:', data.sessions_removed);
         }
     }
 }
@@ -1642,7 +1642,7 @@ export function init() {
     loadArchive();
 
     // Connect WebSocket for real-time activity updates
-    // Use 'dashboard' as a special room name for global session updates
+    // Use 'dashboard' as a special session name for global session updates
     ws.connect('dashboard', {
         onSessionActivity: handleSessionActivity,
         onConnect: () => {

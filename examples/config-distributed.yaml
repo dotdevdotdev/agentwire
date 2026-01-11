@@ -4,7 +4,7 @@
 # This example shows a multi-machine setup:
 #   - Portal runs on your laptop/desktop (main machine)
 #   - TTS runs on a GPU server (for Chatterbox voice synthesis)
-#   - STT runs locally (uses laptop's Neural Engine on macOS)
+#   - STT runs locally (agentwire-stt server)
 #   - Sessions can run locally or on remote machines
 #
 # Required: machines.json must have "gpu-server" defined
@@ -57,11 +57,9 @@ tts:
   exaggeration: 0.5
   cfg_weight: 0.5
 
-# === STT (local on portal machine - uses Apple Neural Engine on macOS) ===
+# === STT (agentwire-stt server) ===
 stt:
-  backend: "whisperkit"
-  model_path: "~/models/whisperkit/large-v3"
-  language: "en"
+  url: "http://localhost:8100"
 
 # === Agent ===
 agent:

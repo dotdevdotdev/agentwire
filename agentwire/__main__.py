@@ -993,8 +993,7 @@ def _get_session_from_yml() -> str | None:
         import yaml
         with open(yml_path) as f:
             config = yaml.safe_load(f)
-        # Check session: field (primary) or room: for backwards compat
-        return config.get("session") or config.get("room") if config else None
+        return config.get("session") if config else None
     except Exception:
         return None
 
@@ -2057,17 +2056,17 @@ def cmd_kill(args) -> int:
         if not json_mode:
             print(f"Killed session '{session_full}'")
 
-        # Clean up rooms.json
-        rooms_file = Path.home() / ".agentwire" / "rooms.json"
-        if rooms_file.exists():
+        # Clean up sessions.json
+        sessions_file = Path.home() / ".agentwire" / "sessions.json"
+        if sessions_file.exists():
             try:
-                with open(rooms_file) as f:
+                with open(sessions_file) as f:
                     configs = json.load(f)
 
-                room_key = f"{session}@{machine_id}"
-                if room_key in configs:
-                    del configs[room_key]
-                    with open(rooms_file, "w") as f:
+                session_key = f"{session}@{machine_id}"
+                if session_key in configs:
+                    del configs[session_key]
+                    with open(sessions_file, "w") as f:
                         json.dump(configs, f, indent=2)
             except Exception:
                 pass
@@ -2095,16 +2094,16 @@ def cmd_kill(args) -> int:
     if not json_mode:
         print(f"Killed session '{session}'")
 
-    # Clean up rooms.json
-    rooms_file = Path.home() / ".agentwire" / "rooms.json"
-    if rooms_file.exists():
+    # Clean up sessions.json
+    sessions_file = Path.home() / ".agentwire" / "sessions.json"
+    if sessions_file.exists():
         try:
-            with open(rooms_file) as f:
+            with open(sessions_file) as f:
                 configs = json.load(f)
 
             if session in configs:
                 del configs[session]
-                with open(rooms_file, "w") as f:
+                with open(sessions_file, "w") as f:
                     json.dump(configs, f, indent=2)
         except Exception:
             pass
@@ -2282,31 +2281,31 @@ def cmd_recreate(args) -> int:
         if result.returncode != 0:
             return _output_result(False, json_mode, f"Failed to create session: {result.stderr}")
 
-        # Update local rooms.json with new config
-        rooms_file = Path.home() / ".agentwire" / "rooms.json"
-        rooms_file.parent.mkdir(parents=True, exist_ok=True)
+        # Update local sessions.json with new config
+        sessions_file = Path.home() / ".agentwire" / "sessions.json"
+        sessions_file.parent.mkdir(parents=True, exist_ok=True)
 
         configs = {}
-        if rooms_file.exists():
+        if sessions_file.exists():
             try:
-                with open(rooms_file) as f:
+                with open(sessions_file) as f:
                     configs = json.load(f)
             except Exception:
                 pass
 
         bypass_permissions = not (restricted or no_bypass)
-        room_config = {"bypass_permissions": bypass_permissions}
+        session_config = {"bypass_permissions": bypass_permissions}
         if restricted:
-            room_config["restricted"] = True
-        configs[room_name] = room_config
+            session_config["restricted"] = True
+        configs[session_name] = session_config
 
-        with open(rooms_file, "w") as f:
+        with open(sessions_file, "w") as f:
             json.dump(configs, f, indent=2)
 
         if json_mode:
             _output_json({
                 "success": True,
-                "session": room_name,
+                "session": session_name,
                 "path": session_path,
                 "branch": new_branch if branch else None,
                 "machine": machine_id,
@@ -2394,25 +2393,25 @@ def cmd_recreate(args) -> int:
         check=True
     )
 
-    # Update rooms.json
-    rooms_file = Path.home() / ".agentwire" / "rooms.json"
-    rooms_file.parent.mkdir(parents=True, exist_ok=True)
+    # Update sessions.json
+    sessions_file = Path.home() / ".agentwire" / "sessions.json"
+    sessions_file.parent.mkdir(parents=True, exist_ok=True)
 
     configs = {}
-    if rooms_file.exists():
+    if sessions_file.exists():
         try:
-            with open(rooms_file) as f:
+            with open(sessions_file) as f:
                 configs = json.load(f)
         except Exception:
             pass
 
     bypass_permissions = not (restricted or no_bypass)
-    room_config = {"bypass_permissions": bypass_permissions}
+    session_config = {"bypass_permissions": bypass_permissions}
     if restricted:
-        room_config["restricted"] = True
-    configs[session_name] = room_config
+        session_config["restricted"] = True
+    configs[session_name] = session_config
 
-    with open(rooms_file, "w") as f:
+    with open(sessions_file, "w") as f:
         json.dump(configs, f, indent=2)
 
     if json_mode:
@@ -2528,26 +2527,26 @@ def cmd_fork(args) -> int:
         if result.returncode != 0:
             return _output_result(False, json_mode, f"Failed to create session: {result.stderr}")
 
-        # Update local rooms.json
-        rooms_file = Path.home() / ".agentwire" / "rooms.json"
-        rooms_file.parent.mkdir(parents=True, exist_ok=True)
+        # Update local sessions.json
+        sessions_file = Path.home() / ".agentwire" / "sessions.json"
+        sessions_file.parent.mkdir(parents=True, exist_ok=True)
 
         configs = {}
-        if rooms_file.exists():
+        if sessions_file.exists():
             try:
-                with open(rooms_file) as f:
+                with open(sessions_file) as f:
                     configs = json.load(f)
             except Exception:
                 pass
 
-        room_key = room_name
+        session_key = session_name
         bypass_permissions = not (restricted or no_bypass)
-        room_config = {"bypass_permissions": bypass_permissions}
+        session_config = {"bypass_permissions": bypass_permissions}
         if restricted:
-            room_config["restricted"] = True
-        configs[room_key] = room_config
+            session_config["restricted"] = True
+        configs[session_key] = session_config
 
-        with open(rooms_file, "w") as f:
+        with open(sessions_file, "w") as f:
             json.dump(configs, f, indent=2)
 
         if json_mode:
@@ -2607,11 +2606,11 @@ def cmd_fork(args) -> int:
         time.sleep(0.1)
 
         # Load source session config to preserve settings
-        rooms_file = Path.home() / ".agentwire" / "rooms.json"
+        sessions_file = Path.home() / ".agentwire" / "sessions.json"
         source_config = {}
-        if rooms_file.exists():
+        if sessions_file.exists():
             try:
-                with open(rooms_file) as f:
+                with open(sessions_file) as f:
                     configs = json.load(f)
                     source_config = configs.get(source_session, {})
             except Exception:
@@ -2631,11 +2630,11 @@ def cmd_fork(args) -> int:
             check=True
         )
 
-        # Update rooms.json for target
+        # Update sessions.json for target
         configs = {}
-        if rooms_file.exists():
+        if sessions_file.exists():
             try:
-                with open(rooms_file) as f:
+                with open(sessions_file) as f:
                     configs = json.load(f)
             except Exception:
                 pass
@@ -2647,8 +2646,8 @@ def cmd_fork(args) -> int:
         if restricted:
             configs[target_session]["restricted"] = True
 
-        rooms_file.parent.mkdir(parents=True, exist_ok=True)
-        with open(rooms_file, "w") as f:
+        sessions_file.parent.mkdir(parents=True, exist_ok=True)
+        with open(sessions_file, "w") as f:
             json.dump(configs, f, indent=2)
 
         if json_mode:
@@ -2727,25 +2726,25 @@ def cmd_fork(args) -> int:
         check=True
     )
 
-    # Update rooms.json
-    rooms_file = Path.home() / ".agentwire" / "rooms.json"
-    rooms_file.parent.mkdir(parents=True, exist_ok=True)
+    # Update sessions.json
+    sessions_file = Path.home() / ".agentwire" / "sessions.json"
+    sessions_file.parent.mkdir(parents=True, exist_ok=True)
 
     configs = {}
-    if rooms_file.exists():
+    if sessions_file.exists():
         try:
-            with open(rooms_file) as f:
+            with open(sessions_file) as f:
                 configs = json.load(f)
         except Exception:
             pass
 
     bypass_permissions = not (restricted or no_bypass)
-    room_config = {"bypass_permissions": bypass_permissions}
+    session_config = {"bypass_permissions": bypass_permissions}
     if restricted:
-        room_config["restricted"] = True
-    configs[target_session] = room_config
+        session_config["restricted"] = True
+    configs[target_session] = session_config
 
-    with open(rooms_file, "w") as f:
+    with open(sessions_file, "w") as f:
         json.dump(configs, f, indent=2)
 
     if json_mode:
@@ -2827,7 +2826,7 @@ def cmd_machine_remove(args) -> int:
     machine_id = args.machine_id
 
     machines_file = CONFIG_DIR / "machines.json"
-    rooms_file = CONFIG_DIR / "rooms.json"
+    sessions_file = CONFIG_DIR / "sessions.json"
 
     # Step 1: Load and check machines.json
     if not machines_file.exists():
@@ -2884,32 +2883,32 @@ def cmd_machine_remove(args) -> int:
         f.write("\n")
     print(f"  ✓ Removed '{machine_id}' from machines.json")
 
-    # Step 4: Clean rooms.json
-    print("Cleaning rooms.json...")
-    if rooms_file.exists():
+    # Step 4: Clean sessions.json
+    print("Cleaning sessions.json...")
+    if sessions_file.exists():
         try:
-            with open(rooms_file) as f:
-                rooms_data = json.load(f)
+            with open(sessions_file) as f:
+                sessions_data = json.load(f)
 
-            # Find rooms matching *@machine_id pattern
-            rooms_to_remove = [
-                room for room in rooms_data.keys()
-                if room.endswith(f"@{machine_id}")
+            # Find sessions matching *@machine_id pattern
+            sessions_to_remove = [
+                s for s in sessions_data.keys()
+                if s.endswith(f"@{machine_id}")
             ]
 
-            if rooms_to_remove:
-                for room in rooms_to_remove:
-                    del rooms_data[room]
-                with open(rooms_file, "w") as f:
-                    json.dump(rooms_data, f, indent=2)
+            if sessions_to_remove:
+                for s in sessions_to_remove:
+                    del sessions_data[s]
+                with open(sessions_file, "w") as f:
+                    json.dump(sessions_data, f, indent=2)
                     f.write("\n")
-                print(f"  ✓ Removed {len(rooms_to_remove)} room(s): {', '.join(rooms_to_remove)}")
+                print(f"  ✓ Removed {len(sessions_to_remove)} session(s): {', '.join(sessions_to_remove)}")
             else:
-                print(f"  - No room configs found for @{machine_id}")
+                print(f"  - No session configs found for @{machine_id}")
         except json.JSONDecodeError:
-            print(f"  - rooms.json is invalid, skipping")
+            print(f"  - sessions.json is invalid, skipping")
     else:
-        print(f"  - No rooms.json found")
+        print(f"  - No sessions.json found")
 
     # Step 5: Print manual steps
     print()
@@ -3332,15 +3331,6 @@ def cmd_doctor(args) -> int:
         print("     macOS: brew install ffmpeg")
         print("     Ubuntu: sudo apt install ffmpeg")
         issues_found += 1
-
-    # Check whisperkit-cli (macOS only)
-    if sys.platform == "darwin":
-        whisperkit_path = shutil.which("whisperkit-cli")
-        if whisperkit_path:
-            print(f"  [ok] whisperkit-cli: {whisperkit_path}")
-        else:
-            print("  [..] whisperkit-cli: not found (optional for STT)")
-            print("     Install MacWhisper: https://goodsnooze.gumroad.com/l/macwhisper")
 
     # 3. Check AgentWire scripts
     print("\nChecking AgentWire scripts...")
@@ -4813,7 +4803,7 @@ def main() -> int:
     """Main entry point."""
     parser = argparse.ArgumentParser(
         prog="agentwire",
-        description="Multi-room voice web interface for AI coding agents.",
+        description="Multi-session voice web interface for AI coding agents.",
     )
     parser.add_argument(
         "--version",

@@ -36,17 +36,9 @@ tts:
 
 # === Speech-to-Text ===
 stt:
-  # Backend options by platform:
-  #   macOS: whisperkit (recommended), whispercpp, openai
-  #   Linux: whispercpp, openai
-  #   Any:   openai (requires API key)
-  backend: "whisperkit"
-
-  # Local model path (for whisperkit/whispercpp)
-  model_path: "~/models/whisperkit/large-v3"
-
-  # Language for transcription
-  language: "en"
+  # agentwire-stt server URL (Docker or standalone)
+  # Leave empty to disable voice input
+  url: "http://localhost:8100"
 
 # === Agent Command ===
 agent:

@@ -1,10 +1,10 @@
 {% extends 'base.html' %}
 {% from 'components/device_selector.html' import device_selector, range_selector, mode_toggle %}
 
-{% block title %}{{ room_name }} - AgentWire{% endblock %}
+{% block title %}{{ session_name }} - AgentWire{% endblock %}
 
 {% block styles %}
-<link rel="stylesheet" href="/static/css/room.css">
+<link rel="stylesheet" href="/static/css/session.css">
 <link rel="stylesheet" href="/static/css/orb.css">
 {% endblock %}
 
@@ -13,7 +13,7 @@
         <div class="header-left">
             <a href="/" class="header-brand"><img src="/static/logo-green.jpeg" alt="" class="header-logo">AgentWire</a>
             <div>
-                <h1>{{ room_name }}{% if config.machine %}<span style="color:var(--text-muted);font-weight:normal">@{{ config.machine }}</span>{% endif %}</h1>
+                <h1>{{ session_name }}{% if config.machine %}<span style="color:var(--text-muted);font-weight:normal">@{{ config.machine }}</span>{% endif %}</h1>
                 <div class="status" id="status">connecting...</div>
             </div>
         </div>
@@ -123,10 +123,10 @@
 
 {% block scripts %}
 <script>
-    window.ROOM_CONFIG = {
-        room: '{{ room_name }}',
+    window.SESSION_CONFIG = {
+        session: '{{ session_name }}',
         isSystemSession: {{ is_system_session_js }}
     };
 </script>
-<script type="module" src="/static/js/room.js"></script>
+<script type="module" src="/static/js/session.js"></script>
 {% endblock %}

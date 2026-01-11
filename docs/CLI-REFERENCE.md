@@ -177,7 +177,7 @@ agentwire generate-certs   # Generate SSL certificates
 | Option | Description |
 |--------|-------------|
 | `-v, --voice NAME` | Voice name for TTS |
-| `-r, --room NAME` | Room name (auto-detected from env/tmux) |
+| `-s, --session NAME` | Session name (auto-detected from env/tmux) |
 | `--exaggeration FLOAT` | Voice exaggeration 0-1 (default: varies by voice) |
 | `--cfg FLOAT` | CFG weight 0-1 (default: varies by voice) |
 

@@ -22,14 +22,14 @@ Smart session creation with existence check. Unlike `/new` which fails if a sess
 
 | File | Purpose |
 |------|---------|
-| `~/.agentwire/rooms.json` | Session definitions with roles, models, paths |
+| `~/.agentwire/sessions.json` | Session definitions with roles, models, paths |
 
 ## Behavior
 
 1. **Check if session exists** - Look for running tmux session with that name
 2. **If exists without --force** - Show helpful options (attach or recreate)
 3. **If exists with --force** - Cleanly kill existing (send /exit first), then create fresh
-4. **If doesn't exist** - Create new session from room config (path, model, role)
+4. **If doesn't exist** - Create new session from session config (path, model, role)
 
 ## Examples
 

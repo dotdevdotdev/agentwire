@@ -124,7 +124,7 @@ Browser (xterm.js)              Portal (server.py)              tmux session
 
 ### Ambient Mode
 
-- **Voice accuracy:** STT accuracy depends on the backend (WhisperKit, OpenAI, etc.) and audio quality. Background noise may affect transcription.
+- **Voice accuracy:** STT accuracy depends on the backend (WhisperKit, remote, etc.) and audio quality. Background noise may affect transcription.
 - **Browser audio:** Push-to-talk requires browser microphone permissions and may not work in all environments (e.g., WSL2 without audio passthrough).
 
 ### General

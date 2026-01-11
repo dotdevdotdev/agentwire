@@ -1,4 +1,4 @@
-/* Room CSS - Layout, header, controls, bubbles, modals */
+/* Session CSS - Layout, header, controls, bubbles, modals */
 
 /* Layout variables */
 :root {
@@ -21,7 +21,7 @@
     --orb-awaiting-dark: #D97706;
 }
 
-/* Room body - override base.css for room-specific layout */
+/* Session body - override base.css for session-specific layout */
 body {
     height: 100dvh;
     overflow: hidden;

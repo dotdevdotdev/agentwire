@@ -21,12 +21,9 @@ tts:
   url: "http://tts:8100"
   default_voice: "default"
 
-# === STT (use API for containers) ===
+# === STT (agentwire-stt container) ===
 stt:
-  # OpenAI works without local models
-  backend: "openai"
-  language: "en"
-  # API key from environment: OPENAI_API_KEY
+  url: "http://stt:8100"
 
 # === Agent ===
 agent:

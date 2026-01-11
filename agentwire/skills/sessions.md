@@ -17,7 +17,7 @@ List all tmux sessions running on local machine and configured remote machines.
 
 1. List local tmux sessions with window count
 2. Read machine list from `~/.agentwire/machines.json`
-3. Read room config from `~/.agentwire/rooms.json` for role labels
+3. Read session config from `~/.agentwire/sessions.json` for role labels
 4. For each remote machine, SSH and list their tmux sessions
 5. Display formatted output grouped by machine with roles
 
@@ -38,7 +38,7 @@ gpu-server: (offline)
 
 Sessions show name, permission mode (if configured), and window count. Offline machines are indicated.
 
-Permission modes are determined from `~/.agentwire/rooms.json`:
+Permission modes are determined from `~/.agentwire/sessions.json`:
 - `agentwire` is always the main agentwire role
 - Sessions with `bypass_permissions: true` (or unset) show as "bypass"
 - Sessions with `bypass_permissions: false` show as "normal"
@@ -49,7 +49,7 @@ Permission modes are determined from `~/.agentwire/rooms.json`:
 ```bash
 #!/bin/bash
 
-rooms_file="$HOME/.agentwire/rooms.json"
+sessions_file="$HOME/.agentwire/sessions.json"
 
 # Function to get permission mode for a session name
 get_permission_mode() {
@@ -61,9 +61,9 @@ get_permission_mode() {
     return
   fi
 
-  # Check rooms.json for config
-  if [ -f "$rooms_file" ]; then
-    local config=$(jq -r --arg n "$name" '.[$n] // empty' "$rooms_file" 2>/dev/null)
+  # Check sessions.json for config
+  if [ -f "$sessions_file" ]; then
+    local config=$(jq -r --arg n "$name" '.[$n] // empty' "$sessions_file" 2>/dev/null)
     if [ -n "$config" ]; then
       # bypass_permissions defaults to true if not set
       local bypass=$(echo "$config" | jq -r '.bypass_permissions // true')
@@ -141,4 +141,4 @@ fi
 - SSH uses BatchMode to avoid password prompts
 - 3-second timeout for unresponsive machines
 - Machines configured in `~/.agentwire/machines.json`
-- Permission modes configured in `~/.agentwire/rooms.json`
+- Permission modes configured in `~/.agentwire/sessions.json`

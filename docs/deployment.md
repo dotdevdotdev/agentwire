@@ -14,7 +14,7 @@ Everything runs on one machine:
 │  ├── agentwire portal (web server)     │
 │  ├── agentwire tts (Chatterbox)        │
 │  ├── tmux sessions (Claude Code)       │
-│  └── STT (WhisperKit/local)            │
+│  └── STT (agentwire-stt)               │
 └─────────────────────────────────────────┘
 ```
 
@@ -109,16 +109,7 @@ tts:
 
 # === Speech-to-Text ===
 stt:
-  # Backend: whisperkit | whispercpp | openai | none
-  backend: "whisperkit"
-  
-  # For local backends
-  model_path: "~/models/whisperkit/large-v3"
-  language: "en"
-  
-  # For OpenAI backend (works anywhere)
-  # backend: "openai"
-  # api_key: "${OPENAI_API_KEY}"  # From environment
+  url: "http://localhost:8100"  # agentwire-stt server URL
 
 # === Agent Sessions ===
 agent:
@@ -214,8 +205,7 @@ export AGENTWIRE_TTS__URL=http://gpu-server:8100
 export AGENTWIRE_TTS__BACKEND=chatterbox
 
 # STT
-export AGENTWIRE_STT__BACKEND=openai
-export OPENAI_API_KEY=sk-...
+export AGENTWIRE_STT__URL=http://stt:8100
 
 # Projects
 export AGENTWIRE_PROJECTS__DIR=/data/projects
@@ -238,8 +228,7 @@ tts:
   url: "http://gpu-server:8100"  # Remote TTS
 
 stt:
-  backend: "whisperkit"  # Local on Mac
-  model_path: "~/models/whisperkit/large-v3"
+  url: "http://localhost:8100"  # agentwire-stt
 ```
 
 ```json
@@ -277,8 +266,7 @@ services:
       - ./certs:/root/.agentwire/certs
     environment:
       - AGENTWIRE_TTS__URL=http://tts:8100
-      - AGENTWIRE_STT__BACKEND=openai
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - AGENTWIRE_STT__URL=http://stt:8100
 
   tts:
     image: resemble/chatterbox
@@ -309,7 +297,8 @@ tts:
   url: "http://localhost:8100"
 
 stt:
-  backend: "openai"  # Use API, no local model needed
+  backend: "remote"  # Use agentwire-stt container
+  url: "http://localhost:8100"
 ```
 
 ## SSH Configuration

@@ -5,7 +5,7 @@ description: List active worker sessions managed by this session.
 
 # /workers
 
-List all active worker sessions. Workers are sessions with `worker` in their roles array in rooms.json.
+List all active worker sessions. Workers are sessions with `worker` in their roles array in sessions.json.
 
 ## Usage
 
@@ -15,7 +15,7 @@ List all active worker sessions. Workers are sessions with `worker` in their rol
 
 ## Behavior
 
-1. Read room configs from `~/.agentwire/rooms.json`
+1. Read session configs from `~/.agentwire/sessions.json`
 2. List local tmux sessions, filter to workers only
 3. For each remote machine, SSH and list worker sessions
 4. Display formatted output with status indicators
@@ -43,14 +43,14 @@ Workers show:
 ```bash
 #!/bin/bash
 
-rooms_file="$HOME/.agentwire/rooms.json"
+sessions_file="$HOME/.agentwire/sessions.json"
 machines_file="$HOME/.agentwire/machines.json"
 
 # Function to check if session is a worker (has "worker" in roles array)
 is_worker() {
   local name="$1"
-  if [ -f "$rooms_file" ]; then
-    local has_worker=$(jq -r --arg n "$name" '.[$n].roles // [] | contains(["worker"])' "$rooms_file" 2>/dev/null)
+  if [ -f "$sessions_file" ]; then
+    local has_worker=$(jq -r --arg n "$name" '.[$n].roles // [] | contains(["worker"])' "$sessions_file" 2>/dev/null)
     [ "$has_worker" = "true" ]
     return $?
   fi
@@ -60,8 +60,8 @@ is_worker() {
 # Function to get session path
 get_session_path() {
   local name="$1"
-  if [ -f "$rooms_file" ]; then
-    jq -r --arg n "$name" '.[$n].path // empty' "$rooms_file" 2>/dev/null
+  if [ -f "$sessions_file" ]; then
+    jq -r --arg n "$name" '.[$n].path // empty' "$sessions_file" 2>/dev/null
   fi
 }
 
@@ -113,11 +113,11 @@ if [ -f "$machines_file" ]; then
       remote_workers=""
       if [ -n "$remote_sessions" ]; then
         while read -r name; do
-          # Check rooms.json for remote session (format: name@machine)
-          room_key="${name}@${machine_id}"
-          has_worker=$(jq -r --arg n "$room_key" '.[$n].roles // [] | contains(["worker"])' "$rooms_file" 2>/dev/null)
+          # Check sessions.json for remote session (format: name@machine)
+          session_key="${name}@${machine_id}"
+          has_worker=$(jq -r --arg n "$session_key" '.[$n].roles // [] | contains(["worker"])' "$sessions_file" 2>/dev/null)
           if [ "$has_worker" = "true" ]; then
-            path=$(jq -r --arg n "$room_key" '.[$n].path // empty' "$rooms_file" 2>/dev/null)
+            path=$(jq -r --arg n "$session_key" '.[$n].path // empty' "$sessions_file" 2>/dev/null)
             if [ -z "$remote_workers" ]; then
               echo ""
               echo "Remote ($machine_id):"
@@ -145,7 +145,7 @@ fi
 
 ## Notes
 
-- Only shows sessions with `worker` in their roles array in rooms.json
+- Only shows sessions with `worker` in their roles array in sessions.json
 - Sessions without the worker role are NOT shown
 - Useful for agentwire sessions to monitor spawned workers
 - Use `/output <worker>` to check specific worker progress

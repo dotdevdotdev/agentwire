@@ -23,11 +23,11 @@ No arguments needed - checks all configured machines.
    - Test SSH connectivity with 5-second timeout
 
 2. **Categorize by Permission Mode**
-   - Read `~/.agentwire/rooms.json` for session configuration
+   - Read `~/.agentwire/sessions.json` for session configuration
    - Session named `agentwire` → Agentwire (main)
    - Sessions with `bypass_permissions: true` → Bypass Sessions
    - Sessions with `bypass_permissions: false` → Normal Sessions
-   - Sessions not in rooms.json → Unconfigured
+   - Sessions not in sessions.json → Unconfigured
 
 3. **Display grouped output**
 
@@ -54,7 +54,7 @@ Unconfigured:
 #!/bin/bash
 # Status check - sessions grouped by role
 
-ROOMS_FILE=~/.agentwire/rooms.json
+SESSIONS_FILE=~/.agentwire/sessions.json
 MACHINES_FILE=~/.agentwire/machines.json
 
 # Arrays to hold sessions by category
@@ -77,20 +77,20 @@ get_remote_sessions() {
 # Check if session has bypass_permissions enabled (default: true for backwards compat)
 has_bypass_permissions() {
     local session=$1
-    if [[ -f "$ROOMS_FILE" ]]; then
+    if [[ -f "$SESSIONS_FILE" ]]; then
         # Return true if bypass_permissions is true or not set (defaults to true)
-        local val=$(jq -r --arg s "$session" '.[$s].bypass_permissions // true' "$ROOMS_FILE" 2>/dev/null)
+        local val=$(jq -r --arg s "$session" '.[$s].bypass_permissions // true' "$SESSIONS_FILE" 2>/dev/null)
         [[ "$val" == "true" ]]
         return $?
     fi
     return 0  # Default to bypass if no config
 }
 
-# Check if session is configured in rooms.json
+# Check if session is configured in sessions.json
 is_configured() {
     local session=$1
-    if [[ -f "$ROOMS_FILE" ]]; then
-        jq -e --arg s "$session" 'has($s)' "$ROOMS_FILE" &>/dev/null
+    if [[ -f "$SESSIONS_FILE" ]]; then
+        jq -e --arg s "$session" 'has($s)' "$SESSIONS_FILE" &>/dev/null
         return $?
     fi
     return 1
@@ -170,7 +170,7 @@ fi
 
 ## Configuration
 
-**rooms.json** (`~/.agentwire/rooms.json`):
+**sessions.json** (`~/.agentwire/sessions.json`):
 
 ```json
 {
@@ -203,6 +203,6 @@ fi
 - `agentwire` session is always categorized as Orchestrator
 - Sessions with `bypass_permissions: true` (or unset, defaults to true) are Bypass Sessions
 - Sessions with `bypass_permissions: false` are Normal Sessions (permission prompts enabled)
-- Sessions not in rooms.json are Unconfigured
+- Sessions not in sessions.json are Unconfigured
 - Uses `BatchMode=yes` to prevent SSH password prompts
 - 5-second timeout prevents hanging on unreachable machines

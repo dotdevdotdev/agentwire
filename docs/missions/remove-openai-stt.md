@@ -55,10 +55,10 @@ The OpenAI backend is redundant and requires an external API key.
 
 ## Completion Criteria
 
-- [ ] `agentwire/stt/openai.py` deleted
-- [ ] No `openai` case in `get_stt_backend()`
-- [ ] Default STT for Linux is `remote`
-- [ ] Onboarding wizard doesn't offer OpenAI option
-- [ ] No `OPENAI_API_KEY` references in active code/docs
-- [ ] Docker example uses `remote` backend with stt service URL
-- [ ] `agentwire/stt/remote.py` and `stt_server.py` untouched
+- [ ] `agentwire/stt/openai.py` deleted (USER ACTION: run `git rm agentwire/stt/openai.py`)
+- [x] No `openai` case in `get_stt_backend()`
+- [x] Default STT for Linux is `remote`
+- [x] Onboarding wizard doesn't offer OpenAI option
+- [x] No `OPENAI_API_KEY` references in active code/docs
+- [x] Docker example uses `remote` backend with stt service URL
+- [x] `agentwire/stt/remote.py` and `stt_server.py` untouched

@@ -23,14 +23,14 @@ Create a new Claude Code session in a tmux session, either locally or on a remot
 
 | File | Purpose |
 |------|---------|
-| `~/.agentwire/rooms.json` | Session definitions with roles |
+| `~/.agentwire/sessions.json` | Session definitions with roles |
 | `~/.agentwire/roles/{role}.md` | Role context files |
 | `~/.agentwire/machines.json` | Remote machine config |
 
 ## Behavior
 
 1. **Parse arguments** - Extract name, optional path, optional @machine
-2. **Look up role in rooms.json** - Get role for this session name (defaults to "worker")
+2. **Look up role in sessions.json** - Get role for this session name (defaults to "worker")
 3. **Enforce agentwire singleton** - If role is "agentwire", check if tmux session "agentwire" already exists
 4. **Check if session exists** - Fail early if tmux session with that name already exists
 5. **Resolve path** - Use provided path or default to projects directory
@@ -40,14 +40,14 @@ Create a new Claude Code session in a tmux session, either locally or on a remot
 
 ## Implementation
 
-### Reading Room Config
+### Reading Session Config
 
 ```bash
-ROOMS_FILE=~/.agentwire/rooms.json
+SESSIONS_FILE=~/.agentwire/sessions.json
 ROLES_DIR=~/.agentwire/roles
 
 # Get role for session (default to "worker" if not defined)
-ROLE=$(jq -r --arg name "<name>" '.[$name].role // "worker"' "$ROOMS_FILE")
+ROLE=$(jq -r --arg name "<name>" '.[$name].role // "worker"' "$SESSIONS_FILE")
 
 # Build context file path
 ROLE_FILE="$ROLES_DIR/$ROLE.md"

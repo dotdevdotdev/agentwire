@@ -359,7 +359,7 @@ def setup_remote_machine(
     try:
         # Try to run say with test message (will fail if portal not running, but that's OK)
         result = subprocess.run(
-            ["ssh", ssh_target, f"{agentwire_cmd} say --room test 'Setup complete'"],
+            ["ssh", ssh_target, f"{agentwire_cmd} say --session test 'Setup complete'"],
             capture_output=True,
             text=True,
             timeout=10,
@@ -597,9 +597,9 @@ services:
             timeout=30,
         )
 
-        # Create rooms.json with empty object
+        # Create sessions.json with empty object
         subprocess.run(
-            ["ssh", ssh_target, f"cat > ~/.agentwire/rooms.json"],
+            ["ssh", ssh_target, f"cat > ~/.agentwire/sessions.json"],
             input="{}",
             check=True,
             capture_output=True,
@@ -742,70 +742,6 @@ def get_ffmpeg_install_instructions(platform: str) -> str:
         return "Visit https://ffmpeg.org/download.html"
 
 
-def check_stt_dependencies(backend: str, platform: str) -> tuple[bool, str]:
-    """Check if STT backend dependencies are available.
-
-    Returns:
-        Tuple of (is_available, message)
-    """
-    if backend == "whisperkit":
-        # Check for whisperkit-cli binary
-        whisperkit_cli = shutil.which("whisperkit-cli")
-        if not whisperkit_cli:
-            return False, "whisperkit-cli binary not found"
-
-        # Check for MacWhisper models directory
-        models_dir = Path.home() / "Library/Application Support/MacWhisper/models/whisperkit/models/argmaxinc/whisperkit-coreml"
-        if not models_dir.exists():
-            return False, "MacWhisper models directory not found"
-
-        # List available models
-        try:
-            models = [d.name for d in models_dir.iterdir() if d.is_dir()]
-            if not models:
-                return False, "No WhisperKit models found in MacWhisper directory"
-            return True, f"Found {len(models)} model(s)"
-        except Exception:
-            return False, "Could not read models directory"
-
-    elif backend == "whispercpp":
-        return True, "Model path will be configured"
-
-    elif backend == "openai":
-        api_key = os.environ.get("OPENAI_API_KEY")
-        if not api_key:
-            return False, "OPENAI_API_KEY environment variable not set"
-        return True, "API key found"
-
-    elif backend == "faster-whisper":
-        return True, "Faster-whisper will download models on first use"
-
-    else:
-        return True, "No dependencies required"
-
-
-def get_stt_dependency_fix(backend: str) -> str:
-    """Get instructions for fixing missing STT dependencies."""
-    if backend == "whisperkit":
-        return """Install MacWhisper to get WhisperKit:
-
-  Download from: https://goodsnooze.gumroad.com/l/macwhisper
-
-  After installation, models will be at:
-  ~/Library/Application Support/MacWhisper/models/whisperkit/models/argmaxinc/whisperkit-coreml/
-
-  Or choose a different STT backend (whispercpp, openai)."""
-
-    elif backend == "openai":
-        return """Set your OpenAI API key:
-
-  export OPENAI_API_KEY='your-api-key-here'
-
-  Add to ~/.bashrc or ~/.zshrc for persistence."""
-
-    return "No action needed"
-
-
 def print_dependency_summary(checks: dict[str, tuple[bool, str]]) -> bool:
     """Print summary of dependency checks.
 
@@ -837,7 +773,7 @@ def run_onboarding(skip_session: bool = False) -> int:
     print()
     print(f"{BOLD}Welcome to AgentWire Setup!{RESET}")
     print()
-    print("AgentWire is a multi-room voice interface for AI coding agents.")
+    print("AgentWire is a multi-session voice interface for AI coding agents.")
     print("I'll walk you through configuring your environment.")
     print()
 
@@ -887,12 +823,12 @@ def run_onboarding(skip_session: bool = False) -> int:
         projects_dir = existing_config.get("projects", {}).get("dir", "~/projects")
         agent_cmd = existing_config.get("agent", {}).get("command", "claude")
         tts_backend = existing_config.get("tts", {}).get("backend", "none")
-        stt_backend = existing_config.get("stt", {}).get("backend", "none")
+        stt_url = existing_config.get("stt", {}).get("url", "")
 
         print(f"  Projects:  {projects_dir}")
         print(f"  Agent:     {agent_cmd}")
         print(f"  TTS:       {tts_backend}")
-        print(f"  STT:       {stt_backend}")
+        print(f"  STT:       {stt_url or 'disabled'}")
         print()
 
         # Load existing machines
@@ -935,8 +871,7 @@ def run_onboarding(skip_session: bool = False) -> int:
         "tts_backend": "chatterbox",
         "tts_url": "http://localhost:8100",
         "tts_voice": "default",
-        "stt_backend": "whisperkit" if detect_platform() == "macos" else "whispercpp",
-        "stt_language": "en",
+        "stt_url": "",  # Empty = disabled, or URL like http://localhost:8100
         "audio_input_device": "default",
         "generate_certs": True,
         "machines": [],
@@ -953,7 +888,7 @@ def run_onboarding(skip_session: bool = False) -> int:
         config["tts_backend"] = existing_config.get("tts", {}).get("backend", config["tts_backend"])
         config["tts_url"] = existing_config.get("tts", {}).get("url", config["tts_url"])
         config["tts_voice"] = existing_config.get("tts", {}).get("default_voice", config["tts_voice"])
-        config["stt_backend"] = existing_config.get("stt", {}).get("backend", config["stt_backend"])
+        config["stt_url"] = existing_config.get("stt", {}).get("url", config["stt_url"])
         config["audio_input_device"] = existing_config.get("audio", {}).get("input_device", "default")
         config["generate_certs"] = False  # Already have certs if existing
         # Load existing services config
@@ -1024,7 +959,7 @@ def run_onboarding(skip_session: bool = False) -> int:
 
     print("AgentWire can run as a single machine or part of a multi-machine network.")
     print()
-    print_info("Portal: The main web server where you access rooms and voice input.")
+    print_info("Portal: The main web server where you access sessions and voice input.")
     print_info("Worker: A machine that runs Claude Code sessions, connected to a portal.")
     print()
 
@@ -1167,58 +1102,20 @@ def run_onboarding(skip_session: bool = False) -> int:
     print_header("5. Speech-to-Text (STT)")
 
     print("STT converts your voice to text for sending to agents.")
+    print("STT uses agentwire-stt server (Docker or standalone).")
     print()
 
-    platform = detect_platform()
+    default_stt_url = config["stt_url"] or "http://localhost:8100"
+    stt_url = prompt_text(
+        "STT server URL (leave empty to disable voice input)",
+        default=default_stt_url
+    ).strip()
+    config["stt_url"] = stt_url
 
-    if platform == "macos":
-        stt_options = [
-            ("whisperkit", "WhisperKit (Fast, local, macOS optimized)"),
-            ("whispercpp", "whisper.cpp (Local, cross-platform)"),
-            ("openai", "OpenAI API (Cloud, requires API key)"),
-            ("none", "None (Typing only, no voice input)"),
-        ]
-        default_stt = 1
+    if stt_url:
+        print_success(f"STT will use: {stt_url}")
     else:
-        stt_options = [
-            ("whispercpp", "whisper.cpp (Local, good quality)"),
-            ("faster-whisper", "faster-whisper (Local, optimized)"),
-            ("openai", "OpenAI API (Cloud, requires API key)"),
-            ("none", "None (Typing only, no voice input)"),
-        ]
-        default_stt = 1
-
-    # Find current selection in options
-    for i, (key, _) in enumerate(stt_options, 1):
-        if key == config["stt_backend"]:
-            default_stt = i
-            break
-
-    stt_choice = prompt_choice("Which STT backend?", stt_options, default=default_stt)
-    config["stt_backend"] = stt_choice
-
-    # Check STT dependencies
-    if stt_choice != "none":
-        print()
-        stt_ok, stt_message = check_stt_dependencies(stt_choice, platform)
-        dependency_checks[f"STT ({stt_choice})"] = (stt_ok, stt_message)
-
-        if not stt_ok:
-            print_error(f"STT dependency check failed: {stt_message}")
-            print()
-            print(get_stt_dependency_fix(stt_choice))
-            print()
-        else:
-            print_success(f"{stt_choice}: {stt_message}")
-
-    if stt_choice == "openai":
-        print()
-        print_info("Set OPENAI_API_KEY environment variable with your API key")
-    elif stt_choice == "none":
         print_info("Voice input disabled. Use typing to communicate with agents.")
-    else:
-        if stt_choice not in dependency_checks:
-            print_success(f"Using {stt_choice} for speech recognition")
 
     # ─────────────────────────────────────────────────────────────
     # Section 6: SSL Certificates
@@ -1394,8 +1291,7 @@ tts:
   default_voice: "{config['tts_voice']}"
 
 stt:
-  backend: "{config['stt_backend']}"
-  language: "{config['stt_language']}"
+  url: "{config['stt_url']}"  # agentwire-stt server URL (empty = disabled)
 
 audio:
   input_device: {config['audio_input_device']}  # Microphone for voice input & cloning
@@ -1427,17 +1323,17 @@ services:
     machines_path.write_text(json.dumps(machines_content, indent=2) + "\n")
     print_success(f"Created {machines_path}")
 
-    # Write rooms.json if not exists
-    rooms_path = CONFIG_DIR / "rooms.json"
-    if not rooms_path.exists():
-        rooms_content = {
+    # Write sessions.json if not exists
+    sessions_path = CONFIG_DIR / "sessions.json"
+    if not sessions_path.exists():
+        sessions_content = {
             "agentwire": {
                 "roles": ["agentwire"],
                 "voice": config["tts_voice"],
             }
         }
-        rooms_path.write_text(json.dumps(rooms_content, indent=2) + "\n")
-        print_success(f"Created {rooms_path}")
+        sessions_path.write_text(json.dumps(sessions_content, indent=2) + "\n")
+        print_success(f"Created {sessions_path}")
 
     # Create roles directory and default files
     roles_dir = CONFIG_DIR / "roles"
@@ -1499,7 +1395,7 @@ Stay focused on your project directory and commit frequently.
         print(f" @ {config['tts_url']}")
     else:
         print()
-    print(f"  STT:         {config['stt_backend']}")
+    print(f"  STT:         {config['stt_url'] or 'disabled'}")
     print(f"  Machines:    {len(config['machines'])} configured" if config['machines'] else "  Machines:    Local only")
 
     # ─────────────────────────────────────────────────────────────
