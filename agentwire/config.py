@@ -176,7 +176,7 @@ class Template:
 
     name: str
     description: str = ""
-    role: str | None = None  # Role file from ~/.agentwire/roles/
+    roles: list[str] = field(default_factory=list)  # Composable roles array
     voice: str | None = None  # TTS voice
     project: str | None = None  # Default project path
     initial_prompt: str = ""  # Context sent to Claude on session start
@@ -192,8 +192,8 @@ class Template:
             "bypass_permissions": self.bypass_permissions,
             "restricted": self.restricted,
         }
-        if self.role:
-            d["role"] = self.role
+        if self.roles:
+            d["roles"] = self.roles
         if self.voice:
             d["voice"] = self.voice
         if self.project:
@@ -203,10 +203,15 @@ class Template:
     @classmethod
     def from_dict(cls, data: dict) -> "Template":
         """Create Template from dictionary."""
+        # Support both old 'role' (single) and new 'roles' (array) format
+        roles_data = data.get("roles", [])
+        if not roles_data and data.get("role"):
+            # Backwards compat: convert single role to array
+            roles_data = [data["role"]]
         return cls(
             name=data.get("name", ""),
             description=data.get("description", ""),
-            role=data.get("role"),
+            roles=roles_data if isinstance(roles_data, list) else [roles_data],
             voice=data.get("voice"),
             project=data.get("project"),
             initial_prompt=data.get("initial_prompt", ""),

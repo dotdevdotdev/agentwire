@@ -17,24 +17,20 @@ from pathlib import Path
 from . import __version__
 from .worktree import parse_session_name, get_session_path, ensure_worktree, remove_worktree
 from . import cli_safety
+from .roles import RoleConfig, load_roles, merge_roles
 
 # Default config directory
 CONFIG_DIR = Path.home() / ".agentwire"
 
-# Session type constants
-# Orchestrators have all tools available - role file provides guidance, not enforcement
-WORKER_DISALLOWED_TOOLS = ["AskUserQuestion"]
-
-
 def _build_claude_cmd(
     bypass_permissions: bool,
-    session_type: str | None = None,
+    roles: list[RoleConfig] | None = None,
 ) -> str:
     """Build the claude command with appropriate flags.
 
     Args:
         bypass_permissions: Whether to use --dangerously-skip-permissions
-        session_type: "orchestrator", "worker", or None for default behavior
+        roles: List of RoleConfig objects to apply (merged for tools/instructions)
 
     Returns:
         The claude command string to execute
@@ -44,20 +40,28 @@ def _build_claude_cmd(
     if bypass_permissions:
         parts.append("--dangerously-skip-permissions")
 
-    # Add role file via --append-system-prompt if role file exists
-    roles_dir = CONFIG_DIR / "roles"
-    if session_type == "worker":
-        role_file = roles_dir / "worker.md"
-        if role_file.exists():
-            # Use cat to read the file content
-            parts.append(f'--append-system-prompt "$(cat {shlex.quote(str(role_file))})"')
-        # Block AskUserQuestion for workers
-        parts.append("--disallowedTools " + " ".join(WORKER_DISALLOWED_TOOLS))
-    elif session_type == "orchestrator":
-        role_file = roles_dir / "orchestrator.md"
-        if role_file.exists():
-            parts.append(f'--append-system-prompt "$(cat {shlex.quote(str(role_file))})"')
-        # Orchestrators have all tools - role file provides guidance on when to delegate
+    if roles:
+        # Merge all roles
+        merged = merge_roles(roles)
+
+        # Add tools whitelist if any role specifies tools
+        if merged.tools:
+            parts.append("--tools " + " ".join(sorted(merged.tools)))
+
+        # Add disallowed tools (intersection - only block if ALL roles agree)
+        if merged.disallowed_tools:
+            parts.append("--disallowedTools " + " ".join(sorted(merged.disallowed_tools)))
+
+        # Concatenate all instructions via --append-system-prompt
+        if merged.instructions:
+            # Write merged instructions to a temp approach - use heredoc
+            # Escape any double quotes and dollar signs in instructions
+            escaped = merged.instructions.replace('\\', '\\\\').replace('"', '\\"').replace('$', '\\$').replace('`', '\\`')
+            parts.append(f'--append-system-prompt "{escaped}"')
+
+        # Model override (last non-None wins)
+        if merged.model:
+            parts.append(f"--model {merged.model}")
 
     return " ".join(parts)
 
@@ -1556,13 +1560,22 @@ def cmd_new(args) -> int:
         if template is None:
             return _output_result(False, json_mode, f"Template '{template_name}' not found")
 
-    # Determine session type (worker/orchestrator)
-    is_worker = getattr(args, 'worker', False)
-    is_orchestrator = getattr(args, 'orchestrator', False)
-    if is_worker and is_orchestrator:
-        return _output_result(False, json_mode, "Cannot specify both --worker and --orchestrator")
-    # Default to None (no type-specific behavior) unless explicitly set
-    session_type = "worker" if is_worker else ("orchestrator" if is_orchestrator else None)
+    # Parse roles from CLI or template
+    roles_arg = getattr(args, 'roles', None)
+    role_names: list[str] = []
+    if roles_arg:
+        role_names = [r.strip() for r in roles_arg.split(",") if r.strip()]
+    elif template and hasattr(template, 'roles') and template.roles:
+        role_names = template.roles
+
+    # Load and validate roles
+    roles: list[RoleConfig] = []
+    if role_names:
+        # Determine project path for role discovery
+        project_path_for_roles = Path(path).expanduser().resolve() if path else None
+        roles, missing = load_roles(role_names, project_path_for_roles)
+        if missing:
+            return _output_result(False, json_mode, f"Roles not found: {', '.join(missing)}")
 
     # Parse session name: project, branch, machine
     project, branch, machine_id = parse_session_name(name)
@@ -1650,14 +1663,12 @@ def cmd_new(args) -> int:
         else:
             bypass_permissions = not (no_bypass_arg or restricted)
 
-        # Build claude command with session type flags
-        claude_cmd = _build_claude_cmd(bypass_permissions, session_type)
+        # Build claude command with roles
+        claude_cmd = _build_claude_cmd(bypass_permissions, roles if roles else None)
         # AGENTWIRE_ROOM must include @machine so portal can find room config
         room_name = f"{session_name}@{machine_id}"
         # Build env var exports
         env_exports = f"export AGENTWIRE_ROOM={shlex.quote(room_name)}"
-        if session_type:
-            env_exports += f" && export AGENTWIRE_SESSION_TYPE={session_type}"
         create_cmd = (
             f"tmux new-session -d -s {shlex.quote(session_name)} -c {shlex.quote(remote_path)} && "
             f"tmux send-keys -t {shlex.quote(session_name)} 'cd {shlex.quote(remote_path)}' Enter && "
@@ -1685,9 +1696,9 @@ def cmd_new(args) -> int:
 
         room_key = f"{session_name}@{machine_id}"
         room_config = {"bypass_permissions": bypass_permissions, "restricted": restricted}
-        # Add session type if specified
-        if session_type:
-            room_config["type"] = session_type
+        # Add roles array if specified
+        if role_names:
+            room_config["roles"] = role_names
         # Add voice from template if specified
         if template and template.voice:
             room_config["voice"] = template.voice
@@ -1815,14 +1826,6 @@ def cmd_new(args) -> int:
     )
     time.sleep(0.1)
 
-    # Set AGENTWIRE_SESSION_TYPE env var (used by session-type bash hook)
-    if session_type:
-        subprocess.run(
-            ["tmux", "send-keys", "-t", session_name, f"export AGENTWIRE_SESSION_TYPE={session_type}", "Enter"],
-            check=True
-        )
-        time.sleep(0.1)
-
     # Start Claude (with or without skip-permissions flag)
     # Permission mode: command line overrides template defaults
     restricted = getattr(args, 'restricted', False)
@@ -1836,8 +1839,8 @@ def cmd_new(args) -> int:
     else:
         bypass_permissions = not (no_bypass_arg or restricted)
 
-    # Build claude command with session type flags
-    claude_cmd = _build_claude_cmd(bypass_permissions, session_type)
+    # Build claude command with roles
+    claude_cmd = _build_claude_cmd(bypass_permissions, roles if roles else None)
 
     subprocess.run(
         ["tmux", "send-keys", "-t", session_name, claude_cmd, "Enter"],
@@ -1857,9 +1860,9 @@ def cmd_new(args) -> int:
             pass
 
     room_config = {"bypass_permissions": bypass_permissions, "restricted": restricted}
-    # Add session type if specified
-    if session_type:
-        room_config["type"] = session_type
+    # Add roles array if specified
+    if role_names:
+        room_config["roles"] = role_names
     # Add voice from template if specified
     if template and template.voice:
         room_config["voice"] = template.voice
@@ -2998,8 +3001,9 @@ def cmd_dev(args) -> int:
         print(f"Project directory not found: {project_dir}", file=sys.stderr)
         return 1
 
-    # Build claude command with orchestrator flags (role file + disallowed tools)
-    claude_cmd = _build_claude_cmd(bypass_permissions=True, session_type="orchestrator")
+    # Load agentwire role for dev session
+    dev_roles, _ = load_roles(["agentwire"], project_dir)
+    claude_cmd = _build_claude_cmd(bypass_permissions=True, roles=dev_roles if dev_roles else None)
 
     # Create session
     print(f"Creating dev session '{session_name}' in {project_dir}...")
@@ -3007,15 +3011,10 @@ def cmd_dev(args) -> int:
         "tmux", "new-session", "-d", "-s", session_name, "-c", str(project_dir),
     ])
 
-    # Set env vars (used by permission hook and session-type bash hook)
+    # Set env vars (used by permission hook)
     subprocess.run([
         "tmux", "send-keys", "-t", session_name,
         f"export AGENTWIRE_ROOM={session_name}", "Enter",
-    ])
-    time.sleep(0.1)
-    subprocess.run([
-        "tmux", "send-keys", "-t", session_name,
-        "export AGENTWIRE_SESSION_TYPE=orchestrator", "Enter",
     ])
     time.sleep(0.1)
 
@@ -3877,7 +3876,7 @@ def cmd_template_show(args) -> int:
     print(f"Template: {template.name}")
     print(f"Description: {template.description or '(none)'}")
     print(f"Voice: {template.voice or '(default)'}")
-    print(f"Role: {template.role or '(none)'}")
+    print(f"Roles: {', '.join(template.roles) if template.roles else '(none)'}")
     print(f"Project: {template.project or '(none)'}")
     mode = "restricted" if template.restricted else ("bypass" if template.bypass_permissions else "prompted")
     print(f"Permission Mode: {mode}")
@@ -3912,11 +3911,13 @@ def cmd_template_create(args) -> int:
 
     if json_mode:
         # In JSON mode, require --description and --prompt
+        roles_arg = getattr(args, 'roles', None)
+        roles_list = [r.strip() for r in roles_arg.split(",")] if roles_arg else []
         template = Template(
             name=name,
             description=args.description or "",
             voice=args.voice,
-            role=args.role,
+            roles=roles_list,
             project=args.project,
             initial_prompt=args.prompt or "",
             bypass_permissions=not args.no_bypass,
@@ -3938,7 +3939,8 @@ def cmd_template_create(args) -> int:
         initial_prompt = '\n'.join(lines)
 
         voice = input("\nVoice (optional, press Enter for default): ").strip() or None
-        role = input("Role file (optional, from ~/.agentwire/roles/): ").strip() or None
+        roles_input = input("Roles (comma-separated, e.g., worker,code-review): ").strip()
+        roles_list = [r.strip() for r in roles_input.split(",")] if roles_input else []
         project = input("Default project path (optional): ").strip() or None
 
         print("\nPermission mode:")
@@ -3954,7 +3956,7 @@ def cmd_template_create(args) -> int:
             name=name,
             description=description,
             voice=voice,
-            role=role,
+            roles=roles_list,
             project=project,
             initial_prompt=initial_prompt,
             bypass_permissions=bypass_permissions,
@@ -4825,8 +4827,7 @@ def main() -> int:
     new_parser.add_argument("-f", "--force", action="store_true", help="Replace existing session")
     new_parser.add_argument("--no-bypass", action="store_true", help="Don't use --dangerously-skip-permissions (normal mode)")
     new_parser.add_argument("--restricted", action="store_true", help="Restricted mode: only allow say commands (implies --no-bypass)")
-    new_parser.add_argument("--worker", action="store_true", help="Worker session: blocks AskUserQuestion, loads worker role")
-    new_parser.add_argument("--orchestrator", action="store_true", help="Orchestrator session: blocks file tools, loads orchestrator role (default)")
+    new_parser.add_argument("--roles", help="Comma-separated list of roles to apply (e.g., worker,code-review)")
     new_parser.add_argument("--json", action="store_true", help="Output as JSON")
     new_parser.set_defaults(func=cmd_new)
 
@@ -4980,7 +4981,7 @@ def main() -> int:
     template_create.add_argument("name", help="Template name")
     template_create.add_argument("--description", help="Template description")
     template_create.add_argument("--voice", help="TTS voice")
-    template_create.add_argument("--role", help="Role file name")
+    template_create.add_argument("--roles", help="Comma-separated list of roles to apply")
     template_create.add_argument("--project", help="Default project path")
     template_create.add_argument("--prompt", help="Initial prompt text")
     template_create.add_argument("--no-bypass", action="store_true", help="Use normal permission mode")

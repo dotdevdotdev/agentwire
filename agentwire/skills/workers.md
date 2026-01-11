@@ -5,7 +5,7 @@ description: List active worker sessions spawned by this orchestrator.
 
 # /workers
 
-List all active worker sessions. Workers are sessions with `type: worker` in rooms.json.
+List all active worker sessions. Workers are sessions with `worker` in their roles array in rooms.json.
 
 ## Usage
 
@@ -46,12 +46,12 @@ Workers show:
 rooms_file="$HOME/.agentwire/rooms.json"
 machines_file="$HOME/.agentwire/machines.json"
 
-# Function to check if session is a worker
+# Function to check if session is a worker (has "worker" in roles array)
 is_worker() {
   local name="$1"
   if [ -f "$rooms_file" ]; then
-    local session_type=$(jq -r --arg n "$name" '.[$n].type // empty' "$rooms_file" 2>/dev/null)
-    [ "$session_type" = "worker" ]
+    local has_worker=$(jq -r --arg n "$name" '.[$n].roles // [] | contains(["worker"])' "$rooms_file" 2>/dev/null)
+    [ "$has_worker" = "true" ]
     return $?
   fi
   return 1
@@ -115,8 +115,8 @@ if [ -f "$machines_file" ]; then
         while read -r name; do
           # Check rooms.json for remote session (format: name@machine)
           room_key="${name}@${machine_id}"
-          session_type=$(jq -r --arg n "$room_key" '.[$n].type // empty' "$rooms_file" 2>/dev/null)
-          if [ "$session_type" = "worker" ]; then
+          has_worker=$(jq -r --arg n "$room_key" '.[$n].roles // [] | contains(["worker"])' "$rooms_file" 2>/dev/null)
+          if [ "$has_worker" = "true" ]; then
             path=$(jq -r --arg n "$room_key" '.[$n].path // empty' "$rooms_file" 2>/dev/null)
             if [ -z "$remote_workers" ]; then
               echo ""
@@ -145,8 +145,8 @@ fi
 
 ## Notes
 
-- Only shows sessions with `type: worker` in rooms.json
-- Default sessions (no type) are NOT shown (they're orchestrators)
+- Only shows sessions with `worker` in their roles array in rooms.json
+- Sessions without the worker role are NOT shown
 - Useful for orchestrator sessions to monitor spawned workers
 - Use `/output <worker>` to check specific worker progress
 - Use `/send <worker> "prompt"` to give workers new instructions
