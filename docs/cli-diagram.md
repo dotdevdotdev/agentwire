@@ -41,6 +41,85 @@ agentwire
 ──────────────────────────────────────────────────────────────────────────┘
 ```
 
+## Parameter Reference
+
+### Session Commands
+
+| Command | Parameters |
+|---------|-----------|
+| `new` | `-s SESSION` (req), `-p PATH`, `-t TEMPLATE`, `-f`, `--no-bypass`, `--restricted`, `--worker`, `--orchestrator`, `--json` |
+| `send` | `-s SESSION` (req), `PROMPT`, `--json` |
+| `send-keys` | `-s SESSION` (req), `KEYS...` |
+| `output` | `-s SESSION` (req), `-n LINES`, `--json` |
+| `kill` | `-s SESSION` (req), `--json` |
+| `list` | `--local`, `--json` |
+| `recreate` | `-s SESSION` (req), `--no-bypass`, `--restricted`, `--json` |
+| `fork` | `-s SOURCE` (req), `-t TARGET` (req), `--no-bypass`, `--restricted`, `--json` |
+| `dev` | (none) |
+
+### Voice Commands
+
+| Command | Parameters |
+|---------|-----------|
+| `say` | `TEXT`, `-v VOICE`, `-r ROOM`, `--exaggeration FLOAT`, `--cfg FLOAT` |
+| `listen` | `-s SESSION`, `--no-prompt` |
+| `listen start` | (none) |
+| `listen stop` | `-s SESSION`, `--no-prompt` |
+| `listen cancel` | (none) |
+| `voiceclone start` | (none) |
+| `voiceclone stop` | `NAME` (req) |
+| `voiceclone cancel` | (none) |
+| `voiceclone list` | (none) |
+| `voiceclone delete` | `NAME` (req) |
+
+### Infrastructure Commands
+
+| Command | Parameters |
+|---------|-----------|
+| `portal start` | `--config PATH`, `--port PORT`, `--host HOST`, `--no-tts`, `--no-stt`, `--dev` |
+| `portal serve` | `--config PATH`, `--port PORT`, `--host HOST`, `--no-tts`, `--no-stt` |
+| `portal stop` | (none) |
+| `portal status` | (none) |
+| `tts start` | `--port PORT`, `--host HOST` |
+| `tts serve` | `--port PORT`, `--host HOST` |
+| `tts stop` | (none) |
+| `tts status` | (none) |
+| `tunnels up` | (none) |
+| `tunnels down` | (none) |
+| `tunnels status` | (none) |
+| `tunnels check` | (none) |
+| `machine list` | (none) |
+| `machine add` | `ID` (req), `--host HOST`, `--user USER`, `--projects-dir PATH` |
+| `machine remove` | `ID` (req) |
+| `network status` | (none) |
+| `doctor` | `--dry-run`, `-y/--yes` |
+
+### Configuration Commands
+
+| Command | Parameters |
+|---------|-----------|
+| `init` | `--quick` |
+| `template list` | `--json` |
+| `template show` | `NAME` (req), `--json` |
+| `template create` | `NAME` (req), `--description`, `--voice`, `--role`, `--project`, `--prompt`, `--no-bypass`, `--restricted`, `-f`, `--json` |
+| `template delete` | `NAME` (req), `-f`, `--json` |
+| `template install-samples` | `-f`, `--json` |
+| `skills install` | `-f`, `--copy` |
+| `skills status` | (none) |
+| `skills uninstall` | (none) |
+| `safety check` | `COMMAND` (req), `-v/--verbose` |
+| `safety status` | (none) |
+| `safety logs` | `-n/--tail N`, `-s SESSION`, `--today`, `-p PATTERN` |
+| `safety install` | (none) |
+
+### Development Commands
+
+| Command | Parameters |
+|---------|-----------|
+| `rebuild` | (none) |
+| `uninstall` | (none) |
+| `generate-certs` | (none) |
+
 ## Session Commands
 
 ### `agentwire new -s <session>`
@@ -196,13 +275,17 @@ agentwire
 ### `agentwire say "text"`
 
 ```
-┌──────────────────────┐
-│  agentwire say       │
-│  "Hello world"       │
-│  -r anna             │
-└──────────┬───────────┘
-           │
-           │ Determine room:
+┌───────────────────────────────┐
+│  agentwire say "Hello world"  │
+│                               │
+│  Options:                     │
+│    -v, --voice NAME           │
+│    -r, --room NAME            │
+│    --exaggeration FLOAT (0-1) │
+│    --cfg FLOAT (0-1)          │
+└──────────────┬────────────────┘
+               │
+               │ Determine room:
            │   1. -r flag
            │   2. AGENTWIRE_ROOM env
            │   3. .agentwire.yml in cwd
@@ -276,18 +359,26 @@ agentwire
 ### `agentwire portal start`
 
 ```
-┌──────────────────────┐
-│  agentwire portal    │
-│  start               │
-└──────────┬───────────┘
-           │
-           ▼
+┌───────────────────────────────┐
+│  agentwire portal start       │
+│                               │
+│  Options:                     │
+│    --config PATH              │
+│    --port PORT (default 8765) │
+│    --host HOST (default 0.0.0.0)
+│    --no-tts                   │
+│    --no-stt                   │
+│    --dev (run from source)    │
+└──────────────┬────────────────┘
+               │
+               ▼
 ┌──────────────────────────────────────────────────────────────────────┐
 │  1. Create tmux session                                              │
 │     tmux new-session -d -s agentwire-portal                          │
 │                                                                      │
 │  2. Start FastAPI server                                             │
-│     tmux send-keys "agentwire portal serve" Enter                    │
+│     --dev: tmux send-keys "uv run agentwire portal serve" Enter      │
+│     else:  tmux send-keys "agentwire portal serve" Enter             │
 │                                                                      │
 │  Portal serves:                                                      │
 │     https://localhost:8765        Web UI                             │

@@ -6,30 +6,43 @@ All session commands support the `session@machine` format for remote operations 
 
 ```bash
 # Initialize configuration
-agentwire init
+agentwire init                    # Interactive setup wizard
+agentwire init --quick            # Skip orchestrator setup at end
 
 # Portal (web server)
-agentwire portal start     # Start in tmux (agentwire-portal)
-agentwire portal serve     # Run in foreground (for debugging)
-agentwire portal stop      # Stop the portal
-agentwire portal status    # Check if running
+agentwire portal start            # Start in tmux (agentwire-portal)
+agentwire portal start --dev      # Run from source (picks up code changes)
+agentwire portal start --port 8765 --host 0.0.0.0  # Override defaults
+agentwire portal start --no-tts   # Disable TTS
+agentwire portal start --no-stt   # Disable STT
+agentwire portal start --config path/to/config.yaml
+agentwire portal serve            # Run in foreground (for debugging)
+agentwire portal stop             # Stop the portal
+agentwire portal status           # Check if running
 
 # TTS Server
-agentwire tts start        # Start Chatterbox in tmux (agentwire-tts)
-agentwire tts serve        # Run in foreground (for debugging)
-agentwire tts stop         # Stop TTS server
-agentwire tts status       # Check TTS status
+agentwire tts start               # Start Chatterbox in tmux (agentwire-tts)
+agentwire tts start --port 8100 --host 0.0.0.0  # Override defaults
+agentwire tts serve               # Run in foreground (for debugging)
+agentwire tts stop                # Stop TTS server
+agentwire tts status              # Check TTS status
 
 # Voice (smart routing: browser if connected, local if not)
-agentwire say "Hello"              # Auto-detect room from env/tmux
-agentwire say "Hello" -v voice     # Specify voice
-agentwire say "Hello" -r room      # Specify room explicitly
+agentwire say "Hello"                  # Auto-detect room from env/tmux
+agentwire say "Hello" -v voice         # Specify voice
+agentwire say "Hello" -r room          # Specify room explicitly
+agentwire say "Hello" --exaggeration 0.5  # Voice exaggeration (0-1)
+agentwire say "Hello" --cfg 0.5        # CFG weight (0-1)
 
 # Voice input (push-to-talk recording)
-agentwire listen                      # Toggle recording (start/stop)
-agentwire listen start                # Start recording
-agentwire listen stop -s <session>    # Stop and send to session
-agentwire listen cancel               # Cancel recording
+agentwire listen                       # Toggle recording (start/stop)
+agentwire listen -s <session>          # Set target session
+agentwire listen --no-prompt           # Don't prepend voice prompt hint
+agentwire listen start                 # Start recording
+agentwire listen stop                  # Stop and send to session
+agentwire listen stop -s <session>     # Stop and send to specific session
+agentwire listen stop --no-prompt      # Stop without prompt hint
+agentwire listen cancel                # Cancel recording
 
 # Voice cloning
 agentwire voiceclone start        # Start recording voice sample
@@ -41,41 +54,72 @@ agentwire voiceclone delete <name>  # Delete a voice clone
 # Session management
 agentwire list                              # List sessions from ALL machines
 agentwire list --local                      # List only local sessions
+agentwire list --json                       # JSON output
 agentwire new -s <name> [-p path] [-f]      # Create Claude Code session
 agentwire new -s <name> -t <template>       # Create session with template
 agentwire new -s <name> --no-bypass         # Normal mode (permission prompts)
 agentwire new -s <name> --restricted        # Restricted mode (voice-only)
 agentwire new -s <name> --worker            # Worker session (autonomous)
 agentwire new -s <name> --orchestrator      # Orchestrator session (voice-first)
+agentwire new -s <name> --json              # JSON output
 agentwire output -s <session> [-n lines]    # Read recent session output
 agentwire kill -s <session>                 # Clean shutdown (/exit then kill)
 agentwire send -s <session> "prompt"        # Send prompt + Enter
 agentwire send-keys -s <session> "text" Enter  # Send keys with pause between
 agentwire recreate -s <name>                # Destroy and recreate with fresh worktree
+agentwire recreate -s <name> --no-bypass    # Recreate in normal mode
+agentwire recreate -s <name> --restricted   # Recreate in restricted mode
 agentwire fork -s <source> -t <target>      # Fork session (preserves conversation)
+agentwire fork -s <source> -t <target> --no-bypass    # Fork in normal mode
+agentwire fork -s <source> -t <target> --restricted   # Fork in restricted mode
 
 # Machine management
-agentwire machine list                # List machines with status
-agentwire machine add <id> [options]  # Add a machine to portal
-agentwire machine remove <id>         # Remove with cleanup
+agentwire machine list                      # List machines with status
+agentwire machine add <id>                  # Add machine (interactive)
+agentwire machine add <id> --host <host>    # SSH host (defaults to id)
+agentwire machine add <id> --user <user>    # SSH user
+agentwire machine add <id> --projects-dir ~/projects  # Remote projects dir
+agentwire machine remove <id>               # Remove with cleanup
 
 # Session templates
-agentwire template list               # List available templates
-agentwire template show <name>        # Show template details
-agentwire template create <name>      # Create new template interactively
-agentwire template delete <name>      # Delete a template
-agentwire template install-samples    # Install sample templates
+agentwire template list                     # List available templates
+agentwire template list --json              # JSON output
+agentwire template show <name>              # Show template details
+agentwire template show <name> --json       # JSON output
+agentwire template create <name>            # Create new template (interactive)
+agentwire template create <name> --description "desc"  # Set description
+agentwire template create <name> --voice bashbunni     # Set voice
+agentwire template create <name> --role orchestrator   # Set role file
+agentwire template create <name> --project ~/projects/foo  # Default path
+agentwire template create <name> --prompt "initial prompt"  # Initial prompt
+agentwire template create <name> --no-bypass   # Use normal permission mode
+agentwire template create <name> --restricted  # Use restricted mode
+agentwire template create <name> -f            # Overwrite existing
+agentwire template create <name> --json        # Non-interactive mode
+agentwire template delete <name>            # Delete a template
+agentwire template delete <name> -f         # Skip confirmation
+agentwire template delete <name> --json     # JSON output
+agentwire template install-samples          # Install sample templates
+agentwire template install-samples -f       # Overwrite existing
+agentwire template install-samples --json   # JSON output
 
 # Safety & Security (Damage Control)
-agentwire safety check "command"      # Test if command would be blocked
-agentwire safety status               # Show pattern counts and recent blocks
-agentwire safety logs --tail 20       # Query audit logs
-agentwire safety install              # Install damage control hooks
+agentwire safety check "command"            # Test if command would be blocked
+agentwire safety check "command" -v         # Verbose output
+agentwire safety status                     # Show pattern counts and recent blocks
+agentwire safety logs                       # Query audit logs
+agentwire safety logs --tail 20             # Show last N entries
+agentwire safety logs -s <session>          # Filter by session
+agentwire safety logs --today               # Show only today's logs
+agentwire safety logs -p "pattern"          # Filter by pattern (regex)
+agentwire safety install                    # Install damage control hooks
 
 # Skills (Claude Code integration)
-agentwire skills install              # Install Claude Code skills
-agentwire skills status               # Check installation status
-agentwire skills uninstall            # Remove skills
+agentwire skills install                    # Install Claude Code skills
+agentwire skills install -f                 # Overwrite existing
+agentwire skills install --copy             # Copy files instead of symlink
+agentwire skills status                     # Check installation status
+agentwire skills uninstall                  # Remove skills
 
 # Network & Tunnels
 agentwire network status              # Show complete network health
@@ -103,6 +147,66 @@ agentwire generate-certs   # Generate SSL certificates
 | `name@machine` | `ml@gpu-server` | Remote session |
 | `project/branch@machine` | `ml/train@gpu-server` | Remote worktree session |
 | `name-fork-N` | `api-fork-1` | Forked session (auto-generated by `fork` command) |
+
+## Command Details
+
+### Portal Options
+
+| Option | Description |
+|--------|-------------|
+| `--config PATH` | Custom config file path |
+| `--port PORT` | Override server port (default: 8765) |
+| `--host HOST` | Override server host (default: 0.0.0.0) |
+| `--no-tts` | Disable TTS functionality |
+| `--no-stt` | Disable STT functionality |
+| `--dev` | Run from source using `uv run` (picks up code changes) |
+
+### TTS Options
+
+| Option | Description |
+|--------|-------------|
+| `--port PORT` | Server port (default: 8100) |
+| `--host HOST` | Server host (default: 0.0.0.0) |
+
+### Say Options
+
+| Option | Description |
+|--------|-------------|
+| `-v, --voice NAME` | Voice name for TTS |
+| `-r, --room NAME` | Room name (auto-detected from env/tmux) |
+| `--exaggeration FLOAT` | Voice exaggeration 0-1 (default: varies by voice) |
+| `--cfg FLOAT` | CFG weight 0-1 (default: varies by voice) |
+
+### Machine Add Options
+
+| Option | Description |
+|--------|-------------|
+| `--host HOST` | SSH host (defaults to machine_id) |
+| `--user USER` | SSH user |
+| `--projects-dir PATH` | Projects directory on remote machine |
+
+### Template Create Options
+
+| Option | Description |
+|--------|-------------|
+| `--description TEXT` | Template description |
+| `--voice NAME` | TTS voice |
+| `--role NAME` | Role file name (from ~/.agentwire/roles/) |
+| `--project PATH` | Default project path |
+| `--prompt TEXT` | Initial prompt text |
+| `--no-bypass` | Use normal permission mode |
+| `--restricted` | Use restricted mode |
+| `-f, --force` | Overwrite existing template |
+| `--json` | Non-interactive JSON mode |
+
+### Safety Logs Options
+
+| Option | Description |
+|--------|-------------|
+| `--tail, -n N` | Show last N entries |
+| `--session, -s ID` | Filter by session ID |
+| `--today` | Show only today's logs |
+| `--pattern, -p REGEX` | Filter by pattern (regex or substring) |
 
 ## Command Examples
 
@@ -231,6 +335,9 @@ agentwire kill -s api --json
 # 4. Starts new Claude Code session
 agentwire recreate -s api/feature
 
+# Recreate in restricted mode
+agentwire recreate -s api/feature --restricted
+
 # Recreate remote worktree session
 agentwire recreate -s ml/experiment@gpu-server
 
@@ -247,6 +354,9 @@ agentwire fork -s api -t api-fork-1
 
 # Fork local worktree session (creates new worktree)
 agentwire fork -s api/feature -t api/experiment
+
+# Fork in restricted mode
+agentwire fork -s api -t api-fork-1 --restricted
 
 # Fork remote session
 agentwire fork -s ml@gpu-server -t ml-fork-1@gpu-server
