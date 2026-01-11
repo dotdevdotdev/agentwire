@@ -6,11 +6,20 @@
 
 Replace the current orchestrator/worker system with composable roles that follow Claude Code's agent definition format. Roles can be stacked (`--roles worker,code-review`) with merged tool restrictions and concatenated system instructions.
 
-## Wave 1: Human Actions (BLOCKING)
+## Wave 1: Decisions (COMPLETE)
 
-- [ ] Decide: Default role when no `--roles` specified (none? agentwire?)
-- [ ] Decide: Keep `--worker` as shorthand for `--roles worker`?
-- [ ] Decide: Deprecate `--orchestrator` flag or keep as `--roles agentwire`?
+- [x] Default role when no `--roles` specified: **No role (bare session)**
+- [x] Legacy flags: **Remove both `--worker` and `--orchestrator`**, only use `--roles`
+- [x] `agentwire dev` command: **Keep as-is**, maps to `agentwire new -s agentwire --roles agentwire`
+- [x] Role locations: **Global + project** (`~/.agentwire/roles/` and `.agentwire/roles/`)
+- [x] Role precedence: **Project overrides global** (same name = project wins completely)
+- [x] rooms.json: **Store role names as array** (`roles: ['worker', 'code-review']`)
+- [x] AGENTWIRE_SESSION_TYPE env var: **Remove it** (use AGENTWIRE_SESSION_ROLES if needed later)
+- [x] Templates: **Use roles array** (`roles: [worker, code-review]` in YAML)
+- [x] Bundled roles: **Yes, bundle agentwire.md and worker.md** (user can override)
+- [x] Sample roles: **Just core two** (agentwire, worker)
+- [x] chatbot.md role: **Remove it** (user creates custom restricted role if needed)
+- [x] Portal badges: **Show all roles** as separate badges
 
 ## Wave 2: Role File Format
 
@@ -21,9 +30,9 @@ Replace the current orchestrator/worker system with composable roles that follow
 - Return structured RoleConfig dataclass
 - Handle missing/optional fields with sensible defaults
 
-**Task 2.2: Convert agentwire role (was orchestrator)**
-- Rename `~/.agentwire/roles/orchestrator.md` → `agentwire.md`
-- Add YAML frontmatter:
+**Task 2.2: Create bundled agentwire role**
+- New file: `agentwire/roles/agentwire.md` (bundled with package)
+- YAML frontmatter:
   ```yaml
   ---
   name: agentwire
@@ -31,10 +40,11 @@ Replace the current orchestrator/worker system with composable roles that follow
   model: inherit
   ---
   ```
-- Keep existing system instructions as markdown body
+- System instructions for voice-first coordination
 
-**Task 2.3: Convert worker role**
-- Update `~/.agentwire/roles/worker.md` with frontmatter:
+**Task 2.3: Create bundled worker role**
+- New file: `agentwire/roles/worker.md` (bundled with package)
+- YAML frontmatter:
   ```yaml
   ---
   name: worker
@@ -43,15 +53,24 @@ Replace the current orchestrator/worker system with composable roles that follow
   model: inherit
   ---
   ```
-- Keep existing system instructions as markdown body
+- System instructions for autonomous execution
+
+**Task 2.4: Remove chatbot role**
+- Delete `~/.agentwire/roles/chatbot.md` (user creates custom if needed)
+- Remove any references to chatbot role in code
 
 ## Wave 3: CLI Integration
 
 **Task 3.1: Add --roles flag to `agentwire new`**
 - Files: `agentwire/__main__.py`
 - Add `--roles` argument (comma-separated list)
-- Parse role names, load from `~/.agentwire/roles/{name}.md`
+- Role discovery order:
+  1. Project: `.agentwire/roles/{name}.md`
+  2. User: `~/.agentwire/roles/{name}.md`
+  3. Bundled: `agentwire/roles/{name}.md`
+- Project overrides global of same name
 - Validate roles exist before session creation
+- No `--roles` = bare session (no role instructions)
 
 **Task 3.2: Update _build_claude_cmd() for composable roles**
 - Files: `agentwire/__main__.py`
@@ -62,10 +81,28 @@ Replace the current orchestrator/worker system with composable roles that follow
 - Use last specified model (or inherit)
 - Build `--tools`, `--disallowedTools`, and `--append-system-prompt` flags
 
-**Task 3.3: Migrate --worker and --orchestrator flags**
-- `--worker` becomes shorthand for `--roles worker`
-- `--orchestrator` becomes shorthand for `--roles agentwire` (or deprecate)
-- Update argparse, keep backwards compat during transition
+**Task 3.3: Remove --worker and --orchestrator flags**
+- Files: `agentwire/__main__.py`
+- Remove `--worker` flag entirely
+- Remove `--orchestrator` flag entirely
+- Only `--roles` flag for role specification
+- Update help text and error messages
+
+**Task 3.4: Update rooms.json structure**
+- Files: `agentwire/server.py`, `agentwire/__main__.py`
+- Change `type: "orchestrator" | "worker"` to `roles: ["worker", "code-review"]`
+- Array of role names applied to session
+- Empty array = bare session
+
+**Task 3.5: Remove AGENTWIRE_SESSION_TYPE env var**
+- Files: `agentwire/__main__.py`
+- Stop setting AGENTWIRE_SESSION_TYPE
+- Future: use AGENTWIRE_SESSION_ROLES if hooks need it
+
+**Task 3.6: Update templates to use roles array**
+- Files: `agentwire/__main__.py`, template handling code
+- Change `role: orchestrator` to `roles: [agentwire]`
+- Support array of role names in template YAML
 
 ## Wave 4: Role Discovery & Validation
 
@@ -78,22 +115,30 @@ Replace the current orchestrator/worker system with composable roles that follow
 - Display full role details including system instructions
 - Validate role file format
 
-## Wave 5: Documentation
+## Wave 5: Portal UI & Documentation
 
-**Task 5.1: Update roles-diagram.md**
+**Task 5.1: Update portal to show multiple role badges**
+- Files: `agentwire/static/js/dashboard.js`
+- Show badge for each role: `[worker] [code-review]`
+- Update badge styling for role names
+- Files: `agentwire/static/css/dashboard.css`
+- Style for role badges (remove orchestrator-specific styles)
+
+**Task 5.2: Update roles-diagram.md**
 - Reflect new composable system
 - Show role format with frontmatter
-- Update examples
+- Update examples with `--roles` flag
 
-**Task 5.2: Update CLI-REFERENCE.md**
+**Task 5.3: Update CLI-REFERENCE.md**
 - Document `--roles` flag
+- Remove `--worker` and `--orchestrator` flags
 - Document `agentwire roles` command
 - Add role file format reference
 
-**Task 5.3: Create sample roles**
-- `code-review.md` - Read-only code review
-- `diligent-work.md` - Thorough, careful approach
-- Place in `agentwire/roles/` as bundled examples
+**Task 5.4: Update other documentation**
+- `CLAUDE.md` - Update session types section
+- `README.md` - Update examples
+- `docs/cli-diagram.md` - Update command diagrams
 
 ## Wave 6: Rename orchestrator → agentwire Throughout Codebase
 
@@ -157,14 +202,23 @@ Replace the current orchestrator/worker system with composable roles that follow
 - [ ] Multiple roles merge disallowedTools correctly (intersection)
 - [ ] Multiple roles concatenate system instructions
 - [ ] `agentwire roles` lists available roles
+- [ ] Role discovery: project → user → bundled (project overrides)
+- [ ] rooms.json stores `roles: [...]` array instead of `type`
+- [ ] `--worker` and `--orchestrator` flags removed
+- [ ] AGENTWIRE_SESSION_TYPE env var removed
+- [ ] Templates use `roles: [...]` array
+- [ ] Portal shows all role badges for session
 - [ ] No references to "orchestrator" as session type (renamed to "agentwire")
-- [ ] Portal UI shows "agentwire" badge instead of "orchestrator"
+- [ ] agentwire.md and worker.md bundled with package
+- [ ] chatbot.md removed
 - [ ] Documentation updated
-- [ ] Existing `--worker` flag still works (backwards compat)
 
 ## Technical Notes
 
-**Role file location:** `~/.agentwire/roles/*.md`
+**Role discovery order (first match wins):**
+1. Project: `.agentwire/roles/{name}.md`
+2. User: `~/.agentwire/roles/{name}.md`
+3. Bundled: `agentwire/roles/{name}.md` (package)
 
 **RoleConfig dataclass:**
 ```python
@@ -218,7 +272,21 @@ Result:
   disallowedTools = [AskUserQuestion]  # only one in ALL three
 ```
 
-**Bundled vs user roles:**
-- Bundled: `agentwire/roles/*.md` (installed with package)
-- User: `~/.agentwire/roles/*.md` (user customizations)
-- User roles override bundled roles with same name
+**rooms.json structure:**
+```json
+{
+  "api": {
+    "roles": ["worker", "code-review"],
+    "voice": "bashbunni",
+    "bypass_permissions": true
+  }
+}
+```
+
+**Template roles field:**
+```yaml
+name: feature-impl
+description: Implement a feature
+roles: [worker]  # Array, not single "role" field
+voice: bashbunni
+```
