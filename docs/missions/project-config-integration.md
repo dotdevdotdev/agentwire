@@ -58,16 +58,54 @@ None - this is pure implementation work.
 - Ensure dashboard correctly displays data from rebuilt cache
 - Handle sessions that exist in tmux but have no yaml (show with defaults)
 
+## Wave 4: Room → Session Terminology Cleanup
+
+Consolidate on "session" terminology throughout the codebase. "Room" is legacy from voice chat room concept but we're really dealing with tmux sessions.
+
+**Task 4.1: Rename RoomConfig class**
+- Files: `agentwire/server.py`
+- Rename `RoomConfig` → `SessionConfig`
+- Update all references
+
+**Task 4.2: Remove AGENTWIRE_ROOM env var**
+- Files: `agentwire/__main__.py`, `scripts/say`
+- Remove `AGENTWIRE_ROOM` checks entirely
+- Project yaml is now the source of truth for session identity
+- Fallback: CLI flag → `.agentwire.yml` → path inference → tmux session name
+
+**Task 4.3: Rename API endpoints**
+- Files: `agentwire/server.py`
+- `/api/rooms/{name}/connections` → `/api/sessions/{name}/connections`
+- Keep old endpoint as alias for backwards compat
+
+**Task 4.4: Rename functions and variables**
+- Files: `agentwire/server.py`, `agentwire/__main__.py`, `scripts/say`
+- `get_room_from_config()` → `get_session_from_config()`
+- `_get_room_from_yml()` → `_get_session_from_yml()`
+- `_get_room_config()` → `_get_session_config()`
+- `_load_room_configs()` → remove (use `_load_session_configs()`)
+- `_save_room_configs()` → remove (use `_save_session_configs()`)
+- Local variables: `room` → `session_name` where appropriate
+
+**Task 4.5: Update comments and docstrings**
+- All files with "room" terminology in comments
+- Update to use "session" consistently
+
 ## Completion Criteria
 
 - [x] `agentwire say "hello"` reads voice from `.agentwire.yml` in cwd
-- [x] `say "hello"` (wrapper script) works without explicit room/voice flags
+- [x] `say "hello"` (wrapper script) works without explicit session/voice flags
 - [x] Portal startup scans tmux sessions and reads project configs
 - [x] Portal shows sessions that exist in tmux even if not in sessions.json
 - [x] Sessions without `.agentwire.yml` show with default type/roles
 - [x] Remote sessions are scanned and included in cache
 - [x] `POST /api/sessions/refresh` triggers cache rebuild
 - [x] Dashboard displays all sessions correctly
+- [ ] `RoomConfig` renamed to `SessionConfig`
+- [ ] `AGENTWIRE_ROOM` env var removed
+- [ ] API uses `/api/sessions/` consistently
+- [ ] No "room" terminology in function names (except backwards compat aliases)
+- [ ] Comments use "session" terminology
 
 ## Technical Notes
 
