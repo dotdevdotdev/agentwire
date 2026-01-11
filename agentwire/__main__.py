@@ -991,22 +991,67 @@ def _get_current_tmux_session() -> str | None:
     return None
 
 
+def _get_room_from_yml() -> str | None:
+    """Get room name from .agentwire.yml in current directory."""
+    yml_path = Path.cwd() / ".agentwire.yml"
+    if not yml_path.exists():
+        return None
+
+    try:
+        import yaml
+        with open(yml_path) as f:
+            config = yaml.safe_load(f)
+        return config.get("room") if config else None
+    except Exception:
+        return None
+
+
+def _infer_room_from_path() -> str | None:
+    """Infer room name from current working directory.
+
+    ~/projects/myapp -> myapp
+    ~/projects/myapp-worktrees/feature -> myapp/feature
+    """
+    cwd = Path.cwd()
+    projects_dir = Path.home() / "projects"
+
+    try:
+        rel = cwd.relative_to(projects_dir)
+        parts = rel.parts
+
+        if len(parts) == 1:
+            return parts[0]
+        elif len(parts) >= 2 and "-worktrees" in parts[0]:
+            # myapp-worktrees/feature -> myapp/feature
+            base = parts[0].replace("-worktrees", "")
+            return f"{base}/{parts[1]}"
+        elif len(parts) >= 2:
+            return f"{parts[0]}/{parts[1]}"
+    except ValueError:
+        pass
+
+    return None
+
+
 def _check_portal_connections(room: str, portal_url: str) -> tuple[bool, str]:
     """Check if portal has active browser connections for a room.
 
-    Tries both the room name as-is and with @local suffix (for Docker portal).
+    Tries room name variants: as-is, with hostname, with @local (Docker).
 
     Returns:
         Tuple of (has_connections, actual_room_name)
         - has_connections: True if there are connections (audio should go to portal)
-        - actual_room_name: The room name that has connections (may include @local)
+        - actual_room_name: The room name that has connections (may include @machine)
     """
     import urllib.request
     import ssl
+    import socket
 
-    # Try room variants: as-is, then with @local suffix (for Docker portal)
+    # Try room variants: as-is, with hostname, with @local
     room_variants = [room]
     if "@" not in room:
+        hostname = socket.gethostname().split('.')[0]
+        room_variants.append(f"{room}@{hostname}")
         room_variants.append(f"{room}@local")
 
     ctx = ssl.create_default_context()
@@ -1181,8 +1226,8 @@ def cmd_say(args) -> int:
     exaggeration = args.exaggeration if args.exaggeration is not None else tts_config.get("exaggeration", 0.5)
     cfg_weight = args.cfg if args.cfg is not None else tts_config.get("cfg_weight", 0.5)
 
-    # Determine room name
-    room = args.room or os.environ.get("AGENTWIRE_ROOM") or _get_current_tmux_session()
+    # Determine room name (priority: flag > env > .agentwire.yml > path inference > tmux)
+    room = args.room or os.environ.get("AGENTWIRE_ROOM") or _get_room_from_yml() or _infer_room_from_path() or _get_current_tmux_session()
 
     # Try portal first if we have a room
     if room:
