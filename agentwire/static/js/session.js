@@ -21,7 +21,7 @@ import { TerminalMode } from './terminal.js';
 // ============================================
 
 /** @type {string} */
-let SESSION = '';
+let SESSION_NAME = '';
 
 /** @type {boolean} */
 let IS_SYSTEM_SESSION = false;
