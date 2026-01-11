@@ -200,7 +200,7 @@ fi
 
 ## Notes
 
-- `agentwire` session is always categorized as Orchestrator
+- `agentwire` session is always categorized as Agentwire (main)
 - Sessions with `bypass_permissions: true` (or unset, defaults to true) are Bypass Sessions
 - Sessions with `bypass_permissions: false` are Normal Sessions (permission prompts enabled)
 - Sessions not in sessions.json are Unconfigured

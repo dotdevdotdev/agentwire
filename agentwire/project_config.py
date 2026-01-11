@@ -27,12 +27,7 @@ class SessionType(str, Enum):
         try:
             return cls(value)
         except ValueError:
-            # Backwards compat: map old names
-            if value == "orchestrator" or value == "agentwire":
-                return cls.CLAUDE_BYPASS
-            if value == "worker":
-                return cls.CLAUDE_BYPASS
-            return cls.CLAUDE_BYPASS  # Default
+            return cls.CLAUDE_BYPASS  # Default for unknown types
 
     def to_cli_flags(self) -> list[str]:
         """Convert to CLI flags for Claude."""
