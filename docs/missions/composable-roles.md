@@ -250,33 +250,33 @@ Replace the current orchestrator/worker system with composable roles that follow
 ## Completion Criteria
 
 **Roles:**
-- [ ] Role files use YAML frontmatter format
-- [ ] `agentwire new -s foo --roles worker,code-review` works
-- [ ] Multiple roles merge tools correctly (deduplicated union)
-- [ ] Multiple roles merge disallowedTools correctly (intersection)
-- [ ] Multiple roles concatenate system instructions
-- [ ] `agentwire roles` lists available roles
-- [ ] Role discovery: project → user → bundled (project overrides)
-- [ ] `--worker` and `--orchestrator` flags removed
-- [ ] Templates use `roles: [...]` array
-- [ ] Portal shows all role badges for session
-- [ ] No references to "orchestrator" as session type (renamed to "agentwire")
-- [ ] agentwire.md and worker.md bundled with package
-- [ ] chatbot.md removed
+- [x] Role files use YAML frontmatter format
+- [x] `agentwire new -s foo --roles worker,code-review` works
+- [x] Multiple roles merge tools correctly (deduplicated union)
+- [x] Multiple roles merge disallowedTools correctly (intersection)
+- [x] Multiple roles concatenate system instructions
+- [x] `agentwire roles` lists available roles
+- [x] Role discovery: project → user → bundled (project overrides)
+- [x] `--worker` and `--orchestrator` flags removed
+- [x] Templates use `roles: [...]` array
+- [x] Portal shows all role badges for session
+- [x] No references to "orchestrator" as session type (renamed to "agentwire")
+- [x] agentwire.md and worker.md bundled with package
+- [x] chatbot.md removed
 
 **Config Architecture:**
-- [ ] `.agentwire.yml` is source of truth for session config
-- [ ] `agentwire new` creates `.agentwire.yml` in project root
-- [ ] Commands read `.agentwire.yml` instead of env vars
-- [ ] `AGENTWIRE_ROOM` env var removed
-- [ ] `AGENTWIRE_SESSION_TYPE` env var removed
-- [ ] `rooms.json` renamed to `sessions.json` (runtime cache)
-- [ ] Portal rebuilds cache from tmux sessions + yaml files
-- [ ] Single `type` field replaces separate bool flags
-- [ ] Session types: bare | claude-bypass | claude-prompted | claude-restricted
+- [x] `.agentwire.yml` is source of truth for session config
+- [x] `agentwire new` creates `.agentwire.yml` in project root
+- [ ] Commands read `.agentwire.yml` instead of env vars (say command - future)
+- [x] `AGENTWIRE_ROOM` env var removed
+- [x] `AGENTWIRE_SESSION_TYPE` env var removed
+- [x] `rooms.json` renamed to `sessions.json` (runtime cache)
+- [ ] Portal rebuilds cache from tmux sessions + yaml files (future enhancement)
+- [x] Single `type` field replaces separate bool flags
+- [x] Session types: bare | claude-bypass | claude-prompted | claude-restricted
 
 **Documentation:**
-- [ ] Documentation updated
+- [x] Documentation updated
 
 ## Technical Notes
 
