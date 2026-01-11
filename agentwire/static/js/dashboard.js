@@ -658,14 +658,23 @@ function renderSessionCard(session, machineId) {
     const isExpanded = isSessionExpanded(session.name);
     const expandIcon = isExpanded ? '▼' : '▶';
 
-    // Determine permission badge: restricted > prompted > bypass
-    let permissionBadge;
-    if (session.restricted) {
-        permissionBadge = '<span class="session-badge restricted">Restricted</span>';
-    } else if (session.bypass_permissions === false) {
-        permissionBadge = '<span class="session-badge prompted">Prompted</span>';
-    } else {
-        permissionBadge = '<span class="session-badge bypass">Bypass</span>';
+    // Determine session type badge: bare | claude-bypass | claude-prompted | claude-restricted
+    let typeBadge;
+    const sessionType = session.type || 'claude-bypass';  // Default for backwards compat
+    switch (sessionType) {
+        case 'bare':
+            typeBadge = '<span class="session-badge bare-type">Bare</span>';
+            break;
+        case 'claude-restricted':
+            typeBadge = '<span class="session-badge restricted">Restricted</span>';
+            break;
+        case 'claude-prompted':
+            typeBadge = '<span class="session-badge prompted">Prompted</span>';
+            break;
+        case 'claude-bypass':
+        default:
+            typeBadge = '<span class="session-badge bypass">Bypass</span>';
+            break;
     }
 
     // Role badges: show all roles from the roles array
@@ -678,7 +687,7 @@ function renderSessionCard(session, machineId) {
         rolesBadges = '<span class="session-badge bare">bare</span>';
     }
 
-    const badge = rolesBadges + permissionBadge;
+    const badge = rolesBadges + typeBadge;
 
     // Strip @machine from display name if present (avoid doubling)
     let displayName = session.name;

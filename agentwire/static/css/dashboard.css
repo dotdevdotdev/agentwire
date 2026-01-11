@@ -550,6 +550,11 @@
   color: var(--text-muted);
 }
 
+.session-badge.bare-type {
+  background: var(--bg-hover); /* Level 3: visible but subtle */
+  color: var(--text-muted);
+}
+
 .no-sessions {
   color: var(--text-muted);
   padding: var(--space-md) 0;

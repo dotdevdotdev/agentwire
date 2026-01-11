@@ -18,27 +18,31 @@ from . import __version__
 from .worktree import parse_session_name, get_session_path, ensure_worktree, remove_worktree
 from . import cli_safety
 from .roles import RoleConfig, load_roles, merge_roles
+from .project_config import ProjectConfig, SessionType, save_project_config
 
 # Default config directory
 CONFIG_DIR = Path.home() / ".agentwire"
 
 def _build_claude_cmd(
-    bypass_permissions: bool,
+    session_type: SessionType,
     roles: list[RoleConfig] | None = None,
 ) -> str:
     """Build the claude command with appropriate flags.
 
     Args:
-        bypass_permissions: Whether to use --dangerously-skip-permissions
+        session_type: Session execution mode (bare, claude-bypass, etc.)
         roles: List of RoleConfig objects to apply (merged for tools/instructions)
 
     Returns:
-        The claude command string to execute
+        The claude command string to execute, or empty string for bare sessions
     """
+    if session_type == SessionType.BARE:
+        return ""  # No Claude for bare sessions
+
     parts = ["claude"]
 
-    if bypass_permissions:
-        parts.append("--dangerously-skip-permissions")
+    # Add session type flags
+    parts.extend(session_type.to_cli_flags())
 
     if roles:
         # Merge all roles
@@ -1651,60 +1655,71 @@ def cmd_new(args) -> int:
                 return _output_result(False, json_mode, f"Session '{session_name}' already exists on {machine_id}. Use -f to replace.")
 
         # Create remote tmux session
-        # Permission mode: command line overrides template defaults
-        restricted = getattr(args, 'restricted', False)
-        if template and not restricted:
-            restricted = template.restricted
-
-        no_bypass_arg = getattr(args, 'no_bypass', False)
-        if template and not no_bypass_arg and not restricted:
-            # Use template's bypass_permissions setting if no CLI override
-            bypass_permissions = template.bypass_permissions
+        # Determine session type from CLI flags or template
+        if getattr(args, 'bare', False):
+            session_type = SessionType.BARE
+        elif getattr(args, 'restricted', False):
+            session_type = SessionType.CLAUDE_RESTRICTED
+        elif getattr(args, 'prompted', False):
+            session_type = SessionType.CLAUDE_PROMPTED
+        elif template:
+            if template.restricted:
+                session_type = SessionType.CLAUDE_RESTRICTED
+            elif not template.bypass_permissions:
+                session_type = SessionType.CLAUDE_PROMPTED
+            else:
+                session_type = SessionType.CLAUDE_BYPASS
         else:
-            bypass_permissions = not (no_bypass_arg or restricted)
+            session_type = SessionType.CLAUDE_BYPASS
 
         # Build claude command with roles
-        claude_cmd = _build_claude_cmd(bypass_permissions, roles if roles else None)
-        # AGENTWIRE_ROOM must include @machine so portal can find room config
-        room_name = f"{session_name}@{machine_id}"
-        # Build env var exports
-        env_exports = f"export AGENTWIRE_ROOM={shlex.quote(room_name)}"
-        create_cmd = (
-            f"tmux new-session -d -s {shlex.quote(session_name)} -c {shlex.quote(remote_path)} && "
-            f"tmux send-keys -t {shlex.quote(session_name)} 'cd {shlex.quote(remote_path)}' Enter && "
-            f"sleep 0.1 && "
-            f"tmux send-keys -t {shlex.quote(session_name)} '{env_exports}' Enter && "
-            f"sleep 0.1 && "
-            f"tmux send-keys -t {shlex.quote(session_name)} {shlex.quote(claude_cmd)} Enter"
-        )
+        claude_cmd = _build_claude_cmd(session_type, roles if roles else None)
+        # Create session - Claude starts immediately if not bare
+        if claude_cmd:
+            create_cmd = (
+                f"tmux new-session -d -s {shlex.quote(session_name)} -c {shlex.quote(remote_path)} && "
+                f"tmux send-keys -t {shlex.quote(session_name)} 'cd {shlex.quote(remote_path)}' Enter && "
+                f"sleep 0.1 && "
+                f"tmux send-keys -t {shlex.quote(session_name)} {shlex.quote(claude_cmd)} Enter"
+            )
+        else:
+            # Bare session - just create tmux
+            create_cmd = (
+                f"tmux new-session -d -s {shlex.quote(session_name)} -c {shlex.quote(remote_path)} && "
+                f"tmux send-keys -t {shlex.quote(session_name)} 'cd {shlex.quote(remote_path)}' Enter"
+            )
 
         result = _run_remote(machine_id, create_cmd)
         if result.returncode != 0:
             return _output_result(False, json_mode, f"Failed to create remote session: {result.stderr}")
 
-        # Update local rooms.json with remote session info
-        rooms_file = Path.home() / ".agentwire" / "rooms.json"
-        rooms_file.parent.mkdir(parents=True, exist_ok=True)
+        # Update local sessions.json cache for portal
+        sessions_file = Path.home() / ".agentwire" / "sessions.json"
+        sessions_file.parent.mkdir(parents=True, exist_ok=True)
 
         configs = {}
-        if rooms_file.exists():
+        if sessions_file.exists():
             try:
-                with open(rooms_file) as f:
+                with open(sessions_file) as f:
                     configs = json.load(f)
             except Exception:
                 pass
 
-        room_key = f"{session_name}@{machine_id}"
-        room_config = {"bypass_permissions": bypass_permissions, "restricted": restricted}
+        session_key = f"{session_name}@{machine_id}"
+        session_config = {
+            "type": session_type.value,
+            "path": remote_path,
+            "machine": machine_id,
+        }
         # Add roles array if specified
         if role_names:
-            room_config["roles"] = role_names
+            session_config["roles"] = role_names
         # Add voice from template if specified
         if template and template.voice:
-            room_config["voice"] = template.voice
-        configs[room_key] = room_config
+            session_config["voice"] = template.voice
+        configs[session_key] = session_config
 
-        with open(rooms_file, "w") as f:
+        with open(sessions_file, "w") as f:
             json.dump(configs, f, indent=2)
 
         # Send initial prompt from template if specified
@@ -1819,56 +1834,66 @@ def cmd_new(args) -> int:
     )
     time.sleep(0.1)
 
-    # Set AGENTWIRE_ROOM env var (used by permission hook)
-    subprocess.run(
-        ["tmux", "send-keys", "-t", session_name, f"export AGENTWIRE_ROOM={session_name}", "Enter"],
-        check=True
-    )
-    time.sleep(0.1)
-
-    # Start Claude (with or without skip-permissions flag)
-    # Permission mode: command line overrides template defaults
-    restricted = getattr(args, 'restricted', False)
-    if template and not restricted:
-        restricted = template.restricted
-
-    no_bypass_arg = getattr(args, 'no_bypass', False)
-    if template and not no_bypass_arg and not restricted:
-        # Use template's bypass_permissions setting if no CLI override
-        bypass_permissions = template.bypass_permissions
+    # Determine session type from CLI flags or template
+    if getattr(args, 'bare', False):
+        session_type = SessionType.BARE
+    elif getattr(args, 'restricted', False):
+        session_type = SessionType.CLAUDE_RESTRICTED
+    elif getattr(args, 'prompted', False):
+        session_type = SessionType.CLAUDE_PROMPTED
+    elif template:
+        # Use template settings
+        if template.restricted:
+            session_type = SessionType.CLAUDE_RESTRICTED
+        elif not template.bypass_permissions:
+            session_type = SessionType.CLAUDE_PROMPTED
+        else:
+            session_type = SessionType.CLAUDE_BYPASS
     else:
-        bypass_permissions = not (no_bypass_arg or restricted)
+        session_type = SessionType.CLAUDE_BYPASS  # Default
 
-    # Build claude command with roles
-    claude_cmd = _build_claude_cmd(bypass_permissions, roles if roles else None)
+    # Build and start Claude command
+    claude_cmd = _build_claude_cmd(session_type, roles if roles else None)
+    if claude_cmd:
+        subprocess.run(
+            ["tmux", "send-keys", "-t", session_name, claude_cmd, "Enter"],
+            check=True
+        )
 
-    subprocess.run(
-        ["tmux", "send-keys", "-t", session_name, claude_cmd, "Enter"],
-        check=True
+    # Write project config (.agentwire.yml)
+    project_config = ProjectConfig(
+        session=session_name,
+        type=session_type,
+        roles=role_names if role_names else [],
+        voice=template.voice if template and template.voice else None,
     )
+    save_project_config(project_config, session_path)
 
-    # Save room config with bypass_permissions and restricted flags
-    rooms_file = Path.home() / ".agentwire" / "rooms.json"
-    rooms_file.parent.mkdir(parents=True, exist_ok=True)
+    # Update sessions.json cache for portal
+    sessions_file = Path.home() / ".agentwire" / "sessions.json"
+    sessions_file.parent.mkdir(parents=True, exist_ok=True)
 
     configs = {}
-    if rooms_file.exists():
+    if sessions_file.exists():
         try:
-            with open(rooms_file) as f:
+            with open(sessions_file) as f:
                 configs = json.load(f)
         except Exception:
             pass
 
-    room_config = {"bypass_permissions": bypass_permissions, "restricted": restricted}
+    session_config = {
+        "type": session_type.value,
+        "path": str(session_path),
+    }
     # Add roles array if specified
     if role_names:
-        room_config["roles"] = role_names
+        session_config["roles"] = role_names
     # Add voice from template if specified
     if template and template.voice:
-        room_config["voice"] = template.voice
-    configs[session_name] = room_config
+        session_config["voice"] = template.voice
+    configs[session_name] = session_config
 
-    with open(rooms_file, "w") as f:
+    with open(sessions_file, "w") as f:
         json.dump(configs, f, indent=2)
 
     # Send initial prompt from template if specified
@@ -4959,8 +4984,12 @@ def main() -> int:
     new_parser.add_argument("-p", "--path", help="Working directory (default: ~/projects/<name>)")
     new_parser.add_argument("-t", "--template", help="Apply session template (from ~/.agentwire/templates/)")
     new_parser.add_argument("-f", "--force", action="store_true", help="Replace existing session")
-    new_parser.add_argument("--no-bypass", action="store_true", help="Don't use --dangerously-skip-permissions (normal mode)")
-    new_parser.add_argument("--restricted", action="store_true", help="Restricted mode: only allow say commands (implies --no-bypass)")
+    # Session type flags (mutually exclusive)
+    type_group = new_parser.add_mutually_exclusive_group()
+    type_group.add_argument("--bare", action="store_true", help="No Claude, just tmux session")
+    type_group.add_argument("--prompted", action="store_true", help="Claude with permission hooks (no bypass)")
+    type_group.add_argument("--restricted", action="store_true", help="Claude restricted to say command only")
+    # Roles
     new_parser.add_argument("--roles", help="Comma-separated list of roles to apply (e.g., worker,code-review)")
     new_parser.add_argument("--json", action="store_true", help="Output as JSON")
     new_parser.set_defaults(func=cmd_new)
@@ -4981,8 +5010,11 @@ def main() -> int:
     # === recreate command (top-level) ===
     recreate_parser = subparsers.add_parser("recreate", help="Destroy and recreate session with fresh worktree")
     recreate_parser.add_argument("-s", "--session", required=True, help="Session name (project/branch or project/branch@machine)")
-    recreate_parser.add_argument("--no-bypass", action="store_true", help="Don't use --dangerously-skip-permissions")
-    recreate_parser.add_argument("--restricted", action="store_true", help="Restricted mode: only allow say commands (implies --no-bypass)")
+    # Session type flags (mutually exclusive)
+    recreate_type_group = recreate_parser.add_mutually_exclusive_group()
+    recreate_type_group.add_argument("--bare", action="store_true", help="No Claude, just tmux session")
+    recreate_type_group.add_argument("--prompted", action="store_true", help="Claude with permission hooks (no bypass)")
+    recreate_type_group.add_argument("--restricted", action="store_true", help="Claude restricted to say command only")
     recreate_parser.add_argument("--json", action="store_true", help="Output as JSON")
     recreate_parser.set_defaults(func=cmd_recreate)
 
@@ -4990,8 +5022,11 @@ def main() -> int:
     fork_parser = subparsers.add_parser("fork", help="Fork a session into a new worktree")
     fork_parser.add_argument("-s", "--source", required=True, help="Source session (project or project/branch)")
     fork_parser.add_argument("-t", "--target", required=True, help="Target session (must include branch: project/new-branch)")
-    fork_parser.add_argument("--no-bypass", action="store_true", help="Don't use --dangerously-skip-permissions")
-    fork_parser.add_argument("--restricted", action="store_true", help="Restricted mode: only allow say commands (implies --no-bypass)")
+    # Session type flags (mutually exclusive)
+    fork_type_group = fork_parser.add_mutually_exclusive_group()
+    fork_type_group.add_argument("--bare", action="store_true", help="No Claude, just tmux session")
+    fork_type_group.add_argument("--prompted", action="store_true", help="Claude with permission hooks (no bypass)")
+    fork_type_group.add_argument("--restricted", action="store_true", help="Claude restricted to say command only")
     fork_parser.add_argument("--json", action="store_true", help="Output as JSON")
     fork_parser.set_defaults(func=cmd_fork)
 

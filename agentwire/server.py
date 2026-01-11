@@ -72,7 +72,7 @@ def _is_allowed_in_restricted_mode(tool_name: str, tool_input: dict) -> bool:
 
 @dataclass
 class RoomConfig:
-    """Runtime configuration for a room."""
+    """Runtime configuration for a room/session."""
 
     voice: str = "default"
     exaggeration: float = 0.5
@@ -80,10 +80,23 @@ class RoomConfig:
     machine: str | None = None
     path: str | None = None
     claude_session_id: str | None = None  # Claude Code session UUID for forking
-    bypass_permissions: bool = True
-    restricted: bool = False  # Restricted mode: only say allowed
-    type: str = "agentwire"  # Session type: "agentwire" | "worker"
-    spawned_by: str | None = None  # Parent agentwire session (for worker sessions)
+    type: str = "claude-bypass"  # Session type: bare | claude-bypass | claude-prompted | claude-restricted
+    roles: list = None  # Composable roles array
+    spawned_by: str | None = None  # Parent session (for worker sessions)
+
+    def __post_init__(self):
+        if self.roles is None:
+            self.roles = []
+
+    @property
+    def bypass_permissions(self) -> bool:
+        """Backwards compat: True if type is claude-bypass."""
+        return self.type == "claude-bypass"
+
+    @property
+    def restricted(self) -> bool:
+        """Backwards compat: True if type is claude-restricted."""
+        return self.type == "claude-restricted"
 
 
 @dataclass
@@ -255,29 +268,51 @@ class AgentWireServer:
         if cleaned > 0:
             logger.info(f"Cleaned up {cleaned} old upload(s)")
 
-    def _load_room_configs(self) -> dict[str, dict]:
-        """Load room configurations from file."""
-        rooms_file = self.config.rooms.file
-        if rooms_file.exists():
+    def _get_sessions_file(self) -> Path:
+        """Get path to sessions.json cache file."""
+        # Use sessions.json instead of rooms.json
+        return self.config.rooms.file.parent / "sessions.json"
+
+    def _load_session_configs(self) -> dict[str, dict]:
+        """Load session configurations from cache file."""
+        sessions_file = self._get_sessions_file()
+        if sessions_file.exists():
             try:
-                with open(rooms_file) as f:
+                with open(sessions_file) as f:
                     return json.load(f)
             except Exception as e:
-                logger.warning(f"Failed to load rooms config: {e}")
+                logger.warning(f"Failed to load sessions config: {e}")
         return {}
 
-    def _save_room_configs(self, configs: dict[str, dict]):
-        """Save room configurations to file."""
-        rooms_file = self.config.rooms.file
-        rooms_file.parent.mkdir(parents=True, exist_ok=True)
-        with open(rooms_file, "w") as f:
+    def _save_session_configs(self, configs: dict[str, dict]):
+        """Save session configurations to cache file."""
+        sessions_file = self._get_sessions_file()
+        sessions_file.parent.mkdir(parents=True, exist_ok=True)
+        with open(sessions_file, "w") as f:
             json.dump(configs, f, indent=2)
 
+    # Backwards compat aliases
+    def _load_room_configs(self) -> dict[str, dict]:
+        return self._load_session_configs()
+
+    def _save_room_configs(self, configs: dict[str, dict]):
+        return self._save_session_configs(configs)
+
     def _get_room_config(self, name: str) -> RoomConfig:
-        """Get or create room configuration."""
-        configs = self._load_room_configs()
+        """Get or create room/session configuration."""
+        configs = self._load_session_configs()
         if name in configs:
             cfg = configs[name]
+            # Handle both old format (bypass_permissions/restricted) and new format (type)
+            session_type = cfg.get("type")
+            if not session_type:
+                # Convert from old format
+                if cfg.get("restricted"):
+                    session_type = "claude-restricted"
+                elif cfg.get("bypass_permissions", True):
+                    session_type = "claude-bypass"
+                else:
+                    session_type = "claude-prompted"
             return RoomConfig(
                 voice=cfg.get("voice", self.config.tts.default_voice),
                 exaggeration=cfg.get("exaggeration", 0.5),
@@ -285,9 +320,8 @@ class AgentWireServer:
                 machine=cfg.get("machine"),
                 path=cfg.get("path"),
                 claude_session_id=cfg.get("claude_session_id"),
-                bypass_permissions=cfg.get("bypass_permissions", True),  # Default True
-                restricted=cfg.get("restricted", False),  # Default False
-                type=cfg.get("type", "agentwire"),
+                type=session_type,
+                roles=cfg.get("roles", []),
                 spawned_by=cfg.get("spawned_by"),
             )
         return RoomConfig(voice=self.config.tts.default_voice)
