@@ -194,8 +194,53 @@ Replace the current orchestrator/worker system with composable roles that follow
 
 **Note:** Completed/cancelled mission docs in `docs/missions/completed/` and `docs/missions/cancelled/` are historical and should NOT be modified.
 
+## Wave 7: Config Architecture - .agentwire.yml as Source of Truth
+
+**Task 7.1: Define .agentwire.yml schema**
+- Full session config lives in project root
+- Fields:
+  ```yaml
+  session: myapp              # tmux session name
+  roles: [worker, code-review] # composable roles
+  voice: bashbunni            # TTS voice
+  bypass_permissions: true    # permission mode
+  restricted: false           # restricted mode
+  ```
+- Parser in `agentwire/config.py` or new `agentwire/project_config.py`
+
+**Task 7.2: Update session creation to write .agentwire.yml**
+- Files: `agentwire/__main__.py`
+- `agentwire new` creates/updates `.agentwire.yml` in project directory
+- Remove `AGENTWIRE_ROOM` env var (not needed anymore)
+- Session config comes from yaml, not env vars
+
+**Task 7.3: Update commands to read .agentwire.yml**
+- Files: `say` command, hooks, any command needing session context
+- Read yaml from current working directory
+- Get session name, roles, voice from yaml
+- No env var fallback (yaml is required)
+
+**Task 7.4: Rename rooms.json → sessions.json (runtime cache)**
+- Files: `agentwire/server.py`, portal code
+- No longer source of truth - just a cache for portal
+- Rebuilt by scanning tmux sessions + reading their project yamls
+- Portal refreshes cache on start and periodically
+
+**Task 7.5: Add cache rebuild logic**
+- Files: `agentwire/server.py`
+- Scan all tmux sessions
+- For each session, get working directory
+- Read `.agentwire.yml` from that directory
+- Build sessions.json cache from aggregated data
+
+**Task 7.6: Remove AGENTWIRE_ROOM env var**
+- Files: `agentwire/__main__.py`, `agentwire/agents/tmux.py`
+- Stop setting `AGENTWIRE_ROOM` at session creation
+- Update any code that reads this env var
+
 ## Completion Criteria
 
+**Roles:**
 - [ ] Role files use YAML frontmatter format
 - [ ] `agentwire new -s foo --roles worker,code-review` works
 - [ ] Multiple roles merge tools correctly (deduplicated union)
@@ -203,14 +248,23 @@ Replace the current orchestrator/worker system with composable roles that follow
 - [ ] Multiple roles concatenate system instructions
 - [ ] `agentwire roles` lists available roles
 - [ ] Role discovery: project → user → bundled (project overrides)
-- [ ] rooms.json stores `roles: [...]` array instead of `type`
 - [ ] `--worker` and `--orchestrator` flags removed
-- [ ] AGENTWIRE_SESSION_TYPE env var removed
 - [ ] Templates use `roles: [...]` array
 - [ ] Portal shows all role badges for session
 - [ ] No references to "orchestrator" as session type (renamed to "agentwire")
 - [ ] agentwire.md and worker.md bundled with package
 - [ ] chatbot.md removed
+
+**Config Architecture:**
+- [ ] `.agentwire.yml` is source of truth for session config
+- [ ] `agentwire new` creates `.agentwire.yml` in project root
+- [ ] Commands read `.agentwire.yml` instead of env vars
+- [ ] `AGENTWIRE_ROOM` env var removed
+- [ ] `AGENTWIRE_SESSION_TYPE` env var removed
+- [ ] `rooms.json` renamed to `sessions.json` (runtime cache)
+- [ ] Portal rebuilds cache from tmux sessions + yaml files
+
+**Documentation:**
 - [ ] Documentation updated
 
 ## Technical Notes
@@ -272,13 +326,23 @@ Result:
   disallowedTools = [AskUserQuestion]  # only one in ALL three
 ```
 
-**rooms.json structure:**
+**.agentwire.yml (source of truth - lives in project root):**
+```yaml
+session: myapp                # tmux session name (required)
+roles: [worker, code-review]  # composable roles (optional)
+voice: bashbunni              # TTS voice (optional)
+bypass_permissions: true      # permission mode (optional, default true)
+restricted: false             # restricted mode (optional, default false)
+```
+
+**sessions.json (runtime cache - rebuilt from tmux + yaml files):**
 ```json
 {
-  "api": {
+  "myapp": {
     "roles": ["worker", "code-review"],
     "voice": "bashbunni",
-    "bypass_permissions": true
+    "bypass_permissions": true,
+    "path": "/Users/dev/projects/myapp"
   }
 }
 ```
