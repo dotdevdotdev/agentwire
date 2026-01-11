@@ -95,6 +95,60 @@ Replace the current orchestrator/worker system with composable roles that follow
 - `diligent-work.md` - Thorough, careful approach
 - Place in `agentwire/roles/` as bundled examples
 
+## Wave 6: Rename orchestrator → agentwire Throughout Codebase
+
+**Task 6.1: Python code cleanup**
+- Files: `agentwire/__main__.py`
+  - `session_type="orchestrator"` → `session_type="agentwire"`
+  - `is_orchestrator` → remove or rename
+  - `--orchestrator` flag → deprecate, map to `--roles agentwire`
+  - Help text updates
+- Files: `agentwire/server.py`
+  - `type: str = "orchestrator"` → `type: str = "agentwire"` (or no default)
+  - `spawned_by` comment update
+  - `cfg.get("type", "orchestrator")` → update default
+- Files: `agentwire/onboarding.py`
+  - `skip_orchestrator` → `skip_agentwire` or just `skip_session`
+  - `orchestrator_role` variable names
+  - Role file references
+- Files: `agentwire/init_orchestrator.py`
+  - Rename file to `init_agentwire.py`
+  - Update function names and messages
+
+**Task 6.2: Portal UI cleanup**
+- Files: `agentwire/static/js/dashboard.js`
+  - Session type badge: `orchestrator` → `agentwire`
+- Files: `agentwire/static/css/dashboard.css`
+  - `.session-badge.orchestrator` → `.session-badge.agentwire`
+- Files: `agentwire/static/js/room.js`
+  - Update any orchestrator references in comments
+
+**Task 6.3: Skills cleanup**
+- Files: `agentwire/skills/check-workers.md`
+- Files: `agentwire/skills/sessions.md`
+- Files: `agentwire/skills/new.md`
+- Files: `agentwire/skills/status.md`
+- Files: `agentwire/skills/kill.md`
+- Files: `agentwire/skills/workers.md`
+- Files: `agentwire/skills/init.md`
+- Update all references from orchestrator → agentwire
+
+**Task 6.4: Documentation cleanup**
+- Files: `CLAUDE.md`, `README.md`
+- Files: `docs/CLI-REFERENCE.md`, `docs/cli-diagram.md`, `docs/cli-review.md`
+- Files: `docs/roles-diagram.md`, `docs/system-diagram.md`
+- Files: `docs/docker-deployment.md`, `docs/deployment.md`, `docs/PORTAL.md`
+- Files: `docs/installation-case-study.md`
+- Update terminology: orchestrator → agentwire (for the main session role)
+- Keep "orchestration" as a concept where it makes sense (portal orchestrates)
+
+**Task 6.5: Config/examples cleanup**
+- Files: `Dockerfile.portal`, `docker-compose.yml`
+- Files: `examples/config-distributed.yaml`, `examples/machines-distributed.json`
+- Update comments and descriptions
+
+**Note:** Completed/cancelled mission docs in `docs/missions/completed/` and `docs/missions/cancelled/` are historical and should NOT be modified.
+
 ## Completion Criteria
 
 - [ ] Role files use YAML frontmatter format
@@ -103,6 +157,8 @@ Replace the current orchestrator/worker system with composable roles that follow
 - [ ] Multiple roles merge disallowedTools correctly (intersection)
 - [ ] Multiple roles concatenate system instructions
 - [ ] `agentwire roles` lists available roles
+- [ ] No references to "orchestrator" as session type (renamed to "agentwire")
+- [ ] Portal UI shows "agentwire" badge instead of "orchestrator"
 - [ ] Documentation updated
 - [ ] Existing `--worker` flag still works (backwards compat)
 
