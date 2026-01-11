@@ -1,83 +1,134 @@
 # AgentWire System Diagram
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              AGENTWIRE SYSTEM                               │
-└─────────────────────────────────────────────────────────────────────────────┘
-
-┌──────────────────┐     WebSocket      ┌──────────────────────────────────────┐
-│  Tablet/Browser  │◄──────────────────►│         Portal (Docker :8765)        │
-│                  │    Voice/Audio     │                                      │
-│  • Push-to-talk  │                    │  • Web UI for session management     │
-│  • Audio playback│                    │  • TTS generation (RunPod)           │
-│  • Room selection│                    │  • STT transcription                 │
-└──────────────────┘                    │  • Audio routing                     │
-                                        │  • Runs in tmux: agentwire-portal    │
-                                        └──────────────────────────────────────┘
-                                                         │
-                                                         │ SSH
-                                                         ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                            HOST MACHINE (Jordans-Mini)                      │
-│                                                                             │
-│  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │                         tmux sessions                                │   │
-│  │                                                                      │   │
-│  │  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐  │   │
-│  │  │   agentwire     │    │      anna       │    │    <other>      │  │   │
-│  │  │  (orchestrator) │    │  (orchestrator) │    │                 │  │   │
-│  │  │                 │    │                 │    │                 │  │   │
-│  │  │  Claude Code    │    │  Claude Code    │    │  Claude Code    │  │   │
-│  │  │  + voice role   │    │  + voice role   │    │  + role         │  │   │
-│  │  └─────────────────┘    └─────────────────┘    └─────────────────┘  │   │
-│  └─────────────────────────────────────────────────────────────────────┘   │
-│                                                                             │
-│  ~/.agentwire/                                                              │
-│  ├── config.yaml        # TTS/STT backends, ports                          │
-│  ├── machines.json      # Remote machines (dotdev-pc, portal)              │
-│  ├── rooms.json         # Per-session settings (voice, permissions)        │
-│  ├── roles/             # Role instructions (orchestrator, worker, etc)    │
-│  └── hooks/             # Security hooks (damage-control)                  │
-│                                                                             │
-│  ~/projects/<name>/                                                         │
-│  └── .agentwire.yml     # Room name for say command routing                │
-└─────────────────────────────────────────────────────────────────────────────┘
-                                         │
-                                         │ SSH (optional)
-                                         ▼
-                              ┌─────────────────────┐
-                              │  Remote Machine     │
-                              │  (dotdev-pc)        │
-                              │                     │
-                              │  tmux sessions...   │
-                              └─────────────────────┘
-```
-
-## Voice Flow
+## Current Architecture
 
 ```
-Tablet → [push-to-talk] → Portal (STT) → "[Voice] text" → tmux session
-tmux session → say "response" → Portal (TTS/RunPod) → audio → Tablet
+┌─────────────────────┐
+│   TABLET/BROWSER    │
+│                     │
+│  Push-to-talk UI    │
+│  Audio playback     │
+└──────────┬──────────┘
+           │
+           │ WebSocket: wss://localhost:8765/ws/room/{room}
+           │   ↓ Binary audio chunks (recording)
+           │   ↓ { "type": "join", "room": "anna@Jordans-Mini" }
+           │   ↑ Binary audio (TTS playback)
+           │   ↑ { "type": "status", ... }
+           │
+┌──────────▼──────────┐         ┌─────────────────────┐
+│  PORTAL CONTAINER   │         │   STT CONTAINER     │
+│  (agentwire-portal) │         │   (agentwire-stt)   │
+│                     │         │                     │
+│  FastAPI server     │  HTTP   │  Whisper model      │
+│  WebSocket manager  ├────────►│  (base, CPU)        │
+│  TTS orchestration  │         │                     │
+│  Session routing    │ POST http://stt:8100/transcribe
+│                     │ Body: multipart audio file    │
+│  Port 8765 (web)    │ Response: { "text": "..." }  │
+│  Port 2222 (SSH)    │         │                     │
+└──────────┬──────────┘         └─────────────────────┘
+           │
+           ├─────────────────────────────────────────────┐
+           │                                             │
+           │ SSH: host.docker.internal:22                │ HTTPS: RunPod endpoint
+           │   user: dotdev                              │
+           │                                             │   POST /runsync
+           │   tmux send-keys -t {session}               │   Body: {
+           │     "[Voice] transcribed text\n"            │     "input": {
+           │                                             │       "text": "...",
+           │   tmux capture-pane -t {session}            │       "voice_path": "..."
+           │     → session output                        │     }
+           │                                             │   }
+           │                                             │   Response: { "output": base64_audio }
+           │                                             │
+┌──────────▼──────────┐                      ┌───────────────────────────────┐
+│   HOST MACHINE      │                      │       RUNPOD SERVERLESS       │
+│   (Jordans-Mini)    │                      │                               │
+│                     │                      │  ┌───────────────────────┐    │
+│  tmux sessions:     │                      │  │ agentwire-tts container│   │
+│  ┌────────────────┐ │                      │  │                       │    │
+│  │ anna           │ │                      │  │  Chatterbox TTS       │    │
+│  │ Claude Code    │ │                      │  │  Voice cloning        │    │
+│  │ + chatbot role │ │                      │  │  GPU inference        │    │
+│  └───────┬────────┘ │                      │  └───────────────────────┘    │
+│          │          │                      │                               │
+│          │          │                      └───────────────────────────────┘
+│          │ Bash: say "response text"
+│          │   → checks portal for browser connections
+│          │   → routes to portal or local playback
+│          │          │
+│          │          │
+│  ┌───────▼────────┐ │
+│  │ say script     │ │
+│  │ ~/.local/bin/  │ │
+│  └───────┬────────┘ │
+│          │          │
+└──────────┼──────────┘
+           │
+           │ HTTPS: localhost:8765/api/say/{room}
+           │   Body: { "text": "response" }
+           │   → Portal generates TTS via RunPod
+           │   → Streams audio to browser via WebSocket
+           │
+           └──────────► (back to Portal)
 ```
 
-## Room Detection
+## Connection Summary
 
-The `say` command determines the room in this order:
+| From | To | Protocol | Endpoint | Payload |
+|------|----|----------|----------|---------|
+| Browser | Portal | WebSocket | `wss://:8765/ws/room/{room}` | Binary audio, JSON messages |
+| Portal | STT | HTTP | `POST http://stt:8100/transcribe` | Multipart audio file → `{"text": "..."}` |
+| Portal | Host | SSH | `host.docker.internal:22` | tmux commands |
+| Portal | RunPod | HTTPS | `POST /runsync` | `{"input": {"text", "voice_path"}}` → base64 audio |
+| Host (say) | Portal | HTTPS | `POST :8765/api/say/{room}` | `{"text": "..."}` |
 
-1. `--room` flag
-2. `AGENTWIRE_ROOM` env var
-3. `.agentwire.yml` in project dir
-4. Path inference (`~/projects/anna` → `anna`)
-5. tmux session name
+## Voice Input Flow
 
-## Connection Matching
+```
+1. User presses push-to-talk on tablet
+2. Browser captures audio, sends chunks via WebSocket to Portal
+3. User releases button
+4. Portal forwards audio to STT container
+5. STT returns transcription: { "text": "what's the status" }
+6. Portal SSHs to host, runs: tmux send-keys -t anna "[Voice] what's the status"
+7. Claude Code in anna session sees [Voice] prefix, responds with say command
+```
 
-When routing audio, `say` checks the portal for browser connections using these room name variants:
+## Voice Output Flow
 
-| Variant | Example |
-|---------|---------|
-| room | `anna` |
-| room@hostname | `anna@Jordans-Mini` |
-| room@local | `anna@local` |
+```
+1. Claude Code runs: say "everything looks good"
+2. say script checks Portal API for browser connections to room
+3. If browser connected:
+   a. POST to Portal /api/say/{room} with text
+   b. Portal calls RunPod TTS, gets audio
+   c. Portal streams audio to browser via WebSocket
+   d. Browser plays audio
+4. If no browser:
+   a. POST to Portal /api/local-tts/{room}
+   b. Portal calls RunPod TTS, plays on server speakers
+```
 
-The tablet typically connects to `room@hostname` format.
+## Room Matching
+
+The `say` script tries these room variants when checking for browser connections:
+
+```
+Room: anna
+Tries: anna → anna@Jordans-Mini → anna@local
+
+First match with has_connections: true wins
+```
+
+## Config Files (Host)
+
+```
+~/.agentwire/
+├── config.yaml      # TTS/STT backend settings, RunPod credentials
+├── machines.json    # SSH targets (host.docker.internal, dotdev-pc)
+├── rooms.json       # Per-room voice settings
+├── roles/           # Role instructions (orchestrator.md, chatbot.md)
+└── hooks/           # PreToolUse security hooks
+```
