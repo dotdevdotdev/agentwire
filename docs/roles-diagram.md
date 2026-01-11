@@ -30,26 +30,25 @@
 │       orchestrator              │  │       worker                    │
 │                                 │  │                                 │
 │  ┌───────────────────────────┐  │  │  ┌───────────────────────────┐  │
-│  │     ALLOWED TOOLS         │  │  │  │     ALLOWED TOOLS         │  │
+│  │     ALL TOOLS AVAILABLE   │  │  │  │     ALLOWED TOOLS         │  │
 │  │                           │  │  │  │                           │  │
-│  │  • Task (spawn agents)    │  │  │  │  • Edit, Write, Read      │  │
-│  │  • Bash (inc. say cmd)    │  │  │  │  • Glob, Grep             │  │
-│  │  • AskUserQuestion        │  │  │  │  • NotebookEdit           │  │
-│  │  • All MCP tools          │  │  │  │  • Bash (no say)          │  │
-│  │  • AgentWire skills       │  │  │  │  • MCP filesystem tools   │  │
-│  └───────────────────────────┘  │  │  │  • Task (spawn agents)    │  │
-│                                 │  │  └───────────────────────────┘  │
-│  ┌───────────────────────────┐  │  │                                 │
-│  │    BLOCKED TOOLS          │  │  │  ┌───────────────────────────┐  │
-│  │                           │  │  │  │    BLOCKED TOOLS          │  │
-│  │  • Edit, Write, Read      │  │  │  │                           │  │
-│  │  • Glob, Grep             │  │  │  │  • AskUserQuestion        │  │
-│  │  • NotebookEdit           │  │  │  │  • say (via bash hook)    │  │
-│  │  • MCP filesystem tools   │  │  │  └───────────────────────────┘  │
+│  │  • Edit, Write, Read      │  │  │  │  • Edit, Write, Read      │  │
+│  │  • Glob, Grep             │  │  │  │  • Glob, Grep             │  │
+│  │  • Task (spawn agents)    │  │  │  │  • NotebookEdit           │  │
+│  │  • Bash (inc. say cmd)    │  │  │  │  • Bash                    │  │
+│  │  • AskUserQuestion        │  │  │  │  • MCP filesystem tools   │  │
+│  │  • All MCP tools          │  │  │  │  • Task (spawn agents)    │  │
+│  │  • AgentWire skills       │  │  │  └───────────────────────────┘  │
 │  └───────────────────────────┘  │  │                                 │
-│                                 │  │  Purpose: Autonomous code       │
-│  Purpose: Coordinate workers,   │  │  execution, no user interaction │
-│  voice communication, decisions │  │                                 │
+│                                 │  │  ┌───────────────────────────┐  │
+│  Role file provides guidance    │  │  │    BLOCKED TOOLS          │  │
+│  on when to delegate vs do      │  │  │                           │  │
+│  directly - not enforcement     │  │  │  • AskUserQuestion        │  │
+│                                 │  │  └───────────────────────────┘  │
+│  Purpose: Voice interface,      │  │                                 │
+│  coordination, decisions,       │  │                                 │
+│  direct work when appropriate   │  │  Purpose: Autonomous code       │
+│                                 │  │  execution, no user interaction │
 └─────────────────────────────────┘  └─────────────────────────────────┘
                     │                              │
                     │     /spawn, /send            │
@@ -105,8 +104,7 @@
 │   └── bug-fix.yaml
 │
 ├── hooks/
-│   ├── damage-control.py           # Blocks dangerous commands
-│   ├── session-type-bash-hook.py   # Blocks say for workers
+│   ├── damage-control/             # Blocks dangerous commands
 │   └── agentwire-permission.sh     # Routes permissions to portal
 │
 ├── rooms.json              # Per-session config (voice, type, permissions)
@@ -119,12 +117,12 @@
 
 | Aspect | Description |
 |--------|-------------|
-| Purpose | Coordinate workers, make decisions, communicate with user |
-| File Access | NONE - must delegate to workers |
+| Purpose | Voice interface, coordination, direct work when appropriate |
+| File Access | FULL - uses judgment on when to delegate vs do directly |
 | Voice | Can use `say` command |
 | User Input | Can use `AskUserQuestion` |
 | Key Skills | /spawn, /send, /output, /kill, /sessions |
-| Blocked Tools | Edit, Write, Read, Glob, Grep, NotebookEdit, MCP filesystem |
+| Blocked Tools | NONE - role file provides guidance, not enforcement |
 
 ### Worker (`~/.agentwire/roles/worker.md`)
 
@@ -184,28 +182,11 @@
 │  ────────────────────────────                                               │
 │                                                                             │
 │  Orchestrator:                                                               │
-│    --disallowedTools "Edit,Write,Read,Glob,Grep,NotebookEdit,               │
-│                       mcp__filesystem__read_file,                            │
-│                       mcp__filesystem__write_file,                           │
-│                       mcp__filesystem__edit_file,                            │
-│                       mcp__filesystem__create_directory,                     │
-│                       mcp__filesystem__move_file,                            │
-│                       mcp__filesystem__directory_tree,                       │
-│                       mcp__filesystem__list_directory,                       │
-│                       mcp__filesystem__list_directory_with_sizes,            │
-│                       mcp__filesystem__search_files,                         │
-│                       mcp__filesystem__get_file_info,                        │
-│                       mcp__filesystem__read_multiple_files"                  │
+│    (none) - all tools available, role file provides guidance                │
 │                                                                             │
 │  Worker:                                                                     │
 │    --disallowedTools "AskUserQuestion"                                      │
-│                                                                             │
-│  Bash Hook (session-type-bash-hook.py)                                      │
-│  ─────────────────────────────────────                                      │
-│                                                                             │
-│  Checks: AGENTWIRE_SESSION_TYPE env var                                     │
-│  If worker: blocks "say *" commands                                         │
-│  Exit codes: 0=allow, 2=block                                               │
+│    (say command not blocked - workers just aren't told about it)            │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 

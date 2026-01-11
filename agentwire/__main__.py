@@ -22,22 +22,7 @@ from . import cli_safety
 CONFIG_DIR = Path.home() / ".agentwire"
 
 # Session type constants
-ORCHESTRATOR_DISALLOWED_TOOLS = [
-    # Claude Code file tools
-    "Edit", "Write", "Read", "Glob", "Grep", "NotebookEdit",
-    # MCP filesystem tools (if filesystem MCP server is enabled)
-    "mcp__filesystem__read_file",
-    "mcp__filesystem__read_multiple_files",
-    "mcp__filesystem__write_file",
-    "mcp__filesystem__edit_file",
-    "mcp__filesystem__create_directory",
-    "mcp__filesystem__move_file",
-    "mcp__filesystem__directory_tree",
-    "mcp__filesystem__list_directory",
-    "mcp__filesystem__list_directory_with_sizes",
-    "mcp__filesystem__search_files",
-    "mcp__filesystem__get_file_info",
-]
+# Orchestrators have all tools available - role file provides guidance, not enforcement
 WORKER_DISALLOWED_TOOLS = ["AskUserQuestion"]
 
 
@@ -72,8 +57,7 @@ def _build_claude_cmd(
         role_file = roles_dir / "orchestrator.md"
         if role_file.exists():
             parts.append(f'--append-system-prompt "$(cat {shlex.quote(str(role_file))})"')
-        # Block file manipulation tools for orchestrators
-        parts.append("--disallowedTools " + " ".join(ORCHESTRATOR_DISALLOWED_TOOLS))
+        # Orchestrators have all tools - role file provides guidance on when to delegate
 
     return " ".join(parts)
 
@@ -4235,116 +4219,6 @@ def install_permission_hook(force: bool = False, copy: bool = False) -> bool:
     return file_updated or settings_updated
 
 
-def register_session_type_hook_in_settings() -> bool:
-    """Register the session-type bash hook in Claude's settings.json.
-
-    Returns True if settings were updated, False if already configured.
-
-    This adds a PreToolUse hook for Bash commands that enforces
-    session-type restrictions (orchestrator vs worker).
-    """
-    settings_file = Path.home() / ".claude" / "settings.json"
-    hook_command = "uv run ~/.agentwire/hooks/session-type-bash-hook.py"
-
-    # Load existing settings or create new
-    if settings_file.exists():
-        try:
-            settings = json.loads(settings_file.read_text())
-        except json.JSONDecodeError:
-            settings = {}
-    else:
-        settings = {}
-
-    # Ensure hooks structure exists
-    if "hooks" not in settings:
-        settings["hooks"] = {}
-    if "PreToolUse" not in settings["hooks"]:
-        settings["hooks"]["PreToolUse"] = []
-
-    # Check if already registered
-    for entry in settings["hooks"]["PreToolUse"]:
-        if entry.get("matcher") == "Bash":
-            if "hooks" in entry:
-                for h in entry["hooks"]:
-                    if "session-type-bash-hook" in h.get("command", ""):
-                        return False  # Already registered
-
-    # Add hook with Claude Code format
-    hook_entry = {
-        "matcher": "Bash",
-        "hooks": [
-            {"type": "command", "command": hook_command, "timeout": 5}
-        ]
-    }
-    settings["hooks"]["PreToolUse"].append(hook_entry)
-
-    # Write back
-    settings_file.parent.mkdir(parents=True, exist_ok=True)
-    settings_file.write_text(json.dumps(settings, indent=2))
-
-    return True
-
-
-def install_session_type_hook(force: bool = False, copy: bool = False) -> bool:
-    """Install the session-type bash hook for Claude Code integration.
-
-    Installs to ~/.agentwire/hooks/ and registers in ~/.claude/settings.json.
-
-    Returns True if hook was installed/updated, False if skipped.
-    """
-    hook_name = "session-type-bash-hook.py"
-
-    try:
-        hooks_source = get_hooks_source()
-    except FileNotFoundError:
-        print("  Warning: hooks directory not found, skipping session-type hook")
-        return False
-
-    source_hook = hooks_source / hook_name
-    if not source_hook.exists():
-        print(f"  Warning: {hook_name} not found in package, skipping")
-        return False
-
-    # Create ~/.agentwire/hooks if it doesn't exist
-    agentwire_hooks_dir = CONFIG_DIR / "hooks"
-    agentwire_hooks_dir.mkdir(parents=True, exist_ok=True)
-
-    target_hook = agentwire_hooks_dir / hook_name
-
-    # Check if already installed
-    file_updated = False
-    if target_hook.exists():
-        if target_hook.is_symlink():
-            current_target = target_hook.resolve()
-            if current_target == source_hook.resolve() and not force:
-                file_updated = False
-            else:
-                target_hook.unlink()
-                file_updated = True
-        elif not force:
-            print(f"  Session-type hook already exists at {target_hook}")
-            file_updated = False
-        else:
-            target_hook.unlink()
-            file_updated = True
-    else:
-        file_updated = True
-
-    # Create symlink (preferred) or copy if needed
-    if file_updated or not target_hook.exists():
-        if copy:
-            shutil.copy2(source_hook, target_hook)
-        else:
-            target_hook.symlink_to(source_hook)
-        # Make executable
-        target_hook.chmod(0o755)
-
-    # Register in settings.json
-    settings_updated = register_session_type_hook_in_settings()
-
-    return file_updated or settings_updated
-
-
 def cmd_skills_install(args) -> int:
     """Install Claude Code skills for AgentWire integration."""
     target_dir = CLAUDE_SKILLS_DIR / "agentwire"
@@ -4396,17 +4270,10 @@ def cmd_skills_install(args) -> int:
     if hook_installed:
         print(f"Installed permission hook to {CLAUDE_HOOKS_DIR / 'agentwire-permission.sh'}")
 
-    # Install session-type hook for orchestrator/worker restrictions
-    session_hook_installed = install_session_type_hook(force=args.force, copy=args.copy)
-    if session_hook_installed:
-        print(f"Installed session-type hook to {CONFIG_DIR / 'hooks' / 'session-type-bash-hook.py'}")
-
     print("\nClaude Code skills installed. Available commands:")
     print("  /sessions, /send, /output, /spawn, /new, /kill, /status, /jump")
     if hook_installed:
         print("\nPermission hook installed for normal session support.")
-    if session_hook_installed:
-        print("Session-type hook installed for orchestrator/worker bash restrictions.")
     return 0
 
 
