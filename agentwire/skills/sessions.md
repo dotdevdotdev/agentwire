@@ -25,7 +25,7 @@ List all tmux sessions running on local machine and configured remote machines.
 
 ```
 Local sessions:
-  agentwire (orchestrator): 1 window
+  agentwire (agentwire): 1 window
   api (bypass): 2 windows
   untrusted-lib (normal): 1 window
   random-session: 1 window
@@ -39,7 +39,7 @@ gpu-server: (offline)
 Sessions show name, permission mode (if configured), and window count. Offline machines are indicated.
 
 Permission modes are determined from `~/.agentwire/rooms.json`:
-- `agentwire` is always "orchestrator"
+- `agentwire` is always the main agentwire role
 - Sessions with `bypass_permissions: true` (or unset) show as "bypass"
 - Sessions with `bypass_permissions: false` show as "normal"
 - Sessions not in config show without a label
@@ -55,9 +55,9 @@ rooms_file="$HOME/.agentwire/rooms.json"
 get_permission_mode() {
   local name="$1"
 
-  # agentwire is always orchestrator
+  # agentwire is always the main agentwire role
   if [ "$name" = "agentwire" ]; then
-    echo "orchestrator"
+    echo "agentwire"
     return
   fi
 

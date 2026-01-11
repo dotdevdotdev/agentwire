@@ -24,7 +24,7 @@ No arguments needed - checks all configured machines.
 
 2. **Categorize by Permission Mode**
    - Read `~/.agentwire/rooms.json` for session configuration
-   - Session named `agentwire` → Orchestrator
+   - Session named `agentwire` → Agentwire (main)
    - Sessions with `bypass_permissions: true` → Bypass Sessions
    - Sessions with `bypass_permissions: false` → Normal Sessions
    - Sessions not in rooms.json → Unconfigured
@@ -34,7 +34,7 @@ No arguments needed - checks all configured machines.
 ## Example Output
 
 ```
-Orchestrator:
+Agentwire:
   agentwire: 1 window (active)
 
 Bypass Sessions:
@@ -58,7 +58,7 @@ ROOMS_FILE=~/.agentwire/rooms.json
 MACHINES_FILE=~/.agentwire/machines.json
 
 # Arrays to hold sessions by category
-declare -a orchestrator=()
+declare -a agentwire_sessions=()
 declare -a bypass_sessions=()
 declare -a normal_sessions=()
 declare -a unconfigured=()
@@ -116,7 +116,7 @@ categorize_session() {
     local line=$(format_session "$name" "$windows" "$active")
 
     if [[ "$name" == "agentwire" ]]; then
-        orchestrator+=("$line")
+        agentwire_sessions+=("$line")
     elif is_configured "$name"; then
         if has_bypass_permissions "$name"; then
             bypass_sessions+=("$line")
@@ -144,9 +144,9 @@ if [[ -f "$MACHINES_FILE" ]]; then
 fi
 
 # Print grouped output
-if [[ ${#orchestrator[@]} -gt 0 ]]; then
-    echo "Orchestrator:"
-    printf '%s\n' "${orchestrator[@]}"
+if [[ ${#agentwire_sessions[@]} -gt 0 ]]; then
+    echo "Agentwire:"
+    printf '%s\n' "${agentwire_sessions[@]}"
     echo ""
 fi
 

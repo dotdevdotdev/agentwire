@@ -4,7 +4,7 @@ description: Check output from all active worker sessions.
 ---
 # /check-workers
 
-Batch check output from all worker sessions spawned by the current orchestrator.
+Batch check output from all worker sessions spawned by the current agentwire session.
 
 ## Usage
 
@@ -18,7 +18,7 @@ Batch check output from all worker sessions spawned by the current orchestrator.
 
 ## Behavior
 
-1. **List workers** - Find all sessions with `type: worker` spawned by current orchestrator
+1. **List workers** - Find all sessions with `type: worker` spawned by current agentwire session
 2. **Read output** - Run `agentwire output -s {worker} -n {lines}` for each
 3. **Summarize status** - Parse output to determine: running, done, blocked, or error
 4. **Report conversationally** - Provide voice-friendly summary
@@ -43,9 +43,9 @@ database-schema: Blocked - needs DATABASE_URL env var
 ## Implementation
 
 ```bash
-# Get workers spawned by this orchestrator
-ORCHESTRATOR=$(tmux display-message -p '#S')
-WORKERS=$(agentwire list --json | jq -r ".local[] | select(.spawned_by == \"$ORCHESTRATOR\") | .name")
+# Get workers spawned by this agentwire session
+AGENTWIRE_SESSION=$(tmux display-message -p '#S')
+WORKERS=$(agentwire list --json | jq -r ".local[] | select(.spawned_by == \"$AGENTWIRE_SESSION\") | .name")
 
 # Check each worker
 for WORKER in $WORKERS; do

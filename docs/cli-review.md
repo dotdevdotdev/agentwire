@@ -165,8 +165,7 @@ All 45+ missing parameters identified below have been added to:
 | `-f, --force` | ✅ | ✅ | ✅ |
 | `--no-bypass` | ✅ | ✅ | ✅ |
 | `--restricted` | ✅ | ✅ | ✅ |
-| `--worker` | ✅ | ✅ | ✅ |
-| `--orchestrator` | ✅ | ✅ | ✅ |
+| `--roles` | ✅ | ✅ | ✅ |
 | `--json` | ✅ | ✅ | ✅ |
 
 ✅ All parameters documented correctly

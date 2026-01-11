@@ -82,8 +82,8 @@ class RoomConfig:
     claude_session_id: str | None = None  # Claude Code session UUID for forking
     bypass_permissions: bool = True
     restricted: bool = False  # Restricted mode: only say allowed
-    type: str = "orchestrator"  # Session type: "orchestrator" | "worker"
-    spawned_by: str | None = None  # Parent orchestrator session (for worker sessions)
+    type: str = "agentwire"  # Session type: "agentwire" | "worker"
+    spawned_by: str | None = None  # Parent agentwire session (for worker sessions)
 
 
 @dataclass
@@ -287,7 +287,7 @@ class AgentWireServer:
                 claude_session_id=cfg.get("claude_session_id"),
                 bypass_permissions=cfg.get("bypass_permissions", True),  # Default True
                 restricted=cfg.get("restricted", False),  # Default False
-                type=cfg.get("type", "orchestrator"),
+                type=cfg.get("type", "agentwire"),
                 spawned_by=cfg.get("spawned_by"),
             )
         return RoomConfig(voice=self.config.tts.default_voice)
@@ -2537,7 +2537,7 @@ projects:
                 })
 
             elif base_name == "agentwire":
-                # Restart the orchestrator session - kill Claude and restart it
+                # Restart the agentwire session - kill Claude and restart it
                 self.agent.send_keys(name, "/exit")
                 await asyncio.sleep(1)
 
@@ -2547,7 +2547,7 @@ projects:
 
                 return web.json_response({
                     "success": True,
-                    "message": "Orchestrator session restarted"
+                    "message": "Agentwire session restarted"
                 })
 
             return web.json_response({"error": "Unknown system session"}, status=400)

@@ -15,7 +15,7 @@ This case study documents a first-time AgentWire installation across 3 machines,
 
 - **OS:** macOS Sequoia (Darwin 24.5.0)
 - **Python:** 3.9.6 (system) → upgraded to 3.12.0 via pyenv
-- **Role:** Portal server, orchestrator session
+- **Role:** Portal server, main agentwire session
 
 ### Remote Workers
 

@@ -828,11 +828,11 @@ def print_dependency_summary(checks: dict[str, tuple[bool, str]]) -> bool:
     return all_passed
 
 
-def run_onboarding(skip_orchestrator: bool = False) -> int:
+def run_onboarding(skip_session: bool = False) -> int:
     """Run the interactive onboarding wizard.
 
     Args:
-        skip_orchestrator: If True, skip the final orchestrator setup prompt.
+        skip_session: If True, skip the final initial session setup prompt.
     """
     print()
     print(f"{BOLD}Welcome to AgentWire Setup!{RESET}")
@@ -1432,7 +1432,7 @@ services:
     if not rooms_path.exists():
         rooms_content = {
             "agentwire": {
-                "role": "orchestrator",
+                "roles": ["agentwire"],
                 "voice": config["tts_voice"],
             }
         }
@@ -1443,16 +1443,16 @@ services:
     roles_dir = CONFIG_DIR / "roles"
     roles_dir.mkdir(exist_ok=True)
 
-    orchestrator_role = roles_dir / "orchestrator.md"
-    if not orchestrator_role.exists():
-        orchestrator_role.write_text("""# Role: Orchestrator
+    agentwire_role = roles_dir / "agentwire.md"
+    if not agentwire_role.exists():
+        agentwire_role.write_text("""# Role: AgentWire Session
 
-You are the orchestrator session in the AgentWire system.
+You are the main agentwire session in the AgentWire system.
 You coordinate worker sessions via /agentwire skills.
 
 Available commands: /sessions, /send, /output, /new, /kill, /status, /jump
 """)
-        print_success(f"Created {orchestrator_role}")
+        print_success(f"Created {agentwire_role}")
 
     worker_role = roles_dir / "worker.md"
     if not worker_role.exists():
@@ -1503,19 +1503,19 @@ Stay focused on your project directory and commit frequently.
     print(f"  Machines:    {len(config['machines'])} configured" if config['machines'] else "  Machines:    Local only")
 
     # ─────────────────────────────────────────────────────────────
-    # Orchestrator Setup (Optional)
+    # Initial Session Setup (Optional)
     # ─────────────────────────────────────────────────────────────
-    if not skip_orchestrator:
+    if not skip_session:
         print()
         print_info("The next step is optional: Claude can help you with advanced setup")
         print_info("(multi-machine networking, TTS configuration, testing services).")
         print()
 
-        if prompt_yes_no("Ready to start orchestrator setup?"):
-            from .init_orchestrator import spawn_init_orchestrator
-            return spawn_init_orchestrator()
+        if prompt_yes_no("Ready to start initial session setup?"):
+            from .init_agentwire import spawn_init_session
+            return spawn_init_session()
 
-    # User declined orchestrator setup (or skip_orchestrator=True) - show manual next steps
+    # User declined session setup (or skip_session=True) - show manual next steps
     print()
     print(f"{BOLD}Next steps:{RESET}")
     if config['tts_backend'] == 'chatterbox':
@@ -1525,8 +1525,8 @@ Stay focused on your project directory and commit frequently.
         print(f"  1. {CYAN}agentwire portal start{RESET}  # Start the web portal")
     print(f"  3. Open {CYAN}https://localhost:8765{RESET} in your browser")
     print()
-    if not skip_orchestrator:
-        print_info("Run 'agentwire dev' anytime to start the orchestrator session.")
+    if not skip_session:
+        print_info("Run 'agentwire dev' anytime to start the main agentwire session.")
         print()
 
     return 0

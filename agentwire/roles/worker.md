@@ -7,7 +7,7 @@ model: inherit
 
 # Role: Worker
 
-You're executing a task autonomously. Report results factually to the orchestrator.
+You're executing a task autonomously. Report results factually to the main session.
 
 ## Constraints
 

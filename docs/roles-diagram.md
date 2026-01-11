@@ -1,6 +1,6 @@
 # AgentWire Roles & Skills Diagram
 
-## Session Type Architecture
+## Composable Roles Architecture
 
 ```
                               User Request
@@ -9,25 +9,25 @@
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                           SESSION CREATION                                   │
 │                                                                             │
-│   agentwire new -s {name} [--orchestrator|--worker] [-t template]           │
+│   agentwire new -s {name} [--roles role1,role2] [-t template]               │
 │                                                                             │
-│   1. Parse session type (orchestrator default, or --worker)                 │
+│   1. Parse --roles flag (comma-separated list, optional)                    │
 │   2. Load template if specified                                             │
-│   3. Build claude command with role injection                               │
-│   4. Create tmux session with env vars                                      │
-│   5. Update rooms.json with config                                          │
+│   3. Discover roles: project → user → bundled                               │
+│   4. Merge roles: union of tools, intersection of disallowed                │
+│   5. Build claude command with merged role config                           │
+│   6. Create tmux session with env vars                                      │
+│   7. Update rooms.json with config                                          │
 └─────────────────────────────────────────────────────────────────────────────┘
                                    │
                     ┌──────────────┴──────────────┐
                     ▼                              ▼
 ┌─────────────────────────────────┐  ┌─────────────────────────────────┐
-│      ORCHESTRATOR SESSION       │  │        WORKER SESSION           │
+│      AGENTWIRE SESSION          │  │        WORKER SESSION           │
+│       (--roles agentwire)       │  │        (--roles worker)         │
 │                                 │  │                                 │
-│  Role: ~/.agentwire/roles/      │  │  Role: ~/.agentwire/roles/      │
-│        orchestrator.md          │  │        worker.md                │
-│                                 │  │                                 │
-│  Env: AGENTWIRE_SESSION_TYPE=   │  │  Env: AGENTWIRE_SESSION_TYPE=   │
-│       orchestrator              │  │       worker                    │
+│  Role: agentwire.md             │  │  Role: worker.md                │
+│  (bundled or user override)     │  │  (bundled or user override)     │
 │                                 │  │                                 │
 │  ┌───────────────────────────┐  │  │  ┌───────────────────────────┐  │
 │  │     ALL TOOLS AVAILABLE   │  │  │  │     ALLOWED TOOLS         │  │
@@ -35,7 +35,7 @@
 │  │  • Edit, Write, Read      │  │  │  │  • Edit, Write, Read      │  │
 │  │  • Glob, Grep             │  │  │  │  • Glob, Grep             │  │
 │  │  • Task (spawn agents)    │  │  │  │  • NotebookEdit           │  │
-│  │  • Bash (inc. say cmd)    │  │  │  │  • Bash                    │  │
+│  │  • Bash (inc. say cmd)    │  │  │  │  • Bash                   │  │
 │  │  • AskUserQuestion        │  │  │  │  • MCP filesystem tools   │  │
 │  │  • All MCP tools          │  │  │  │  • Task (spawn agents)    │  │
 │  │  • AgentWire skills       │  │  │  └───────────────────────────┘  │
@@ -53,6 +53,29 @@
                     │                              │
                     │     /spawn, /send            │
                     └──────────────────────────────┘
+```
+
+## Role Stacking Example
+
+```
+agentwire new -s feature-work --roles worker,code-review
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         ROLE MERGE LOGIC                                     │
+│                                                                             │
+│   Role: worker.md                    Role: code-review.md                   │
+│   ─────────────────                  ───────────────────────                │
+│   disallowedTools: AskUserQuestion   tools: Read, Glob, Grep                │
+│   tools: (none - all allowed)        disallowedTools: (none)                │
+│                                                                             │
+│   Merged Result:                                                            │
+│   ──────────────                                                            │
+│   tools = union([all], [Read,Glob,Grep]) = [all]                           │
+│   disallowedTools = intersection([AskUserQuestion], []) = []               │
+│   instructions = worker.md + code-review.md (concatenated)                  │
+│                                                                             │
+│   In this case, no tools blocked because code-review has no restrictions    │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ## System Prompt Assembly
@@ -76,9 +99,12 @@
 │  └──────────────┬──────────────┘                                            │
 │                 ▼                                                            │
 │  ┌─────────────────────────────┐                                            │
-│  │   Role Instructions         │  --append-system-prompt flag              │
-│  │   ~/.agentwire/roles/       │                                            │
-│  │   {orchestrator|worker}.md  │  Injected via: $(cat ~/.agentwire/...)    │
+│  │   Merged Role Instructions  │  --append-system-prompt flag              │
+│  │                             │                                            │
+│  │   Sources (precedence):     │                                            │
+│  │   1. .agentwire/roles/*.md  │  Project-local roles (highest priority)   │
+│  │   2. ~/.agentwire/roles/    │  User-global roles                        │
+│  │   3. agentwire/roles/       │  Bundled roles (lowest priority)          │
 │  └──────────────┬──────────────┘                                            │
 │                 ▼                                                            │
 │  ┌─────────────────────────────┐                                            │
@@ -93,8 +119,9 @@
 ```
 ~/.agentwire/
 ├── roles/
-│   ├── agentwire.md        # Coordination, voice, full tool access
-│   └── worker.md           # Autonomous execution, no user input
+│   ├── agentwire.md        # Voice-first coordination, full tool access
+│   ├── worker.md           # Autonomous execution, no user input
+│   └── code-review.md      # Custom role example
 │
 ├── templates/
 │   ├── voice-assistant.yaml
@@ -106,7 +133,7 @@
 │   ├── damage-control/             # Blocks dangerous commands
 │   └── agentwire-permission.sh     # Routes permissions to portal
 │
-├── rooms.json              # Per-session config (voice, type, permissions)
+├── rooms.json              # Per-session config (voice, roles, permissions)
 └── config.yaml             # Global config (TTS, STT, machines)
 ```
 
@@ -134,7 +161,7 @@
 | Key Tools | All file tools, Task (can spawn sub-workers) |
 | Blocked Tools | AskUserQuestion, say command |
 
-## Skills Available to Orchestrators
+## Skills Available to Sessions
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -167,15 +194,22 @@
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                         TOOL BLOCKING                                        │
 │                                                                             │
-│  Claude --disallowedTools Flag                                              │
-│  ────────────────────────────                                               │
+│  Claude --disallowedTools Flag (from merged roles)                          │
+│  ─────────────────────────────────────────────────                          │
 │                                                                             │
-│  Orchestrator:                                                               │
+│  Bare session (no --roles):                                                  │
+│    (none) - all tools available                                             │
+│                                                                             │
+│  AgentWire role (--roles agentwire):                                        │
 │    (none) - all tools available, role file provides guidance                │
 │                                                                             │
-│  Worker:                                                                     │
+│  Worker role (--roles worker):                                              │
 │    --disallowedTools "AskUserQuestion"                                      │
 │    (say command not blocked - workers just aren't told about it)            │
+│                                                                             │
+│  Merged roles (--roles worker,code-review):                                 │
+│    disallowedTools = intersection of all roles' disallowedTools             │
+│    Only blocks tools that ALL roles agree should be blocked                 │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -208,15 +242,15 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                    ORCHESTRATOR → WORKER PATTERN                             │
+│                    MAIN SESSION → WORKER PATTERN                             │
 │                                                                             │
 │  ┌─────────────────────────────────────────────────────────────────────┐    │
-│  │                    Orchestrator Session                              │    │
-│  │                    (agentwire main)                                  │    │
+│  │                    Main Session                                     │    │
+│  │                    (agentwire session)                              │    │
 │  │                                                                      │    │
-│  │   Role: orchestrator.md                                              │    │
+│  │   Roles: [agentwire]                                                │    │
 │  │   Can: /spawn, /send, /output, /kill, say                           │    │
-│  │   Cannot: Edit, Write, Read files                                   │    │
+│  │   Uses judgment on direct work vs delegation                        │    │
 │  └────────────────────────────┬────────────────────────────────────────┘    │
 │                               │                                              │
 │           ┌───────────────────┼───────────────────┐                         │
@@ -225,14 +259,14 @@
 │  ┌────────────────┐  ┌────────────────┐  ┌────────────────┐                 │
 │  │  Worker: api   │  │  Worker: ui    │  │  Worker: tests │                 │
 │  │                │  │                │  │                │                 │
-│  │  Role: worker  │  │  Role: worker  │  │  Role: worker  │                 │
+│  │  Roles: worker │  │  Roles: worker │  │  Roles: worker │                 │
 │  │  Can: Edit,    │  │  Can: Edit,    │  │  Can: Edit,    │                 │
 │  │  Write, Read   │  │  Write, Read   │  │  Write, Read   │                 │
 │  │  Cannot: say,  │  │  Cannot: say,  │  │  Cannot: say,  │                 │
 │  │  AskUser       │  │  AskUser       │  │  AskUser       │                 │
 │  └────────────────┘  └────────────────┘  └────────────────┘                 │
 │                                                                             │
-│  All workers run in parallel, report results to orchestrator                │
+│  All workers run in parallel, report results to main session               │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -241,7 +275,7 @@
 | Variable | Set By | Purpose |
 |----------|--------|---------|
 | `AGENTWIRE_ROOM` | Session creation | Room ID for portal routing |
-| `AGENTWIRE_SESSION_TYPE` | Session creation | "orchestrator" or "worker" |
+| `AGENTWIRE_SESSION_ROLES` | Session creation | Comma-separated role names |
 | `AGENTWIRE_PORTAL_URL` | Config | Portal URL for API calls |
 
 ## Hooks Pipeline
@@ -260,9 +294,9 @@
 │  └──────────────┬──────────────┘                                            │
 │                 ▼                                                            │
 │  ┌─────────────────────────────┐                                            │
-│  │   session-type-bash-hook.py │  Bash hook                                 │
+│  │   session-role-bash-hook.py │  Bash hook                                 │
 │  │                             │  Blocks: say for workers                   │
-│  │   Checks: SESSION_TYPE      │                                            │
+│  │   Checks: SESSION_ROLES     │                                            │
 │  └──────────────┬──────────────┘                                            │
 │                 ▼                                                            │
 │  ┌─────────────────────────────┐                                            │
@@ -280,8 +314,8 @@
 | File | Format | Purpose |
 |------|--------|---------|
 | `~/.agentwire/config.yaml` | YAML | Global settings (TTS, STT, machines) |
-| `~/.agentwire/rooms.json` | JSON | Per-session config (voice, type, permissions) |
-| `~/.agentwire/roles/*.md` | Markdown | Role instructions appended to system prompt |
+| `~/.agentwire/rooms.json` | JSON | Per-session config (voice, roles, permissions) |
+| `~/.agentwire/roles/*.md` | Markdown | Role instructions (YAML frontmatter + body) |
 | `~/.agentwire/templates/*.yaml` | YAML | Session templates with initial context |
 | `~/.agentwire/hooks/*.py` | Python | PreToolUse/Bash hooks for safety |
 | `~/.agentwire/machines.json` | JSON | Remote machine SSH configurations |

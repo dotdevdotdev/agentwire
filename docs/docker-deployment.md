@@ -23,7 +23,7 @@ docker-compose down
 
 ## Architecture
 
-The containerized portal is **orchestration-only** - it doesn't run tmux sessions internally. Instead, it manages sessions on remote machines via SSH, including the host machine.
+The containerized portal is **coordination-only** - it doesn't run tmux sessions internally. Instead, it manages sessions on remote machines via SSH, including the host machine.
 
 ```
 ┌─────────────────────────────────────────────────┐
@@ -37,7 +37,7 @@ The containerized portal is **orchestration-only** - it doesn't run tmux session
 │      }                                           │
 └─────────────────────────────────────────────────┘
           │
-          ├─ Portal Container (port 8765) - ORCHESTRATOR ONLY
+          ├─ Portal Container (port 8765) - COORDINATION ONLY
           │  ├── WebSocket server (voice UI)
           │  ├── HTTP API (session management)
           │  └── SSH client → manages sessions on ALL machines
@@ -163,7 +163,7 @@ docker-compose logs -f portal stt
 **Concept:** Dedicated worker containers for volatile/untrusted projects.
 
 ```
-Portal Container (orchestrator)
+Portal Container (coordinator)
   └─> spawns ephemeral worker containers
       ├── Isolated filesystem (no host access)
       ├── GPU support (optional)

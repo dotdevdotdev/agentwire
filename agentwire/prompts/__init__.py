@@ -1,1 +1,1 @@
-# Prompt templates for AgentWire orchestrator sessions
+# Prompt templates for AgentWire sessions

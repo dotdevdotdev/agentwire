@@ -2,14 +2,14 @@
 # For setups with components on different machines
 #
 # This example shows a multi-machine setup:
-#   - Portal runs on your laptop/desktop (orchestrator)
+#   - Portal runs on your laptop/desktop (main machine)
 #   - TTS runs on a GPU server (for Chatterbox voice synthesis)
 #   - STT runs locally (uses laptop's Neural Engine on macOS)
 #   - Sessions can run locally or on remote machines
 #
 # Required: machines.json must have "gpu-server" defined
 
-# === Server (runs on orchestrator machine) ===
+# === Server (runs on portal machine) ===
 server:
   host: "0.0.0.0"
   port: 8765
@@ -57,7 +57,7 @@ tts:
   exaggeration: 0.5
   cfg_weight: 0.5
 
-# === STT (local on orchestrator - uses Apple Neural Engine on macOS) ===
+# === STT (local on portal machine - uses Apple Neural Engine on macOS) ===
 stt:
   backend: "whisperkit"
   model_path: "~/models/whisperkit/large-v3"

@@ -1,6 +1,6 @@
 ---
 name: workers
-description: List active worker sessions spawned by this orchestrator.
+description: List active worker sessions managed by this session.
 ---
 
 # /workers
@@ -147,6 +147,6 @@ fi
 
 - Only shows sessions with `worker` in their roles array in rooms.json
 - Sessions without the worker role are NOT shown
-- Useful for orchestrator sessions to monitor spawned workers
+- Useful for agentwire sessions to monitor spawned workers
 - Use `/output <worker>` to check specific worker progress
 - Use `/send <worker> "prompt"` to give workers new instructions

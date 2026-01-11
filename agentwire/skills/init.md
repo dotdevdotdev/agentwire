@@ -216,7 +216,7 @@ agent:
 ```json
 {
   "agentwire": {
-    "role": "orchestrator",
+    "role": "agentwire",
     "voice": "{default_voice}"
   }
 }

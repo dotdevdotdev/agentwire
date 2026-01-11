@@ -32,7 +32,7 @@ Components spread across machines:
 ```
 ┌─────────────────────┐     ┌─────────────────────┐
 │  Mac Mini           │     │  GPU Server         │
-│  (orchestrator)     │     │  (TTS + workers)    │
+│  (main session)     │     │  (TTS + workers)    │
 │  ├── portal        │────►│  ├── Chatterbox    │
 │  ├── dev session   │     │  └── worker sessions│
 │  └── STT           │     │                     │
@@ -225,7 +225,7 @@ export AGENTWIRE_PROJECTS__DIR=/data/projects
 
 ### Example 1: Mac + GPU Server
 
-**Mac Mini** (orchestrator, portal, STT):
+**Mac Mini** (main session, portal, STT):
 
 ```yaml
 # ~/.agentwire/config.yaml

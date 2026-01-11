@@ -236,7 +236,7 @@ In monitor mode, a menu button appears above the mic button. Hover over action b
 
 | Action | Icon | Description |
 |--------|------|-------------|
-| Restart Service | Refresh | Properly restarts the service (portal schedules delayed restart, TTS stops/starts, orchestrator restarts Claude) |
+| Restart Service | Refresh | Properly restarts the service (portal schedules delayed restart, TTS stops/starts, agentwire session restarts Claude) |
 
 ## Create Session Form
 

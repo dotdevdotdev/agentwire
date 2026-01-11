@@ -2988,7 +2988,7 @@ def cmd_machine_list(args) -> int:
 # === Dev Command ===
 
 def cmd_dev(args) -> int:
-    """Start or attach to the AgentWire dev/orchestrator session."""
+    """Start or attach to the AgentWire dev/agentwire session."""
     session_name = "agentwire"
     project_dir = Path.home() / "projects" / "agentwire"
 
@@ -3018,7 +3018,7 @@ def cmd_dev(args) -> int:
     ])
     time.sleep(0.1)
 
-    # Start Claude with orchestrator config
+    # Start Claude with agentwire config
     subprocess.run([
         "tmux", "send-keys", "-t", session_name, claude_cmd, "Enter",
     ])
@@ -3033,8 +3033,8 @@ def cmd_dev(args) -> int:
 def cmd_init(args) -> int:
     """Initialize AgentWire configuration with interactive wizard.
 
-    Default behavior: Run full wizard with optional orchestrator setup at the end.
-    Quick mode (--quick): Run wizard only, skip orchestrator setup prompt.
+    Default behavior: Run full wizard with optional agentwire setup at the end.
+    Quick mode (--quick): Run wizard only, skip agentwire setup prompt.
     """
     # Check Python version first
     if not check_python_version():
@@ -3048,12 +3048,12 @@ def cmd_init(args) -> int:
     from .onboarding import run_onboarding
 
     if args.quick:
-        # Quick mode: run wizard but skip orchestrator step
-        # We do this by running onboarding and returning before orchestrator prompt
+        # Quick mode: run wizard but skip agentwire step
+        # We do this by running onboarding and returning before agentwire prompt
         # The onboarding module handles this internally
-        return run_onboarding(skip_orchestrator=True)
+        return run_onboarding(skip_agentwire=True)
 
-    # Default: run full wizard (ends with optional orchestrator setup)
+    # Default: run full wizard (ends with optional agentwire setup)
     return run_onboarding()
 
 
@@ -4833,7 +4833,7 @@ def main() -> int:
     init_parser = subparsers.add_parser("init", help="Interactive setup wizard")
     init_parser.add_argument(
         "--quick", action="store_true",
-        help="Quick mode: skip orchestrator setup at end"
+        help="Quick mode: skip agentwire setup at end"
     )
     init_parser.set_defaults(func=cmd_init)
 
@@ -4997,7 +4997,7 @@ def main() -> int:
 
     # === dev command ===
     dev_parser = subparsers.add_parser(
-        "dev", help="Start/attach to dev orchestrator session"
+        "dev", help="Start/attach to dev agentwire session"
     )
     dev_parser.set_defaults(func=cmd_dev)
 

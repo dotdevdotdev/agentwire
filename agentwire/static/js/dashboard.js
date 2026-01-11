@@ -668,15 +668,17 @@ function renderSessionCard(session, machineId) {
         permissionBadge = '<span class="session-badge bypass">Bypass</span>';
     }
 
-    // Session type badge: worker or orchestrator
-    let typeBadge = '';
-    if (session.type === 'worker') {
-        typeBadge = '<span class="session-badge worker">Worker</span>';
-    } else if (session.type === 'orchestrator') {
-        typeBadge = '<span class="session-badge orchestrator">Orchestrator</span>';
+    // Role badges: show all roles from the roles array
+    let rolesBadges = '';
+    if (session.roles && session.roles.length > 0) {
+        rolesBadges = session.roles.map(role =>
+            `<span class="session-badge role">${role}</span>`
+        ).join('');
+    } else {
+        rolesBadges = '<span class="session-badge bare">bare</span>';
     }
 
-    const badge = typeBadge + permissionBadge;
+    const badge = rolesBadges + permissionBadge;
 
     // Strip @machine from display name if present (avoid doubling)
     let displayName = session.name;

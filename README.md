@@ -190,7 +190,7 @@ agentwire machine add <id>      # Add a machine
 agentwire machine remove <id>   # Remove a machine
 
 # Development
-agentwire dev               # Start orchestrator session
+agentwire dev               # Start agentwire session
 ```
 
 ## Configuration

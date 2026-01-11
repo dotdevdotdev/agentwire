@@ -12,7 +12,7 @@
       "host": "mac-mini.local",
       "user": "dotdev",
       "projects_dir": "/Users/dotdev/projects",
-      "description": "Always-on Mac Mini orchestrator"
+      "description": "Always-on Mac Mini portal server"
     },
     {
       "id": "devbox",
