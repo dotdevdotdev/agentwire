@@ -354,6 +354,9 @@ voice: bashbunni              # TTS voice (optional)
 | `claude-prompted` | `--prompted` | Claude with permission hook |
 | `claude-restricted` | `--restricted` | Claude, only `say` allowed |
 
+**Why `type` matters (architecture note):**
+The `type` field is our escape hatch and extension point for session logic that lives outside/alongside Claude. Instead of scattering conditionals everywhere, all type-specific logic lives in clean `if type ==` blocks. This keeps code maintainable when adding future types like watchers, remote shells, bridges, etc.
+
 **sessions.json (runtime cache - rebuilt from tmux + yaml files):**
 ```json
 {
