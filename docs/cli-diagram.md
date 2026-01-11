@@ -477,9 +477,8 @@ agentwire
 │       └── permissions  # Access control
 │
 ├── roles/               # Role instructions
-│   ├── orchestrator.md  # Voice-first coordinator
-│   ├── worker.md        # Autonomous executor
-│   └── chatbot.md       # Conversational agent
+│   ├── agentwire.md     # Voice-first coordinator
+│   └── worker.md        # Autonomous executor
 │
 ├── templates/           # Session templates
 │   └── <name>.yaml

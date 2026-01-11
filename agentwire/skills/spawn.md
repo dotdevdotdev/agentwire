@@ -59,7 +59,7 @@ Output:
 Killing existing session 'assistant'...
 Creating fresh session 'assistant'...
 Spawned session 'assistant' in ~/projects/assistant
-Role: chatbot
+Role: worker
 Model: opus
 ```
 

@@ -93,9 +93,8 @@
 ```
 ~/.agentwire/
 ├── roles/
-│   ├── orchestrator.md     # Coordination, voice, no file tools
-│   ├── worker.md           # Autonomous execution, no user input
-│   └── chatbot.md          # Voice-only, restricted mode
+│   ├── agentwire.md        # Coordination, voice, full tool access
+│   └── worker.md           # Autonomous execution, no user input
 │
 ├── templates/
 │   ├── voice-assistant.yaml
@@ -113,7 +112,7 @@
 
 ## Role Definitions
 
-### Orchestrator (`~/.agentwire/roles/orchestrator.md`)
+### AgentWire (`~/.agentwire/roles/agentwire.md`)
 
 | Aspect | Description |
 |--------|-------------|
@@ -134,16 +133,6 @@
 | User Input | BLOCKED - cannot use AskUserQuestion |
 | Key Tools | All file tools, Task (can spawn sub-workers) |
 | Blocked Tools | AskUserQuestion, say command |
-
-### Chatbot (`~/.agentwire/roles/chatbot.md`)
-
-| Aspect | Description |
-|--------|-------------|
-| Purpose | Conversational assistant, no code execution |
-| File Access | NONE - restricted mode |
-| Voice | Can use `say` command |
-| User Input | Yes (via voice) |
-| Mode | `--restricted` flag enabled |
 
 ## Skills Available to Orchestrators
 
@@ -199,7 +188,7 @@
 │                                                                             │
 │  name: feature-impl                    # Template identifier                │
 │  description: Implement a feature      # Display name                       │
-│  role: worker                          # orchestrator | worker | chatbot    │
+│  roles: [worker]                       # Array of composable roles          │
 │  voice: bashbunni                      # TTS voice name                     │
 │  project: ~/projects/myapp             # Default working directory          │
 │  bypass_permissions: true              # Skip permission prompts            │

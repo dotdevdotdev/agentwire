@@ -1448,7 +1448,7 @@ services:
         orchestrator_role.write_text("""# Role: Orchestrator
 
 You are the orchestrator session in the AgentWire system.
-You coordinate worker and chatbot sessions via /agentwire skills.
+You coordinate worker sessions via /agentwire skills.
 
 Available commands: /sessions, /send, /output, /new, /kill, /status, /jump
 """)
