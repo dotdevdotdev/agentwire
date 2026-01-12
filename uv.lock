@@ -27,6 +27,12 @@ dev = [
     { name = "pytest-asyncio" },
     { name = "ruff" },
 ]
+stt = [
+    { name = "fastapi" },
+    { name = "faster-whisper" },
+    { name = "python-multipart" },
+    { name = "uvicorn" },
+]
 tts = [
     { name = "chatterbox-tts" },
     { name = "fastapi" },
@@ -42,21 +48,25 @@ requires-dist = [
     { name = "aiohttp", specifier = ">=3.9.0" },
     { name = "aiohttp-jinja2", specifier = ">=1.6" },
     { name = "chatterbox-tts", marker = "extra == 'tts'", specifier = ">=0.1.6" },
+    { name = "fastapi", marker = "extra == 'stt'", specifier = ">=0.104.0" },
     { name = "fastapi", marker = "extra == 'tts'", specifier = ">=0.104.0" },
+    { name = "faster-whisper", marker = "extra == 'stt'", specifier = ">=1.0.0" },
     { name = "faster-whisper", marker = "extra == 'tts'", specifier = ">=1.0.0" },
     { name = "jinja2", specifier = ">=3.1.0" },
     { name = "psutil", specifier = ">=5.9.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23.0" },
+    { name = "python-multipart", marker = "extra == 'stt'", specifier = ">=0.0.6" },
     { name = "python-multipart", marker = "extra == 'tts'", specifier = ">=0.0.6" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "requests", specifier = ">=2.28.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.1.0" },
     { name = "torch", marker = "extra == 'tts'", specifier = ">=2.0.0" },
     { name = "torchaudio", marker = "extra == 'tts'", specifier = ">=2.0.0" },
+    { name = "uvicorn", marker = "extra == 'stt'", specifier = ">=0.24.0" },
     { name = "uvicorn", marker = "extra == 'tts'", specifier = ">=0.24.0" },
 ]
-provides-extras = ["dev", "tts"]
+provides-extras = ["dev", "stt", "tts"]
 
 [[package]]
 name = "aiofiles"

@@ -932,6 +932,126 @@ def cmd_tts_status(args) -> int:
         return 1
 
 
+# === STT Commands ===
+
+def cmd_stt_start(args) -> int:
+    """Start the STT server in tmux."""
+    session_name = "agentwire-stt"
+
+    if tmux_session_exists(session_name):
+        print(f"STT server already running in tmux session '{session_name}'")
+        print(f"  Attach: tmux attach -t {session_name}")
+        return 0
+
+    config = load_config()
+    stt_config = config.get("stt", {})
+    port = args.port or 8100
+    host = args.host or "0.0.0.0"
+    model = args.model or os.environ.get("WHISPER_MODEL", "base")
+
+    # Find agentwire source directory (for running from source venv)
+    # Check common locations
+    source_dirs = [
+        Path.home() / "projects" / "agentwire",
+        Path("/Users/dotdev/projects/agentwire"),
+    ]
+    agentwire_dir = None
+    for d in source_dirs:
+        if (d / ".venv" / "bin" / "python").exists():
+            agentwire_dir = d
+            break
+
+    if not agentwire_dir:
+        print("Error: Cannot find agentwire source directory with .venv", file=sys.stderr)
+        print("Run from ~/projects/agentwire or set up .venv there", file=sys.stderr)
+        return 1
+
+    # Build command using source venv
+    python_path = agentwire_dir / ".venv" / "bin" / "python"
+    cmd = f"cd {agentwire_dir} && WHISPER_MODEL={model} WHISPER_DEVICE=cpu STT_PORT={port} STT_HOST={host} {python_path} -m agentwire.stt.stt_server"
+
+    # Create tmux session
+    subprocess.run([
+        "tmux", "new-session", "-d", "-s", session_name, "-c", str(agentwire_dir)
+    ], check=True)
+
+    subprocess.run([
+        "tmux", "send-keys", "-t", session_name, cmd, "Enter"
+    ], check=True)
+
+    print(f"STT server starting in tmux session '{session_name}'")
+    print(f"  Model: {model}")
+    print(f"  Port: {port}")
+    print(f"  Attach: tmux attach -t {session_name}")
+    return 0
+
+
+def cmd_stt_serve(args) -> int:
+    """Run the STT server directly (foreground)."""
+    import uvicorn
+
+    port = args.port or 8100
+    host = args.host or "0.0.0.0"
+    model = args.model or "base"
+
+    os.environ["WHISPER_MODEL"] = model
+    os.environ["WHISPER_DEVICE"] = "cpu"
+
+    print(f"Starting STT server on {host}:{port} with model {model}...")
+    uvicorn.run(
+        "agentwire.stt.stt_server:app",
+        host=host,
+        port=port,
+        log_level="info",
+    )
+    return 0
+
+
+def cmd_stt_stop(args) -> int:
+    """Stop the STT server."""
+    session_name = "agentwire-stt"
+
+    if not tmux_session_exists(session_name):
+        print("STT server is not running.")
+        return 1
+
+    subprocess.run(["tmux", "kill-session", "-t", session_name])
+    print("STT server stopped.")
+    return 0
+
+
+def cmd_stt_status(args) -> int:
+    """Check STT server status."""
+    session_name = "agentwire-stt"
+    config = load_config()
+    stt_url = config.get("stt", {}).get("url", "http://localhost:8100")
+
+    # Check health endpoint
+    try:
+        import urllib.request
+        req = urllib.request.Request(f"{stt_url}/health")
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            data = json.loads(resp.read().decode())
+            print(f"STT server is running")
+            print(f"  Model: {data.get('model', 'unknown')}")
+            print(f"  Device: {data.get('device', 'unknown')}")
+            print(f"  URL: {stt_url}")
+            if tmux_session_exists(session_name):
+                print(f"  Attach: tmux attach -t {session_name}")
+            return 0
+    except Exception:
+        pass
+
+    if tmux_session_exists(session_name):
+        print(f"STT server is starting in tmux session '{session_name}'")
+        print(f"  Attach: tmux attach -t {session_name}")
+        return 0
+
+    print("STT server is not running.")
+    print(f"  Start: agentwire stt start")
+    return 1
+
+
 # === Say Command ===
 
 def _get_portal_url() -> str:
@@ -4659,6 +4779,32 @@ def main() -> int:
     tts_status = tts_subparsers.add_parser("status", help="Check TTS status")
     tts_status.set_defaults(func=cmd_tts_status)
 
+    # === stt command group ===
+    stt_parser = subparsers.add_parser("stt", help="Manage STT server (native Whisper)")
+    stt_subparsers = stt_parser.add_subparsers(dest="stt_command")
+
+    # stt start
+    stt_start = stt_subparsers.add_parser("start", help="Start STT server in tmux")
+    stt_start.add_argument("--port", type=int, help="Server port (default: 8100)")
+    stt_start.add_argument("--host", type=str, help="Server host (default: 0.0.0.0)")
+    stt_start.add_argument("--model", type=str, help="Whisper model (tiny/base/small/medium/large-v3)")
+    stt_start.set_defaults(func=cmd_stt_start)
+
+    # stt serve
+    stt_serve = stt_subparsers.add_parser("serve", help="Run STT server in foreground")
+    stt_serve.add_argument("--port", type=int, help="Server port (default: 8100)")
+    stt_serve.add_argument("--host", type=str, help="Server host (default: 0.0.0.0)")
+    stt_serve.add_argument("--model", type=str, help="Whisper model (tiny/base/small/medium/large-v3)")
+    stt_serve.set_defaults(func=cmd_stt_serve)
+
+    # stt stop
+    stt_stop = stt_subparsers.add_parser("stop", help="Stop STT server")
+    stt_stop.set_defaults(func=cmd_stt_stop)
+
+    # stt status
+    stt_status = stt_subparsers.add_parser("status", help="Check STT status")
+    stt_status.set_defaults(func=cmd_stt_status)
+
     # === tunnels command group ===
     tunnels_parser = subparsers.add_parser("tunnels", help="Manage SSH tunnels for service routing")
     tunnels_subparsers = tunnels_parser.add_subparsers(dest="tunnels_command")
@@ -5054,6 +5200,10 @@ def main() -> int:
 
     if args.command == "tts" and getattr(args, "tts_command", None) is None:
         tts_parser.print_help()
+        return 0
+
+    if args.command == "stt" and getattr(args, "stt_command", None) is None:
+        stt_parser.print_help()
         return 0
 
     if args.command == "tunnels" and getattr(args, "tunnels_command", None) is None:

@@ -37,6 +37,13 @@ dev = [
     "pytest-asyncio>=0.23.0",
     "ruff>=0.1.0",
 ]
+# STT server dependencies (faster-whisper for speech-to-text)
+stt = [
+    "fastapi>=0.104.0",
+    "uvicorn>=0.24.0",
+    "python-multipart>=0.0.6",
+    "faster-whisper>=1.0.0",
+]
 # TTS server dependencies (for GPU machines running the TTS backend)
 tts = [
     "fastapi>=0.104.0",
