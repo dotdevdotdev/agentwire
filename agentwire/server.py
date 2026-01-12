@@ -283,10 +283,24 @@ class AgentWireServer:
             json.dump(configs, f, indent=2)
 
     def _get_session_config(self, name: str) -> SessionConfig:
-        """Get or create session configuration."""
+        """Get or create session configuration.
+
+        Checks for config under full name (e.g., 'anna@Jordans-Mini') first,
+        then falls back to base name (e.g., 'anna') to handle voice settings
+        saved via portal UI which uses the base name.
+        """
         configs = self._load_session_configs()
+
+        # Try full name first, then base name (strip @machine suffix)
+        cfg = None
         if name in configs:
             cfg = configs[name]
+        elif "@" in name:
+            base_name = name.split("@")[0]
+            if base_name in configs:
+                cfg = configs[base_name]
+
+        if cfg:
             return SessionConfig(
                 voice=cfg.get("voice", self.config.tts.default_voice),
                 exaggeration=cfg.get("exaggeration", 0.5),
@@ -356,11 +370,15 @@ class AgentWireServer:
                 if not host:
                     continue
 
+                # Build SSH target with user if specified
+                user = machine.get('user')
+                ssh_target = f"{user}@{host}" if user else host
+
                 # Get remote sessions with their paths
                 try:
                     cmd = "tmux list-sessions -F '#{session_name}:#{pane_current_path}' 2>/dev/null || echo ''"
                     ssh_result = subprocess.run(
-                        ["ssh", "-o", "ConnectTimeout=5", "-o", "BatchMode=yes", host, cmd],
+                        ["ssh", "-o", "ConnectTimeout=5", "-o", "BatchMode=yes", ssh_target, cmd],
                         capture_output=True,
                         text=True,
                         timeout=10,
@@ -374,16 +392,39 @@ class AgentWireServer:
 
                                 qualified_name = f"{session_name}@{machine_id}"
 
-                                # For remote sessions, we'd need to read the remote yaml
-                                # For now, just record the path and use defaults
+                                # For remote sessions, read the yaml via SSH
                                 config_entry = self._build_cache_entry_remote(
-                                    session_path, host
+                                    session_path, ssh_target
                                 )
                                 cache[qualified_name] = config_entry
                 except (subprocess.TimeoutExpired, Exception) as e:
                     logger.warning(f"Failed to scan sessions on {machine_id}: {e}")
 
-        # Save the rebuilt cache
+        # Merge with existing config to preserve user-set values (voice, etc.)
+        existing = self._load_session_configs()
+
+        # Preserve user-set values for sessions in the new cache
+        for name, entry in cache.items():
+            # Check both full name and base name for existing config
+            existing_cfg = existing.get(name)
+            if not existing_cfg and "@" in name:
+                base_name = name.split("@")[0]
+                existing_cfg = existing.get(base_name)
+
+            if existing_cfg:
+                # Preserve user-set values not in the new entry
+                for key in ["voice", "exaggeration", "cfg_weight"]:
+                    if key in existing_cfg and key not in entry:
+                        entry[key] = existing_cfg[key]
+
+        # Also preserve sessions that aren't in the new cache but have user-set values
+        # (e.g., voice set via portal UI for a session on a different machine)
+        for name, cfg in existing.items():
+            if name not in cache:
+                # Only preserve if it has user-set values
+                if any(key in cfg for key in ["voice", "exaggeration", "cfg_weight"]):
+                    cache[name] = cfg
+
         self._save_session_configs(cache)
         logger.info(f"Rebuilt session cache: {len(cache)} sessions")
 
