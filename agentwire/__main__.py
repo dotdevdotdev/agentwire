@@ -1685,13 +1685,20 @@ def cmd_new(args) -> int:
         if template is None:
             return _output_result(False, json_mode, f"Template '{template_name}' not found")
 
-    # Parse roles from CLI or template
+    # Parse roles from CLI, template, or existing .agentwire.yml
     roles_arg = getattr(args, 'roles', None)
     role_names: list[str] = []
     if roles_arg:
         role_names = [r.strip() for r in roles_arg.split(",") if r.strip()]
     elif template and hasattr(template, 'roles') and template.roles:
         role_names = template.roles
+    else:
+        # Check existing .agentwire.yml in the project
+        project_path_for_config = Path(path).expanduser().resolve() if path else None
+        if project_path_for_config:
+            existing = load_project_config(project_path_for_config)
+            if existing and existing.roles:
+                role_names = existing.roles
 
     # Load and validate roles
     roles: list[RoleConfig] = []
@@ -1952,13 +1959,24 @@ def cmd_new(args) -> int:
             check=True
         )
 
-    # Write project config (.agentwire.yml)
-    project_config = ProjectConfig(
-        session=session_name,
-        type=session_type,
-        roles=role_names if role_names else [],
-        voice=template.voice if template and template.voice else None,
-    )
+    # Update project config (.agentwire.yml) - preserve existing settings
+    existing_config = load_project_config(session_path)
+    if existing_config:
+        # Preserve existing voice and roles if not overridden by CLI/template
+        project_config = ProjectConfig(
+            session=session_name,
+            type=session_type,
+            roles=role_names if role_names else existing_config.roles,
+            voice=template.voice if template and template.voice else existing_config.voice,
+        )
+    else:
+        # Create new config
+        project_config = ProjectConfig(
+            session=session_name,
+            type=session_type,
+            roles=role_names if role_names else [],
+            voice=template.voice if template and template.voice else None,
+        )
     save_project_config(project_config, session_path)
 
     # Send initial prompt from template if specified

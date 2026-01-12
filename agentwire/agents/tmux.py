@@ -132,18 +132,20 @@ class TmuxAgent(AgentBackend):
         """
         import socket
         local_hostname = socket.gethostname().split('.')[0]
+        in_container = os.path.exists('/.dockerenv')
 
         if "@" in name:
             session, machine_id = name.rsplit("@", 1)
 
-            # Check if machine_id is the local hostname
-            if machine_id == local_hostname or machine_id == "local":
+            # Check if machine_id is the local hostname (only when not in container)
+            if not in_container and (machine_id == local_hostname or machine_id == "local"):
                 return session, None
 
             for machine in self.machines:
                 if machine.get("id") == machine_id or machine.get("host") == machine_id:
-                    # Check if this machine is marked as local
-                    if machine.get("local"):
+                    # Check if this machine is marked as local (only when not in container)
+                    # In Docker, we still need to SSH to "local" machines via host.docker.internal
+                    if not in_container and machine.get("local"):
                         logger.debug(f"Resolved {name} -> session={session}, machine marked as local")
                         return session, None
                     logger.debug(f"Resolved {name} -> session={session}, machine_id={machine_id}")
