@@ -2093,8 +2093,8 @@ projects:
 
             logger.info(f"[{name}] API say: {text[:50]}...")
 
-            # Generate and broadcast TTS
-            await self.speak(name, text)
+            # Generate and broadcast TTS in background (don't block the API response)
+            asyncio.create_task(self.speak(name, text))
 
             return web.json_response({"success": True})
 
