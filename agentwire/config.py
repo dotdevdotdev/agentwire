@@ -86,7 +86,7 @@ class TTSConfig:
     # RunPod serverless configuration
     runpod_endpoint_id: str = ""
     runpod_api_key: str = ""
-    runpod_timeout: int = 60
+    runpod_timeout: int = 120
 
     def __post_init__(self):
         self.voices_dir = _expand_path(self.voices_dir) or Path.home() / ".agentwire" / "voices"
@@ -348,7 +348,7 @@ def _dict_to_config(data: dict) -> Config:
         default_voice=tts_data.get("default_voice", "dotdev"),
         runpod_endpoint_id=tts_data.get("runpod_endpoint_id", ""),
         runpod_api_key=tts_data.get("runpod_api_key", ""),
-        runpod_timeout=tts_data.get("runpod_timeout", 60),
+        runpod_timeout=tts_data.get("runpod_timeout", 120),
     )
 
     # STT

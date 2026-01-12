@@ -38,7 +38,7 @@ def get_tts_backend(config: dict) -> TTSBackend:
         api_key = tts_config.get("runpod_api_key", "")
         exaggeration = tts_config.get("exaggeration", 0.5)
         cfg_weight = tts_config.get("cfg_weight", 0.5)
-        timeout = tts_config.get("runpod_timeout", 60)
+        timeout = tts_config.get("runpod_timeout", 120)
 
         if not endpoint_id or not api_key:
             raise ValueError("RunPod backend requires runpod_endpoint_id and runpod_api_key")

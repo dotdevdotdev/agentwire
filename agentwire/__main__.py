@@ -1234,7 +1234,7 @@ def _local_say_runpod_api(
 
     endpoint_id = tts_config.get("runpod_endpoint_id", "")
     api_key = tts_config.get("runpod_api_key", "")
-    timeout = tts_config.get("runpod_timeout", 60)
+    timeout = tts_config.get("runpod_timeout", 120)
 
     if not endpoint_id or not api_key:
         print("RunPod backend requires runpod_endpoint_id and runpod_api_key in config", file=sys.stderr)
