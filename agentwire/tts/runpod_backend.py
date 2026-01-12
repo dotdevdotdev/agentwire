@@ -1,10 +1,14 @@
 """RunPod serverless TTS backend."""
 
+import asyncio
 import base64
+import logging
 
 import aiohttp
 
 from .base import TTSBackend
+
+logger = logging.getLogger(__name__)
 
 
 class RunPodTTS(TTSBackend):
@@ -12,6 +16,8 @@ class RunPodTTS(TTSBackend):
 
     This backend calls a deployed RunPod serverless endpoint that runs
     the Chatterbox TTS model on GPU workers.
+
+    Uses async run + polling to handle cold starts gracefully.
     """
 
     def __init__(
@@ -20,7 +26,7 @@ class RunPodTTS(TTSBackend):
         api_key: str,
         exaggeration: float = 0.5,
         cfg_weight: float = 0.5,
-        timeout: int = 60,
+        timeout: int = 120,
     ):
         """Initialize RunPod TTS backend.
 
@@ -29,7 +35,7 @@ class RunPodTTS(TTSBackend):
             api_key: RunPod API key for authentication
             exaggeration: Voice exaggeration parameter (0.0-1.0)
             cfg_weight: CFG weight parameter (0.0-1.0)
-            timeout: Request timeout in seconds (default: 60)
+            timeout: Total timeout in seconds including cold start (default: 120)
         """
         self.endpoint_id = endpoint_id
         self.api_key = api_key
@@ -38,8 +44,9 @@ class RunPodTTS(TTSBackend):
         self.timeout = timeout
         self._session: aiohttp.ClientSession | None = None
 
-        # RunPod API endpoint
-        self.endpoint_url = f"https://api.runpod.ai/v2/{endpoint_id}/runsync"
+        # RunPod API endpoints
+        self.run_url = f"https://api.runpod.ai/v2/{endpoint_id}/run"
+        self.status_url = f"https://api.runpod.ai/v2/{endpoint_id}/status"
 
     async def _get_session(self) -> aiohttp.ClientSession:
         """Get or create the aiohttp session."""
@@ -55,6 +62,9 @@ class RunPodTTS(TTSBackend):
         cfg_weight: float | None = None,
     ) -> bytes | None:
         """Generate audio from text using RunPod serverless endpoint.
+
+        Uses async run + polling to handle cold starts gracefully.
+        Cold starts are logged so the system can track them.
 
         Args:
             text: The text to synthesize.
@@ -84,33 +94,87 @@ class RunPodTTS(TTSBackend):
         }
 
         try:
-            timeout = aiohttp.ClientTimeout(total=self.timeout)
+            # Submit job (async)
+            timeout = aiohttp.ClientTimeout(total=30)
             async with session.post(
-                self.endpoint_url, json=payload, headers=headers, timeout=timeout
+                self.run_url, json=payload, headers=headers, timeout=timeout
             ) as resp:
                 if resp.status != 200:
+                    logger.error(f"RunPod run failed: {resp.status}")
                     return None
 
                 data = await resp.json()
-
-                # Check RunPod status
-                if data.get("status") == "error":
+                job_id = data.get("id")
+                if not job_id:
+                    logger.error("RunPod run returned no job ID")
                     return None
 
-                # Extract output
-                output = data.get("output", {})
-                if "error" in output:
+            # Poll for completion
+            start_time = asyncio.get_event_loop().time()
+            poll_interval = 0.5
+            cold_start_logged = False
+
+            while True:
+                elapsed = asyncio.get_event_loop().time() - start_time
+                if elapsed > self.timeout:
+                    logger.error(f"RunPod job {job_id} timed out after {self.timeout}s")
                     return None
 
-                # Decode base64 audio
-                audio_b64 = output.get("audio", "")
-                if not audio_b64:
-                    return None
+                # Check status
+                status_timeout = aiohttp.ClientTimeout(total=10)
+                async with session.get(
+                    f"{self.status_url}/{job_id}", headers=headers, timeout=status_timeout
+                ) as resp:
+                    if resp.status != 200:
+                        await asyncio.sleep(poll_interval)
+                        continue
 
-                audio_bytes = base64.b64decode(audio_b64)
-                return audio_bytes
+                    data = await resp.json()
+                    status = data.get("status")
 
-        except (aiohttp.ClientError, base64.binascii.Error):
+                    if status == "IN_QUEUE":
+                        if not cold_start_logged:
+                            logger.info(f"RunPod job {job_id}: cold start (IN_QUEUE)")
+                            cold_start_logged = True
+                        await asyncio.sleep(poll_interval)
+                        continue
+
+                    elif status == "IN_PROGRESS":
+                        await asyncio.sleep(poll_interval)
+                        continue
+
+                    elif status == "COMPLETED":
+                        output = data.get("output", {})
+                        if "error" in output:
+                            logger.error(f"RunPod job {job_id} error: {output.get('error')}")
+                            return None
+
+                        audio_b64 = output.get("audio", "")
+                        if not audio_b64:
+                            logger.error(f"RunPod job {job_id}: no audio in output")
+                            return None
+
+                        if cold_start_logged:
+                            logger.info(f"RunPod job {job_id}: completed after cold start ({elapsed:.1f}s)")
+                        else:
+                            logger.debug(f"RunPod job {job_id}: completed ({elapsed:.1f}s)")
+
+                        return base64.b64decode(audio_b64)
+
+                    elif status == "FAILED":
+                        error = data.get("error", "unknown error")
+                        logger.error(f"RunPod job {job_id} failed: {error}")
+                        return None
+
+                    else:
+                        # Unknown status, keep polling
+                        await asyncio.sleep(poll_interval)
+
+        except aiohttp.ClientError as e:
+            logger.error(f"RunPod request failed: {e}")
+            return None
+        except base64.binascii.Error as e:
+            logger.error(f"RunPod audio decode failed: {e}")
             return None
 
     async def get_voices(self) -> list[str]:
@@ -131,10 +195,13 @@ class RunPodTTS(TTSBackend):
             "Content-Type": "application/json",
         }
 
+        # Use runsync for quick list_voices call (no cold start needed for this)
+        runsync_url = f"https://api.runpod.ai/v2/{self.endpoint_id}/runsync"
+
         try:
-            timeout = aiohttp.ClientTimeout(total=10)
+            timeout = aiohttp.ClientTimeout(total=30)
             async with session.post(
-                self.endpoint_url, json=payload, headers=headers, timeout=timeout
+                runsync_url, json=payload, headers=headers, timeout=timeout
             ) as resp:
                 if resp.status != 200:
                     return []
