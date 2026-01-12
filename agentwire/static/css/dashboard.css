@@ -684,40 +684,6 @@
 }
 
 /* =============================================================================
-   Archive
-   ============================================================================= */
-
-.archive-list {
-}
-
-.archive-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0.4rem 0;
-  font-size: 0.8rem;
-  border-bottom: 1px solid var(--border);
-}
-
-.archive-item:last-child {
-  border-bottom: none;
-}
-
-.archive-item .archive-name {
-  color: var(--text-primary);
-}
-
-.archive-item .archive-time {
-  color: var(--text-muted);
-  font-size: 0.75rem;
-}
-
-.archive-empty {
-  color: var(--text-muted);
-  font-size: 0.8rem;
-}
-
-/* =============================================================================
    Config Editor
    ============================================================================= */
 

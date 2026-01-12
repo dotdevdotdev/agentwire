@@ -167,7 +167,6 @@ class AgentWireServer:
         self.app.router.add_post("/api/session/{name:.+}/restart-service", self.api_restart_service)
         self.app.router.add_get("/api/voices", self.api_voices)
         self.app.router.add_delete("/api/sessions/{name:.+}", self.api_close_session)
-        self.app.router.add_get("/api/sessions/archive", self.api_archived_sessions)
         self.app.router.add_get("/api/machines", self.api_machines)
         self.app.router.add_post("/api/machines", self.api_add_machine)
         self.app.router.add_delete("/api/machines/{machine_id}", self.api_remove_machine)
@@ -1485,54 +1484,15 @@ class AgentWireServer:
             logger.error(f"Failed to create session: {e}")
             return web.json_response({"error": str(e)})
 
-    def _load_archive(self) -> list[dict]:
-        """Load archived sessions from file."""
-        archive_file = Path.home() / ".agentwire" / "archive.json"
-        if archive_file.exists():
-            try:
-                with open(archive_file) as f:
-                    return json.load(f)
-            except (json.JSONDecodeError, IOError):
-                pass
-        return []
-
-    def _save_archive(self, archive: list[dict]):
-        """Save archived sessions to file."""
-        archive_file = Path.home() / ".agentwire" / "archive.json"
-        archive_file.parent.mkdir(parents=True, exist_ok=True)
-        with open(archive_file, "w") as f:
-            json.dump(archive, f, indent=2)
-
     async def api_close_session(self, request: web.Request) -> web.Response:
-        """Close/kill a session and archive it."""
+        """Close/kill a session."""
         name = request.match_info["name"]
         try:
-            # Get session info before closing
-            session_configs = self._load_session_configs()
-            session_config = session_configs.get(name, {})
-
-            project, branch, machine = parse_session_name(name)
-            path = session_config.get("path", str(self.config.projects.dir / project))
-
             # Kill the tmux session via CLI (handles local and remote)
             success, result = await self.run_agentwire_cmd(["kill", "-s", name])
             if not success:
                 error_msg = result.get("error", "Failed to close session")
                 return web.json_response({"error": error_msg})
-
-            # Archive the session
-            import time
-            archive = self._load_archive()
-            archive.insert(0, {
-                "name": name,
-                "path": path,
-                "machine": machine,
-                "voice": session_config.get("voice", self.config.tts.default_voice),
-                "closed_at": int(time.time()),
-            })
-            # Keep last 50 archived sessions
-            archive = archive[:50]
-            self._save_archive(archive)
 
             # Clean up session if exists
             if name in self.active_sessions:
@@ -1546,11 +1506,6 @@ class AgentWireServer:
         except Exception as e:
             logger.error(f"Failed to close session: {e}")
             return web.json_response({"error": str(e)})
-
-    async def api_archived_sessions(self, request: web.Request) -> web.Response:
-        """Get list of archived sessions."""
-        archive = self._load_archive()
-        return web.json_response(archive)
 
     async def api_session_config(self, request: web.Request) -> web.Response:
         """Update session configuration."""

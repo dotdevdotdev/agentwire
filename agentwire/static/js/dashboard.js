@@ -1030,7 +1030,6 @@ async function closeSession(name) {
         alert('Failed to close session: ' + data.error);
     } else {
         loadSessions();
-        loadArchive();
     }
 }
 
@@ -1459,34 +1458,6 @@ async function reloadConfig() {
     }
 }
 
-// =============================================================================
-// Archive
-// =============================================================================
-
-async function loadArchive() {
-    const res = await fetch('/api/sessions/archive');
-    const archive = await res.json();
-    const container = document.getElementById('archiveList');
-
-    if (!container) return;
-
-    if (archive.length === 0) {
-        container.innerHTML = '<div class="archive-empty">No archived sessions</div>';
-        return;
-    }
-
-    container.innerHTML = archive.slice(0, 10).map(s => {
-        const date = new Date(s.closed_at * 1000);
-        const timeAgo = formatTimeAgo(date);
-        return `
-            <div class="archive-item">
-                <span class="archive-name">${s.name}</span>
-                <span class="archive-time">${timeAgo}</span>
-            </div>
-        `;
-    }).join('');
-}
-
 function formatTimeAgo(date) {
     const seconds = Math.floor((new Date() - date) / 1000);
     if (seconds < 60) return 'just now';
@@ -1639,7 +1610,6 @@ export function init() {
     loadMachines();
     loadTemplates();
     loadConfig();
-    loadArchive();
 
     // Connect WebSocket for real-time activity updates
     // Use 'dashboard' as a special session name for global session updates
