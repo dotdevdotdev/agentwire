@@ -93,8 +93,6 @@ function cacheElements() {
     elements.fileInput = document.getElementById('fileInput');
     elements.actionsBtn = document.getElementById('actionsBtn');
     elements.actionsMenu = document.getElementById('actionsMenu');
-    elements.exaggeration = document.getElementById('exaggeration');
-    elements.cfgWeight = document.getElementById('cfgWeight');
 
     // Mode tabs and content
     elements.ambientTab = document.getElementById('ambientTab');
@@ -809,16 +807,6 @@ async function updateVoice() {
     });
 }
 
-async function updateTTS() {
-    const exag = elements.exaggeration ? parseFloat(elements.exaggeration.value) : 0.3;
-    const cfg = elements.cfgWeight ? parseFloat(elements.cfgWeight.value) : 0.5;
-    await fetch('/api/session/' + SESSION_NAME + '/config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ exaggeration: exag, cfg_weight: cfg })
-    });
-}
-
 // ============================================
 // Actions Menu
 // ============================================
@@ -957,8 +945,6 @@ function bindEvents() {
     if (elements.micSelect) elements.micSelect.addEventListener('change', updateMic);
     if (elements.speakerSelect) elements.speakerSelect.addEventListener('change', updateSpeaker);
     if (elements.voiceSelect) elements.voiceSelect.addEventListener('change', updateVoice);
-    if (elements.exaggeration) elements.exaggeration.addEventListener('change', updateTTS);
-    if (elements.cfgWeight) elements.cfgWeight.addEventListener('change', updateTTS);
 
     // File input
     if (elements.fileInput) elements.fileInput.addEventListener('change', handleFileSelect);

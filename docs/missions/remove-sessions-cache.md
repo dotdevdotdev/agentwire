@@ -8,134 +8,99 @@ sessions.json is a cache that causes sync issues:
 - Stores data that's already in .agentwire.yml (type, roles, voice)
 - Gets overwritten by cache rebuilds, losing user settings
 - Creates confusion about source of truth
-- Contains stale entries for deleted sessions
 
 ## Solution
 
 Remove sessions.json entirely. Use dynamic data:
-- **Session list** → `tmux list-sessions`
+- **Session list** → `tmux list-sessions` (already works via `agentwire list`)
 - **Session config** → read .agentwire.yml from session's working directory
-- **User TTS prefs** → new lightweight `~/.agentwire/tts-prefs.json` (voice, exaggeration, cfg_weight per session)
+- **Voice changes** → edit .agentwire.yml directly via SSH
 
-## Design Decisions
+No separate cache or prefs file needed. `.agentwire.yml` is the single source of truth.
 
-### TTS Preferences Storage
+## Already Done
 
-User-set TTS values (voice, exaggeration, cfg_weight) need persistence separate from .agentwire.yml because:
-- .agentwire.yml is project-level, checked into git
-- TTS prefs are user-specific, shouldn't be in git
-
-Create `~/.agentwire/tts-prefs.json`:
-```json
-{
-  "anna": { "voice": "tiny-tina", "exaggeration": 0.5, "cfg_weight": 0.5 },
-  "agentwire": { "voice": "bashbunni" }
-}
-```
-
-Simple key-value, never rebuilt/overwritten - only updated when user changes via portal.
-
-### Dynamic Session Config
-
-Replace `_get_session_config()` with:
-1. Get session's working directory from tmux
-2. Read .agentwire.yml from that directory
-3. Merge with TTS prefs from tts-prefs.json
-4. Fall back to global defaults
+- [x] Removed exaggeration/cfg_weight sliders from portal UI
+- [x] Voice is the only configurable setting in session page
 
 ---
 
 ## Wave 1: Human Actions (BLOCKING)
 
-- [ ] Confirm design approach (tts-prefs.json vs alternative)
+- [ ] Confirm approach
 
 ---
 
-## Wave 2: Core Refactor
+## Wave 2: Dynamic Session Config
 
-### 2.1 Create TTS Preferences Module
-**Files:** `agentwire/tts_prefs.py` (new)
-
-Create simple module for TTS preferences:
-- `load_tts_prefs()` → read ~/.agentwire/tts-prefs.json
-- `save_tts_pref(session, voice=None, exaggeration=None, cfg_weight=None)`
-- `get_tts_pref(session)` → returns dict with voice/exaggeration/cfg_weight
-
-### 2.2 Add Dynamic Session Config
+### 2.1 Replace _get_session_config with Dynamic Lookup
 **Files:** `agentwire/server.py`
 
 Replace `_get_session_config()`:
-- Query tmux for session's working directory
-- Read .agentwire.yml from that path
-- Merge with TTS prefs
-- Return SessionConfig
+- Get session's working directory from tmux (or active_sessions cache)
+- Read .agentwire.yml from that path via SSH if remote
+- Return SessionConfig with type, roles, voice from yaml
+- Fall back to defaults if no yaml found
 
 Remove:
 - `_load_session_configs()`
 - `_save_session_configs()`
 - `_get_sessions_file()`
-- `_rebuild_session_cache()` and related rebuild logic
+- `_rebuild_session_cache()` and periodic refresh task
 
----
-
-## Wave 3: Update Portal APIs
-
-### 3.1 Update Session Config API
+### 2.2 Update Voice Config API to Edit .agentwire.yml
 **Files:** `agentwire/server.py`
 
 Update `/api/session/{name}/config` POST handler:
-- Write to tts-prefs.json instead of sessions.json
-- Update in-memory session if active
+- Parse session name to get machine
+- Get session's working directory
+- Read .agentwire.yml via SSH (if remote)
+- Update voice field
+- Write back via SSH
 
-### 3.2 Update Sessions List API
+---
+
+## Wave 3: Update Sessions List API
+
+### 3.1 Dynamic Session List
 **Files:** `agentwire/server.py`
 
 Update `/api/sessions` GET handler:
-- Build list dynamically from tmux
-- Read .agentwire.yml for each session
-- Merge with TTS prefs
-- No cache read/write
+- Call `agentwire list --json` or scan tmux directly
+- For each session, read .agentwire.yml to get type/roles/voice
+- Return combined data
+- No cache involved
 
 ---
 
-## Wave 4: Update CLI Commands
+## Wave 4: CLI Cleanup
 
-### 4.1 Remove sessions.json Writes from CLI
+### 4.1 Remove sessions.json Writes
 **Files:** `agentwire/__main__.py`
 
 Commands to update:
-- `cmd_new` - stop writing to sessions.json
+- `cmd_new` - stop writing to sessions.json (yaml is written already)
 - `cmd_kill` - stop removing from sessions.json
 - `cmd_fork` - stop copying sessions.json entries
 
-The .agentwire.yml is already written by these commands - that's sufficient.
-
 ---
 
-## Wave 5: Cleanup
+## Wave 5: Final Cleanup
 
 ### 5.1 Remove Validation Check
 **Files:** `agentwire/validation.py`
 
-Remove sessions.json existence check from config validation.
+Remove sessions.json existence check.
 
-### 5.2 Remove Onboarding Init
-**Files:** `agentwire/onboarding.py`
-
-Remove code that creates empty sessions.json during init.
-
-### 5.3 Update Config Types
-**Files:** `agentwire/config.py`
-
-Remove or deprecate SessionsConfig if no longer needed.
+### 5.2 Delete sessions.json
+User deletes `~/.agentwire/sessions.json` manually.
 
 ---
 
 ## Completion Criteria
 
 - [ ] sessions.json no longer exists or is used
-- [ ] TTS prefs persist correctly in tts-prefs.json
-- [ ] Session list/config derived dynamically from tmux + .agentwire.yml
-- [ ] Voice changes via portal persist across restarts
+- [ ] Session list comes from tmux dynamically
+- [ ] Session config comes from .agentwire.yml
+- [ ] Voice changes via portal edit .agentwire.yml directly
 - [ ] All CLI commands work without sessions.json
-- [ ] Tests pass

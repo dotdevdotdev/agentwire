@@ -1508,30 +1508,31 @@ class AgentWireServer:
             return web.json_response({"error": str(e)})
 
     async def api_session_config(self, request: web.Request) -> web.Response:
-        """Update session configuration."""
+        """Update session configuration (voice only).
+
+        TODO: This should edit the project's .agentwire.yml directly
+        instead of writing to sessions.json cache.
+        """
         name = request.match_info["name"]
         try:
             data = await request.json()
-            configs = self._load_session_configs()
 
+            # Only voice is configurable via UI now
+            if "voice" not in data:
+                return web.json_response({"error": "No voice specified"}, status=400)
+
+            voice = data["voice"]
+
+            # Update sessions.json cache (temporary until we edit .agentwire.yml directly)
+            configs = self._load_session_configs()
             if name not in configs:
                 configs[name] = {}
-
-            for key in ["voice", "exaggeration", "cfg_weight"]:
-                if key in data:
-                    configs[name][key] = data[key]
-
+            configs[name]["voice"] = voice
             self._save_session_configs(configs)
 
             # Update live session if exists
             if name in self.active_sessions:
-                session = self.active_sessions[name]
-                if "voice" in data:
-                    session.config.voice = data["voice"]
-                if "exaggeration" in data:
-                    session.config.exaggeration = data["exaggeration"]
-                if "cfg_weight" in data:
-                    session.config.cfg_weight = data["cfg_weight"]
+                self.active_sessions[name].config.voice = voice
 
             return web.json_response({"success": True})
         except Exception as e:
