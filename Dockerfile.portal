@@ -1,4 +1,4 @@
-# AgentWire Portal - Web UI and Session Orchestrator
+# AgentWire Portal - Web UI, Session Orchestrator, and STT
 # Multi-arch: linux/amd64, linux/arm64
 
 FROM python:3.11-slim
@@ -25,8 +25,14 @@ RUN python3 -m pip install --upgrade pip
 COPY pyproject.toml README.md LICENSE ./
 COPY agentwire/ ./agentwire/
 
-# Install AgentWire package
-RUN pip install --no-cache-dir -e .
+# Install AgentWire package with STT dependencies
+RUN pip install --no-cache-dir -e ".[stt]"
+
+# Download Whisper model at build time (reduces cold start)
+ARG WHISPER_MODEL=base
+ENV WHISPER_MODEL=${WHISPER_MODEL}
+RUN python3 -c "from faster_whisper import WhisperModel; WhisperModel('${WHISPER_MODEL}', device='cpu')" || \
+    echo "Warning: Model download failed, will retry at runtime"
 
 # Copy entrypoint script
 COPY scripts/portal-entrypoint.sh /entrypoint.sh
@@ -48,10 +54,11 @@ RUN mkdir -p /run/sshd && \
 # SSH will use mounted keys from /root/.ssh/authorized_keys
 EXPOSE 22
 
-# Expose portal port
-EXPOSE 8765
-# Health check
-HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+# Expose portal and STT ports
+EXPOSE 8765 8100
+
+# Health check (portal only - STT starts after portal)
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
     CMD curl -k -f https://localhost:8765/health || exit 1
 
 # Set environment

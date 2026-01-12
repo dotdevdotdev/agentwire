@@ -1,7 +1,8 @@
 #!/bin/bash
-# Run portal inside tmux session for monitoring via agentwire SSH
+# Run portal and STT inside tmux sessions for monitoring via agentwire SSH
 
-SESSION_NAME="agentwire-portal"
+PORTAL_SESSION="agentwire-portal"
+STT_SESSION="agentwire-stt"
 
 # Start SSH server for remote access
 /usr/sbin/sshd
@@ -10,13 +11,17 @@ SESSION_NAME="agentwire-portal"
 tmux start-server
 
 # Create session running the portal
-tmux new-session -d -s "$SESSION_NAME" "agentwire portal serve"
+tmux new-session -d -s "$PORTAL_SESSION" "agentwire portal serve"
+echo "Portal running in tmux session: $PORTAL_SESSION"
 
-echo "Portal running in tmux session: $SESSION_NAME"
-echo "Monitor via: agentwire output -s agentwire-portal@<machine>"
+# Create session running the STT server
+tmux new-session -d -s "$STT_SESSION" "python3 -m agentwire.stt.stt_server"
+echo "STT running in tmux session: $STT_SESSION"
 
-# Keep container alive while tmux session exists
-while tmux has-session -t "$SESSION_NAME" 2>/dev/null; do
+echo "Monitor via: agentwire output -s <session>@<machine>"
+
+# Keep container alive while portal session exists
+while tmux has-session -t "$PORTAL_SESSION" 2>/dev/null; do
     sleep 5
 done
 

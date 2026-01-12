@@ -1,16 +1,20 @@
 # AgentWire Full Stack - Docker Compose
-# Orchestrates Portal + STT + (optional) local TTS
+# Portal with integrated STT + (optional) local TTS
 
 services:
-  # Portal - Web UI and session orchestrator
+  # Portal - Web UI, session orchestrator, and STT (all in one)
   portal:
     build:
       context: .
       dockerfile: Dockerfile.portal
+      args:
+        # Whisper model for STT: tiny, base, small, medium, large-v2, large-v3
+        WHISPER_MODEL: ${WHISPER_MODEL:-base}
     container_name: agentwire-portal
     ports:
-      - "8765:8765"
-      - "2222:22"
+      - "8765:8765"   # Portal web UI
+      - "8100:8100"   # STT service
+      - "2222:22"     # SSH access
     volumes:
       # Config directory (required)
       - ${HOME}/.agentwire:/root/.agentwire
@@ -19,50 +23,18 @@ services:
       # Projects directory for worktrees (optional)
       - ${HOME}/projects:/projects
     environment:
-      # Override backend URLs to use container services
+      # STT runs locally in the same container
       - AGENTWIRE_STT__BACKEND=remote
-      - AGENTWIRE_STT__URL=http://stt:8100
-      - AGENTWIRE_TTS__BACKEND=${TTS_BACKEND:-runpod}  # runpod or chatterbox
+      - AGENTWIRE_STT__URL=http://localhost:8100
+      # TTS backend (runpod recommended, or chatterbox for local GPU)
+      - AGENTWIRE_TTS__BACKEND=${TTS_BACKEND:-runpod}
       - AGENTWIRE_TTS__URL=http://tts:8100  # Used if TTS_BACKEND=chatterbox
-    depends_on:
-      stt:
-        condition: service_healthy
-    networks:
-      - agentwire
-    restart: unless-stopped
-
-  # STT - Speech-to-text service
-  stt:
-    build:
-      context: .
-      dockerfile: Dockerfile.stt
-      args:
-        # Options: gpu or cpu
-        ARCH: ${STT_ARCH:-cpu}
-        # Options: tiny, base, small, medium, large-v2, large-v3
-        WHISPER_MODEL: ${WHISPER_MODEL:-base}
-    container_name: agentwire-stt
-    environment:
+      # Whisper config
       - WHISPER_MODEL=${WHISPER_MODEL:-base}
-      - WHISPER_DEVICE=${WHISPER_DEVICE:-cpu}
-      - WHISPER_LANGUAGE=${WHISPER_LANGUAGE:-en}
-    # Uncomment for GPU support (NVIDIA)
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1
-    #           capabilities: [gpu]
+      - WHISPER_DEVICE=cpu
     networks:
       - agentwire
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8100/health"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
 
   # TTS - Text-to-speech service (optional, local Chatterbox)
   # Comment out if using RunPod for TTS
