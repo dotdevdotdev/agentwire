@@ -2,7 +2,6 @@
 Project-level configuration (.agentwire.yml).
 
 This file lives in project directories and is the source of truth for session config.
-The portal's sessions.json is a runtime cache rebuilt from these files.
 """
 
 from dataclasses import dataclass, field

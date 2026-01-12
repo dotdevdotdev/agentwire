@@ -35,10 +35,11 @@ All in `~/.agentwire/`:
 | File | Purpose |
 |------|---------|
 | `config.yaml` | Main config (TTS/STT backends, ports) |
-| `sessions.json` | Per-session settings (voice, permissions) |
 | `roles/*.md` | Role instructions appended to sessions |
 | `hooks/` | PreToolUse hooks (damage-control, session-type) |
 | `templates/*.yaml` | Session templates |
+
+Per-session config (type, roles, voice) lives in `.agentwire.yml` in each project directory.
 
 ## Session Roles
 

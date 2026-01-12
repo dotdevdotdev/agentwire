@@ -216,14 +216,6 @@ def validate_config(
             suggestion=f"Create the directory: mkdir -p {config.uploads.dir}",
         ))
 
-    # Validate sessions.json exists
-    if not config.sessions.file.exists():
-        warnings.append(ConfigWarning(
-            message="No sessions.json found",
-            context={"expected_path": str(config.sessions.file)},
-            suggestion="Run 'agentwire init' to create configuration files",
-        ))
-
     # Validate each machine in machines.json has required fields
     if machines:
         for machine in machines:
@@ -346,7 +338,6 @@ def cmd_config_validate(args=None) -> int:
         print("Files checked:")
         print(f"  - ~/.agentwire/config.yaml")
         print(f"  - {config.machines.file}")
-        print(f"  - {config.sessions.file}")
         return 0
 
     # Print warnings first

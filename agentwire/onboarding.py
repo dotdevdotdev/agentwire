@@ -597,16 +597,6 @@ services:
             timeout=30,
         )
 
-        # Create sessions.json with empty object
-        subprocess.run(
-            ["ssh", ssh_target, f"cat > ~/.agentwire/sessions.json"],
-            input="{}",
-            check=True,
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-
         # Create portal_url file for say to work
         portal_url = f"https://{portal_host}:8765"
         subprocess.run(
@@ -1322,18 +1312,6 @@ services:
     machines_content = {"machines": config["machines"]}
     machines_path.write_text(json.dumps(machines_content, indent=2) + "\n")
     print_success(f"Created {machines_path}")
-
-    # Write sessions.json if not exists
-    sessions_path = CONFIG_DIR / "sessions.json"
-    if not sessions_path.exists():
-        sessions_content = {
-            "agentwire": {
-                "roles": ["agentwire"],
-                "voice": config["tts_voice"],
-            }
-        }
-        sessions_path.write_text(json.dumps(sessions_content, indent=2) + "\n")
-        print_success(f"Created {sessions_path}")
 
     # Create roles directory and default files
     roles_dir = CONFIG_DIR / "roles"

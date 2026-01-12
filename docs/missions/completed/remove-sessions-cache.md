@@ -27,7 +27,7 @@ No separate cache or prefs file needed. `.agentwire.yml` is the single source of
 
 ## Wave 1: Human Actions (BLOCKING)
 
-- [ ] Confirm approach
+- [x] Confirm approach
 
 ---
 
@@ -36,27 +36,15 @@ No separate cache or prefs file needed. `.agentwire.yml` is the single source of
 ### 2.1 Replace _get_session_config with Dynamic Lookup
 **Files:** `agentwire/server.py`
 
-Replace `_get_session_config()`:
-- Get session's working directory from tmux (or active_sessions cache)
-- Read .agentwire.yml from that path via SSH if remote
-- Return SessionConfig with type, roles, voice from yaml
-- Fall back to defaults if no yaml found
-
-Remove:
-- `_load_session_configs()`
-- `_save_session_configs()`
-- `_get_sessions_file()`
-- `_rebuild_session_cache()` and periodic refresh task
+- [x] Replace `_get_session_config()` with dynamic lookup from tmux + .agentwire.yml
+- [x] Add `_get_session_cwd()`, `_read_agentwire_yaml()`, `_write_agentwire_yaml()` helpers
+- [x] Remove `_load_session_configs()`, `_save_session_configs()`, `_get_sessions_file()`
+- [x] Remove `_rebuild_session_cache()` and periodic refresh task
 
 ### 2.2 Update Voice Config API to Edit .agentwire.yml
 **Files:** `agentwire/server.py`
 
-Update `/api/session/{name}/config` POST handler:
-- Parse session name to get machine
-- Get session's working directory
-- Read .agentwire.yml via SSH (if remote)
-- Update voice field
-- Write back via SSH
+- [x] Update `/api/session/{name}/config` POST to edit .agentwire.yml directly via SSH
 
 ---
 
@@ -65,11 +53,7 @@ Update `/api/session/{name}/config` POST handler:
 ### 3.1 Dynamic Session List
 **Files:** `agentwire/server.py`
 
-Update `/api/sessions` GET handler:
-- Call `agentwire list --json` or scan tmux directly
-- For each session, read .agentwire.yml to get type/roles/voice
-- Return combined data
-- No cache involved
+- [x] Update `/api/sessions` GET to use dynamic lookups (no cache)
 
 ---
 
@@ -78,10 +62,7 @@ Update `/api/sessions` GET handler:
 ### 4.1 Remove sessions.json Writes
 **Files:** `agentwire/__main__.py`
 
-Commands to update:
-- `cmd_new` - stop writing to sessions.json (yaml is written already)
-- `cmd_kill` - stop removing from sessions.json
-- `cmd_fork` - stop copying sessions.json entries
+- [x] Removed sessions.json writes from: `cmd_new`, `cmd_kill`, `cmd_fork`, `cmd_rename`, `cmd_agent`, `cmd_move`, `cmd_duplicate`, `cmd_gc`, `cmd_recreate`, `cmd_machine_remove`
 
 ---
 
@@ -90,17 +71,25 @@ Commands to update:
 ### 5.1 Remove Validation Check
 **Files:** `agentwire/validation.py`
 
-Remove sessions.json existence check.
+- [x] Removed sessions.json existence check
+- [x] Removed sessions.json from "Files checked" output
 
 ### 5.2 Delete sessions.json
-User deletes `~/.agentwire/sessions.json` manually.
+- [ ] User deletes `~/.agentwire/sessions.json` manually
+
+### 5.3 Config Cleanup
+**Files:** `agentwire/config.py`, `agentwire/onboarding.py`, `agentwire/project_config.py`
+
+- [x] Removed `SessionsConfig` class from config.py
+- [x] Removed sessions.json creation from onboarding.py (local + remote)
+- [x] Removed outdated comment from project_config.py
 
 ---
 
 ## Completion Criteria
 
-- [ ] sessions.json no longer exists or is used
-- [ ] Session list comes from tmux dynamically
-- [ ] Session config comes from .agentwire.yml
-- [ ] Voice changes via portal edit .agentwire.yml directly
-- [ ] All CLI commands work without sessions.json
+- [x] sessions.json no longer exists or is used
+- [x] Session list comes from tmux dynamically
+- [x] Session config comes from .agentwire.yml
+- [x] Voice changes via portal edit .agentwire.yml directly
+- [x] All CLI commands work without sessions.json

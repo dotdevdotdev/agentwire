@@ -31,7 +31,6 @@ from aiohttp import web
 
 from .config import Config, load_config
 from .worktree import get_project_type, parse_session_name
-from .project_config import load_project_config, ProjectConfig
 
 __version__ = "0.1.0"
 
@@ -258,259 +257,196 @@ class AgentWireServer:
         if cleaned > 0:
             logger.info(f"Cleaned up {cleaned} old upload(s)")
 
-    def _get_sessions_file(self) -> Path:
-        """Get path to sessions.json cache file."""
-        # Use sessions.json instead of sessions.json
-        return self.config.sessions.file.parent / "sessions.json"
-
-    def _load_session_configs(self) -> dict[str, dict]:
-        """Load session configurations from cache file."""
-        sessions_file = self._get_sessions_file()
-        if sessions_file.exists():
-            try:
-                with open(sessions_file) as f:
-                    return json.load(f)
-            except Exception as e:
-                logger.warning(f"Failed to load sessions config: {e}")
-        return {}
-
-    def _save_session_configs(self, configs: dict[str, dict]):
-        """Save session configurations to cache file."""
-        sessions_file = self._get_sessions_file()
-        sessions_file.parent.mkdir(parents=True, exist_ok=True)
-        with open(sessions_file, "w") as f:
-            json.dump(configs, f, indent=2)
-
     def _get_session_config(self, name: str) -> SessionConfig:
-        """Get or create session configuration.
+        """Get session config dynamically from .agentwire.yml in session's working directory.
 
-        Checks for config under full name (e.g., 'anna@Jordans-Mini') first,
-        then falls back to base name (e.g., 'anna') to handle voice settings
-        saved via portal UI which uses the base name.
+        Uses cached config from active_sessions if available, otherwise looks up
+        the session's working directory from tmux and reads .agentwire.yml.
         """
-        configs = self._load_session_configs()
+        # Check active_sessions first for cached config
+        if name in self.active_sessions:
+            return self.active_sessions[name].config
 
-        # Try full name first, then base name (strip @machine suffix)
-        cfg = None
-        if name in configs:
-            cfg = configs[name]
-        elif "@" in name:
-            base_name = name.split("@")[0]
-            if base_name in configs:
-                cfg = configs[base_name]
+        # Parse name for machine
+        machine_id = None
+        base_name = name
+        if "@" in name:
+            base_name, machine_id = name.rsplit("@", 1)
 
-        if cfg:
-            return SessionConfig(
-                voice=cfg.get("voice", self.config.tts.default_voice),
-                exaggeration=cfg.get("exaggeration", 0.5),
-                cfg_weight=cfg.get("cfg_weight", 0.5),
-                machine=cfg.get("machine"),
-                path=cfg.get("path"),
-                claude_session_id=cfg.get("claude_session_id"),
-                type=cfg.get("type", "claude-bypass"),
-                roles=cfg.get("roles", []),
-                spawned_by=cfg.get("spawned_by"),
-            )
-        return SessionConfig(voice=self.config.tts.default_voice)
+        # Get working directory from tmux
+        cwd = self._get_session_cwd(base_name, machine_id)
+        if not cwd:
+            return SessionConfig(voice=self.config.tts.default_voice)
 
-    async def _rebuild_session_cache(self) -> dict[str, dict]:
-        """Rebuild sessions.json by scanning tmux sessions and reading project configs.
+        # Read .agentwire.yml from that path
+        yaml_config = self._read_agentwire_yaml(cwd, machine_id)
+        if not yaml_config:
+            return SessionConfig(voice=self.config.tts.default_voice)
 
-        This scans all tmux sessions (local and remote), gets their working directories,
-        and reads .agentwire.yml from each to build the session cache.
-
-        Returns:
-            Dict mapping session names to their config dicts.
-        """
-        if not self.agent:
-            return {}
-
-        cache = {}
-        in_container = os.path.exists('/.dockerenv')
-
-        # Get local machine ID
-        if in_container:
-            local_machine_id = "local"
-        else:
-            import socket
-            local_machine_id = socket.gethostname().split('.')[0]
-
-        # Scan local tmux sessions with their working directories
-        result = subprocess.run(
-            ["tmux", "list-sessions", "-F", "#{session_name}:#{pane_current_path}"],
-            capture_output=True,
-            text=True,
+        return SessionConfig(
+            type=yaml_config.get("type", "claude-bypass"),
+            roles=yaml_config.get("roles", []),
+            voice=yaml_config.get("voice", self.config.tts.default_voice),
         )
-        if result.returncode == 0 and result.stdout.strip():
-            for line in result.stdout.strip().split("\n"):
-                if ":" in line:
-                    parts = line.split(":", 1)
-                    session_name = parts[0]
-                    session_path = parts[1] if len(parts) > 1 else None
 
-                    # Build qualified session name
-                    qualified_name = f"{session_name}@{local_machine_id}"
-
-                    # Try to load project config from session path
-                    config_entry = self._build_cache_entry(session_path)
-                    cache[qualified_name] = config_entry
-
-        # Scan remote machines
-        if hasattr(self.agent, 'machines'):
-            for machine in self.agent.machines:
-                machine_id = machine.get('id')
-                if not machine_id:
-                    continue
-                # Skip local machine (already scanned)
-                if not in_container and machine_id == local_machine_id:
-                    continue
-
-                host = machine.get('host')
-                if not host:
-                    continue
-
-                # Build SSH target with user if specified
-                user = machine.get('user')
-                ssh_target = f"{user}@{host}" if user else host
-
-                # Get remote sessions with their paths
-                try:
-                    cmd = "tmux list-sessions -F '#{session_name}:#{pane_current_path}' 2>/dev/null || echo ''"
-                    ssh_result = subprocess.run(
-                        ["ssh", "-o", "ConnectTimeout=5", "-o", "BatchMode=yes", ssh_target, cmd],
-                        capture_output=True,
-                        text=True,
-                        timeout=10,
-                    )
-                    if ssh_result.returncode == 0 and ssh_result.stdout.strip():
-                        for line in ssh_result.stdout.strip().split("\n"):
-                            if ":" in line:
-                                parts = line.split(":", 1)
-                                session_name = parts[0]
-                                session_path = parts[1] if len(parts) > 1 else None
-
-                                qualified_name = f"{session_name}@{machine_id}"
-
-                                # For remote sessions, read the yaml via SSH
-                                config_entry = self._build_cache_entry_remote(
-                                    session_path, ssh_target
-                                )
-                                cache[qualified_name] = config_entry
-                except (subprocess.TimeoutExpired, Exception) as e:
-                    logger.warning(f"Failed to scan sessions on {machine_id}: {e}")
-
-        # Merge with existing config to preserve user-set values (voice, etc.)
-        existing = self._load_session_configs()
-
-        # Preserve user-set values for sessions in the new cache
-        for name, entry in cache.items():
-            # Check both full name and base name for existing config
-            existing_cfg = existing.get(name)
-            if not existing_cfg and "@" in name:
-                base_name = name.split("@")[0]
-                existing_cfg = existing.get(base_name)
-
-            if existing_cfg:
-                # Preserve user-set values not in the new entry
-                for key in ["voice", "exaggeration", "cfg_weight"]:
-                    if key in existing_cfg and key not in entry:
-                        entry[key] = existing_cfg[key]
-
-        # Also preserve sessions that aren't in the new cache but have user-set values
-        # (e.g., voice set via portal UI for a session on a different machine)
-        for name, cfg in existing.items():
-            if name not in cache:
-                # Only preserve if it has user-set values
-                if any(key in cfg for key in ["voice", "exaggeration", "cfg_weight"]):
-                    cache[name] = cfg
-
-        self._save_session_configs(cache)
-        logger.info(f"Rebuilt session cache: {len(cache)} sessions")
-
-        return cache
-
-    def _build_cache_entry(self, session_path: str | None) -> dict:
-        """Build a cache entry for a local session.
+    def _get_session_cwd(self, session_name: str, machine_id: str | None = None) -> str | None:
+        """Get working directory of a tmux session.
 
         Args:
-            session_path: Working directory of the session.
+            session_name: Base session name (without @machine suffix)
+            machine_id: Machine ID if remote, None for local
 
         Returns:
-            Dict with session config (type, roles, voice, path, source).
+            Working directory path, or None if session not found
         """
-        entry = {
-            "type": "claude-bypass",  # Default
-            "roles": [],
-            "path": session_path,
-            "source": "default",
-        }
+        import socket
+        local_hostname = socket.gethostname().split('.')[0]
 
-        if session_path:
-            # Try to load .agentwire.yml from session path
-            config = load_project_config(Path(session_path))
-            if config:
-                entry["type"] = config.type.value
-                entry["roles"] = config.roles
-                if config.voice:
-                    entry["voice"] = config.voice
-                entry["source"] = "yaml"
+        # Check if this is a local session
+        is_local = machine_id is None or machine_id == "local" or machine_id == local_hostname
 
-        return entry
+        if is_local:
+            # Local tmux lookup
+            result = subprocess.run(
+                ["tmux", "display-message", "-t", session_name, "-p", "#{pane_current_path}"],
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                return result.stdout.strip()
+            return None
+        else:
+            # Remote tmux lookup via SSH
+            machine = self._get_machine_config(machine_id)
+            if not machine:
+                return None
 
-    def _build_cache_entry_remote(self, session_path: str | None, host: str) -> dict:
-        """Build a cache entry for a remote session.
+            host = machine.get("host", "")
+            user = machine.get("user", "")
+            ssh_target = f"{user}@{host}" if user else host
 
-        For remote sessions, we attempt to read .agentwire.yml via SSH.
-
-        Args:
-            session_path: Working directory of the session on remote machine.
-            host: SSH host for the remote machine.
-
-        Returns:
-            Dict with session config.
-        """
-        entry = {
-            "type": "claude-bypass",
-            "roles": [],
-            "path": session_path,
-            "source": "default",
-        }
-
-        if session_path:
-            # Try to read .agentwire.yml from remote machine
             try:
-                yaml_path = f"{session_path}/.agentwire.yml"
+                cmd = f"tmux display-message -t {session_name} -p '#{{pane_current_path}}'"
                 result = subprocess.run(
-                    ["ssh", "-o", "ConnectTimeout=3", "-o", "BatchMode=yes", host, f"cat {yaml_path}"],
+                    ["ssh", "-o", "ConnectTimeout=3", "-o", "BatchMode=yes", ssh_target, cmd],
                     capture_output=True,
                     text=True,
                     timeout=5,
                 )
                 if result.returncode == 0 and result.stdout.strip():
-                    import yaml
-                    data = yaml.safe_load(result.stdout)
-                    if data:
-                        entry["type"] = data.get("type", "claude-bypass")
-                        entry["roles"] = data.get("roles", [])
-                        if data.get("voice"):
-                            entry["voice"] = data["voice"]
-                        entry["source"] = "yaml"
-            except Exception:
-                pass  # Use defaults
+                    return result.stdout.strip()
+            except (subprocess.TimeoutExpired, Exception):
+                pass
+            return None
 
-        return entry
+    def _get_machine_config(self, machine_id: str) -> dict | None:
+        """Get machine config by ID from machines.json."""
+        if hasattr(self.agent, 'machines'):
+            for m in self.agent.machines:
+                if m.get('id') == machine_id:
+                    return m
+        return None
 
-    async def _start_cache_refresh_task(self):
-        """Start background task to periodically refresh session cache."""
-        async def refresh_loop():
-            while True:
-                await asyncio.sleep(30)  # Refresh every 30 seconds
+    def _read_agentwire_yaml(self, cwd: str, machine_id: str | None = None) -> dict | None:
+        """Read .agentwire.yml from a directory.
+
+        Args:
+            cwd: Working directory path
+            machine_id: Machine ID if remote, None for local
+
+        Returns:
+            Parsed YAML dict, or None if not found/invalid
+        """
+        import socket
+        import yaml
+        local_hostname = socket.gethostname().split('.')[0]
+
+        is_local = machine_id is None or machine_id == "local" or machine_id == local_hostname
+
+        if is_local:
+            yaml_path = Path(cwd) / ".agentwire.yml"
+            if yaml_path.exists():
                 try:
-                    await self._rebuild_session_cache()
-                except Exception as e:
-                    logger.warning(f"Cache refresh failed: {e}")
+                    with open(yaml_path) as f:
+                        return yaml.safe_load(f) or {}
+                except Exception:
+                    pass
+            return None
+        else:
+            # Remote read via SSH
+            machine = self._get_machine_config(machine_id)
+            if not machine:
+                return None
 
-        asyncio.create_task(refresh_loop())
+            host = machine.get("host", "")
+            user = machine.get("user", "")
+            ssh_target = f"{user}@{host}" if user else host
+
+            try:
+                yaml_path = f"{cwd}/.agentwire.yml"
+                result = subprocess.run(
+                    ["ssh", "-o", "ConnectTimeout=3", "-o", "BatchMode=yes", ssh_target, f"cat {yaml_path}"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
+                if result.returncode == 0 and result.stdout.strip():
+                    return yaml.safe_load(result.stdout) or {}
+            except (subprocess.TimeoutExpired, Exception):
+                pass
+            return None
+
+    def _write_agentwire_yaml(self, cwd: str, data: dict, machine_id: str | None = None) -> bool:
+        """Write .agentwire.yml to a directory.
+
+        Args:
+            cwd: Working directory path
+            data: YAML data to write
+            machine_id: Machine ID if remote, None for local
+
+        Returns:
+            True if written successfully, False otherwise
+        """
+        import socket
+        import yaml
+        local_hostname = socket.gethostname().split('.')[0]
+
+        is_local = machine_id is None or machine_id == "local" or machine_id == local_hostname
+
+        if is_local:
+            yaml_path = Path(cwd) / ".agentwire.yml"
+            try:
+                with open(yaml_path, "w") as f:
+                    yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)
+                return True
+            except Exception as e:
+                logger.warning(f"Failed to write {yaml_path}: {e}")
+                return False
+        else:
+            # Remote write via SSH
+            machine = self._get_machine_config(machine_id)
+            if not machine:
+                return False
+
+            host = machine.get("host", "")
+            user = machine.get("user", "")
+            ssh_target = f"{user}@{host}" if user else host
+
+            try:
+                yaml_content = yaml.safe_dump(data, default_flow_style=False, sort_keys=False)
+                yaml_path = f"{cwd}/.agentwire.yml"
+                # Use heredoc for safe content transmission
+                cmd = f"cat > {yaml_path} << 'AGENTWIRE_EOF'\n{yaml_content}AGENTWIRE_EOF"
+                result = subprocess.run(
+                    ["ssh", "-o", "ConnectTimeout=3", "-o", "BatchMode=yes", ssh_target, cmd],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
+                return result.returncode == 0
+            except (subprocess.TimeoutExpired, Exception) as e:
+                logger.warning(f"Failed to write remote yaml: {e}")
+                return False
 
     async def _get_voices(self) -> list[str]:
         """Get available TTS voices."""
@@ -1167,7 +1103,6 @@ class AgentWireServer:
         """List all active sessions grouped by machine."""
         try:
             sessions = self.agent.list_sessions()
-            session_configs = self._load_session_configs()
 
             # Load machines for status checks
             machines_dict = {}
@@ -1181,10 +1116,13 @@ class AgentWireServer:
             for name in sessions:
                 project, branch, machine_id = parse_session_name(name)
 
-                config = session_configs.get(name, {})
+                # Get config dynamically from .agentwire.yml
+                config = self._get_session_config(name)
 
-                # Use path from session config if available (set during creation)
-                path = config.get("path", str(self.config.projects.dir / project))
+                # Get working directory from tmux
+                base_name = name.split("@")[0] if "@" in name else name
+                cwd = self._get_session_cwd(base_name, machine_id)
+                path = cwd or str(self.config.projects.dir / project)
 
                 # Calculate activity status from global tracking (works even without active session)
                 activity_status = self._get_global_session_activity(name)
@@ -1193,9 +1131,9 @@ class AgentWireServer:
                     "name": name,
                     "path": path,
                     "machine": machine_id,
-                    "voice": config.get("voice", self.config.tts.default_voice),
+                    "voice": config.voice,
                     "project_type": get_project_type(Path(path)) if Path(path).exists() else "scratch",
-                    "type": config.get("type", "claude-bypass"),
+                    "type": config.type,
                     "activity": activity_status,
                 }
 
@@ -1463,20 +1401,21 @@ class AgentWireServer:
                 error_msg = result.get("error", "Failed to create session")
                 return web.json_response({"error": error_msg})
 
-            # CLI updates sessions.json with type and template voice
-            # We may still need to set voice/path if user selected explicitly
             session_name = result.get("session", cli_session)
             session_path = result.get("path")
-            configs = self._load_session_configs()
-            if session_name not in configs:
-                configs[session_name] = {}
-            # Only set voice if explicitly provided (not using template default)
-            if voice != self.config.tts.default_voice or not template_name:
-                configs[session_name]["voice"] = voice
-            # Save path from CLI result
-            if session_path:
-                configs[session_name]["path"] = session_path
-            self._save_session_configs(configs)
+
+            # CLI writes .agentwire.yml with type and template voice
+            # If user explicitly selected a voice different from template, update it
+            if session_path and voice != self.config.tts.default_voice:
+                # Parse session name for machine
+                machine_id = None
+                if "@" in session_name:
+                    _, machine_id = session_name.rsplit("@", 1)
+
+                # Read and update .agentwire.yml
+                yaml_config = self._read_agentwire_yaml(session_path, machine_id) or {}
+                yaml_config["voice"] = voice
+                self._write_agentwire_yaml(session_path, yaml_config, machine_id)
 
             return web.json_response({"success": True, "name": session_name, "template": template_name})
 
@@ -1510,8 +1449,7 @@ class AgentWireServer:
     async def api_session_config(self, request: web.Request) -> web.Response:
         """Update session configuration (voice only).
 
-        TODO: This should edit the project's .agentwire.yml directly
-        instead of writing to sessions.json cache.
+        Edits the project's .agentwire.yml directly.
         """
         name = request.match_info["name"]
         try:
@@ -1523,12 +1461,26 @@ class AgentWireServer:
 
             voice = data["voice"]
 
-            # Update sessions.json cache (temporary until we edit .agentwire.yml directly)
-            configs = self._load_session_configs()
-            if name not in configs:
-                configs[name] = {}
-            configs[name]["voice"] = voice
-            self._save_session_configs(configs)
+            # Parse session name for machine
+            machine_id = None
+            base_name = name
+            if "@" in name:
+                base_name, machine_id = name.rsplit("@", 1)
+
+            # Get session's working directory
+            cwd = self._get_session_cwd(base_name, machine_id)
+            if not cwd:
+                return web.json_response({"error": "Session working directory not found"}, status=404)
+
+            # Read existing .agentwire.yml (or create new)
+            yaml_config = self._read_agentwire_yaml(cwd, machine_id) or {}
+
+            # Update voice
+            yaml_config["voice"] = voice
+
+            # Write back
+            if not self._write_agentwire_yaml(cwd, yaml_config, machine_id):
+                return web.json_response({"error": "Failed to write .agentwire.yml"}, status=500)
 
             # Update live session if exists
             if name in self.active_sessions:
@@ -1677,29 +1629,7 @@ class AgentWireServer:
                 json.dump({"machines": machines}, f, indent=2)
                 f.write("\n")
 
-            # Clean up sessions.json entries for this machine
-            sessions_file = self.config.sessions.file
-            sessions_removed = []
-            if sessions_file.exists():
-                try:
-                    with open(sessions_file) as f:
-                        sessions_data = json.load(f)
-
-                    # Find sessions matching *@machine_id pattern
-                    sessions_to_remove = [
-                        s for s in sessions_data.keys()
-                        if s.endswith(f"@{machine_id}")
-                    ]
-
-                    if sessions_to_remove:
-                        for s in sessions_to_remove:
-                            del sessions_data[s]
-                            sessions_removed.append(s)
-                        with open(sessions_file, "w") as f:
-                            json.dump(sessions_data, f, indent=2)
-                            f.write("\n")
-                except (json.JSONDecodeError, IOError):
-                    pass
+            # No sessions.json to clean up - config is now in .agentwire.yml per project
 
             # Reload agent backend to pick up changes
             if self.agent and hasattr(self.agent, '_load_machines'):
@@ -1708,7 +1638,6 @@ class AgentWireServer:
             return web.json_response({
                 "success": True,
                 "machine_id": machine_id,
-                "sessions_removed": sessions_removed,
             })
 
         except Exception as e:
@@ -1786,16 +1715,14 @@ projects:
             return web.json_response({"error": str(e)})
 
     async def api_refresh_sessions(self, request: web.Request) -> web.Response:
-        """Refresh session cache by scanning tmux sessions and project configs."""
-        try:
-            cache = await self._rebuild_session_cache()
-            return web.json_response({
-                "success": True,
-                "sessions": len(cache),
-            })
-        except Exception as e:
-            logger.error(f"Failed to refresh session cache: {e}")
-            return web.json_response({"error": str(e)})
+        """Refresh sessions endpoint (now a no-op since sessions are fetched dynamically)."""
+        # Sessions are now fetched dynamically from tmux + .agentwire.yml
+        # No cache to rebuild, but keep endpoint for backward compatibility
+        sessions = self.agent.list_sessions() if self.agent else []
+        return web.json_response({
+            "success": True,
+            "sessions": len(sessions),
+        })
 
     async def api_list_templates(self, request: web.Request) -> web.Response:
         """List available session templates."""
@@ -2487,15 +2414,13 @@ projects:
             logger.info(f"[{name}] Recreating session...")
 
             # Get old config for inheriting settings (before CLI deletes it)
-            configs = self._load_session_configs()
-            old_config = configs.get(name, {})
-            session_type = old_config.get("type", "claude-bypass")
+            old_config = self._get_session_config(name)
 
             # Build CLI args
             args = ["recreate", "-s", name]
-            if session_type == "claude-restricted":
+            if old_config.type == "claude-restricted":
                 args.append("--restricted")
-            elif session_type == "claude-prompted":
+            elif old_config.type == "claude-prompted":
                 args.append("--no-bypass")
             # claude-bypass is default, no flag needed
 
@@ -2516,14 +2441,14 @@ projects:
                     session.output_task.cancel()
                 del self.active_sessions[name]
 
-            # CLI updates sessions.json with type, add voice and path
-            configs = self._load_session_configs()
-            if new_session_name not in configs:
-                configs[new_session_name] = {}
-            configs[new_session_name]["voice"] = old_config.get("voice", self.config.tts.default_voice)
-            if session_path:
-                configs[new_session_name]["path"] = session_path
-            self._save_session_configs(configs)
+            # CLI writes .agentwire.yml with type; update voice if the old session had one
+            if session_path and old_config.voice != self.config.tts.default_voice:
+                machine_id = None
+                if "@" in new_session_name:
+                    _, machine_id = new_session_name.rsplit("@", 1)
+                yaml_config = self._read_agentwire_yaml(session_path, machine_id) or {}
+                yaml_config["voice"] = old_config.voice
+                self._write_agentwire_yaml(session_path, yaml_config, machine_id)
 
             logger.info(f"[{name}] Session recreated as '{new_session_name}'")
             return web.json_response({"success": True, "session": new_session_name})
@@ -2546,9 +2471,7 @@ projects:
             project, _, machine = parse_session_name(name)
 
             # Get old config for inheriting settings
-            configs = self._load_session_configs()
-            old_config = configs.get(name, {})
-            session_type = old_config.get("type", "claude-bypass")
+            old_config = self._get_session_config(name)
 
             # Build new session name: project/session-<timestamp>[@machine]
             new_branch = f"session-{int(time.time())}"
@@ -2558,9 +2481,9 @@ projects:
 
             # Build CLI args - use `agentwire new` with the sibling session name
             args = ["new", "-s", new_session_name]
-            if session_type == "claude-restricted":
+            if old_config.type == "claude-restricted":
                 args.append("--restricted")
-            elif session_type == "claude-prompted":
+            elif old_config.type == "claude-prompted":
                 args.append("--no-bypass")
             # claude-bypass is default, no flag needed
 
@@ -2574,14 +2497,12 @@ projects:
             session_name = result.get("session", new_session_name)
             session_path = result.get("path")
 
-            # CLI updates sessions.json with type, add voice and path
-            configs = self._load_session_configs()
-            if session_name not in configs:
-                configs[session_name] = {}
-            configs[session_name]["voice"] = old_config.get("voice", self.config.tts.default_voice)
-            if session_path:
-                configs[session_name]["path"] = session_path
-            self._save_session_configs(configs)
+            # CLI writes .agentwire.yml with type; update voice if the old session had one
+            if session_path and old_config.voice != self.config.tts.default_voice:
+                machine_id = machine
+                yaml_config = self._read_agentwire_yaml(session_path, machine_id) or {}
+                yaml_config["voice"] = old_config.voice
+                self._write_agentwire_yaml(session_path, yaml_config, machine_id)
 
             logger.info(f"[{name}] Sibling session created: '{session_name}'")
             return web.json_response({"success": True, "session": session_name})
@@ -2606,13 +2527,13 @@ projects:
             project, _, machine = parse_session_name(name)
 
             # Find next available fork number for target name
-            configs = self._load_session_configs()
+            # Just check if tmux session exists (no cache to check)
             fork_num = 1
             while True:
                 candidate = f"{project}-fork-{fork_num}"
                 if machine:
                     candidate = f"{candidate}@{machine}"
-                if candidate not in configs and not self.agent.session_exists(candidate):
+                if not self.agent.session_exists(candidate):
                     break
                 fork_num += 1
 
@@ -2640,14 +2561,12 @@ projects:
             session_name = result.get("session", target_session)
             session_path = result.get("path")
 
-            # CLI updates sessions.json with type, add voice and path
-            configs = self._load_session_configs()
-            if session_name not in configs:
-                configs[session_name] = {}
-            configs[session_name]["voice"] = session_config.voice
-            if session_path:
-                configs[session_name]["path"] = session_path
-            self._save_session_configs(configs)
+            # CLI writes .agentwire.yml with type; update voice if the old session had one
+            if session_path and session_config.voice != self.config.tts.default_voice:
+                machine_id = machine
+                yaml_config = self._read_agentwire_yaml(session_path, machine_id) or {}
+                yaml_config["voice"] = session_config.voice
+                self._write_agentwire_yaml(session_path, yaml_config, machine_id)
 
             logger.info(f"[{name}] Session forked as '{session_name}'")
             return web.json_response({"success": True, "session": session_name})
@@ -2796,11 +2715,8 @@ async def run_server(config: Config):
     # Cleanup old uploads on startup
     await server.cleanup_old_uploads()
 
-    # Rebuild session cache from tmux sessions and project configs
-    await server._rebuild_session_cache()
-
-    # Start periodic cache refresh (every 30s)
-    await server._start_cache_refresh_task()
+    # Sessions are now fetched dynamically from tmux + .agentwire.yml
+    # No cache to rebuild or periodically refresh
 
     # Setup SSL if configured
     ssl_context = None

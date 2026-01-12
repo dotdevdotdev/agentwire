@@ -18,7 +18,7 @@ from . import __version__
 from .worktree import parse_session_name, get_session_path, ensure_worktree, remove_worktree
 from . import cli_safety
 from .roles import RoleConfig, load_roles, merge_roles
-from .project_config import ProjectConfig, SessionType, save_project_config, get_voice_from_config
+from .project_config import ProjectConfig, SessionType, save_project_config, get_voice_from_config, load_project_config
 
 # Default config directory
 CONFIG_DIR = Path.home() / ".agentwire"
@@ -1694,35 +1694,6 @@ def cmd_new(args) -> int:
         if result.returncode != 0:
             return _output_result(False, json_mode, f"Failed to create remote session: {result.stderr}")
 
-        # Update local sessions.json cache for portal
-        sessions_file = Path.home() / ".agentwire" / "sessions.json"
-        sessions_file.parent.mkdir(parents=True, exist_ok=True)
-
-        configs = {}
-        if sessions_file.exists():
-            try:
-                with open(sessions_file) as f:
-                    configs = json.load(f)
-            except Exception:
-                pass
-
-        session_key = f"{session_name}@{machine_id}"
-        session_config = {
-            "type": session_type.value,
-            "path": remote_path,
-            "machine": machine_id,
-        }
-        # Add roles array if specified
-        if role_names:
-            session_config["roles"] = role_names
-        # Add voice from template if specified
-        if template and template.voice:
-            session_config["voice"] = template.voice
-        configs[session_key] = session_config
-
-        with open(sessions_file, "w") as f:
-            json.dump(configs, f, indent=2)
-
         # Send initial prompt from template if specified
         if template and template.initial_prompt:
             # Wait for Claude to be ready
@@ -1869,33 +1840,6 @@ def cmd_new(args) -> int:
         voice=template.voice if template and template.voice else None,
     )
     save_project_config(project_config, session_path)
-
-    # Update sessions.json cache for portal
-    sessions_file = Path.home() / ".agentwire" / "sessions.json"
-    sessions_file.parent.mkdir(parents=True, exist_ok=True)
-
-    configs = {}
-    if sessions_file.exists():
-        try:
-            with open(sessions_file) as f:
-                configs = json.load(f)
-        except Exception:
-            pass
-
-    session_config = {
-        "type": session_type.value,
-        "path": str(session_path),
-    }
-    # Add roles array if specified
-    if role_names:
-        session_config["roles"] = role_names
-    # Add voice from template if specified
-    if template and template.voice:
-        session_config["voice"] = template.voice
-    configs[session_name] = session_config
-
-    with open(sessions_file, "w") as f:
-        json.dump(configs, f, indent=2)
 
     # Send initial prompt from template if specified
     if template and template.initial_prompt:
@@ -2056,21 +2000,6 @@ def cmd_kill(args) -> int:
         if not json_mode:
             print(f"Killed session '{session_full}'")
 
-        # Clean up sessions.json
-        sessions_file = Path.home() / ".agentwire" / "sessions.json"
-        if sessions_file.exists():
-            try:
-                with open(sessions_file) as f:
-                    configs = json.load(f)
-
-                session_key = f"{session}@{machine_id}"
-                if session_key in configs:
-                    del configs[session_key]
-                    with open(sessions_file, "w") as f:
-                        json.dump(configs, f, indent=2)
-            except Exception:
-                pass
-
         if json_mode:
             _output_json({"success": True, "session": session_full})
         return 0
@@ -2093,20 +2022,6 @@ def cmd_kill(args) -> int:
     subprocess.run(["tmux", "kill-session", "-t", session])
     if not json_mode:
         print(f"Killed session '{session}'")
-
-    # Clean up sessions.json
-    sessions_file = Path.home() / ".agentwire" / "sessions.json"
-    if sessions_file.exists():
-        try:
-            with open(sessions_file) as f:
-                configs = json.load(f)
-
-            if session in configs:
-                del configs[session]
-                with open(sessions_file, "w") as f:
-                    json.dump(configs, f, indent=2)
-        except Exception:
-            pass
 
     if json_mode:
         _output_json({"success": True, "session": session_full})
@@ -2281,27 +2196,6 @@ def cmd_recreate(args) -> int:
         if result.returncode != 0:
             return _output_result(False, json_mode, f"Failed to create session: {result.stderr}")
 
-        # Update local sessions.json with new config
-        sessions_file = Path.home() / ".agentwire" / "sessions.json"
-        sessions_file.parent.mkdir(parents=True, exist_ok=True)
-
-        configs = {}
-        if sessions_file.exists():
-            try:
-                with open(sessions_file) as f:
-                    configs = json.load(f)
-            except Exception:
-                pass
-
-        bypass_permissions = not (restricted or no_bypass)
-        session_config = {"bypass_permissions": bypass_permissions}
-        if restricted:
-            session_config["restricted"] = True
-        configs[session_name] = session_config
-
-        with open(sessions_file, "w") as f:
-            json.dump(configs, f, indent=2)
-
         if json_mode:
             _output_json({
                 "success": True,
@@ -2392,27 +2286,6 @@ def cmd_recreate(args) -> int:
         ["tmux", "send-keys", "-t", session_name, claude_cmd, "Enter"],
         check=True
     )
-
-    # Update sessions.json
-    sessions_file = Path.home() / ".agentwire" / "sessions.json"
-    sessions_file.parent.mkdir(parents=True, exist_ok=True)
-
-    configs = {}
-    if sessions_file.exists():
-        try:
-            with open(sessions_file) as f:
-                configs = json.load(f)
-        except Exception:
-            pass
-
-    bypass_permissions = not (restricted or no_bypass)
-    session_config = {"bypass_permissions": bypass_permissions}
-    if restricted:
-        session_config["restricted"] = True
-    configs[session_name] = session_config
-
-    with open(sessions_file, "w") as f:
-        json.dump(configs, f, indent=2)
 
     if json_mode:
         _output_json({
@@ -2527,28 +2400,6 @@ def cmd_fork(args) -> int:
         if result.returncode != 0:
             return _output_result(False, json_mode, f"Failed to create session: {result.stderr}")
 
-        # Update local sessions.json
-        sessions_file = Path.home() / ".agentwire" / "sessions.json"
-        sessions_file.parent.mkdir(parents=True, exist_ok=True)
-
-        configs = {}
-        if sessions_file.exists():
-            try:
-                with open(sessions_file) as f:
-                    configs = json.load(f)
-            except Exception:
-                pass
-
-        session_key = session_name
-        bypass_permissions = not (restricted or no_bypass)
-        session_config = {"bypass_permissions": bypass_permissions}
-        if restricted:
-            session_config["restricted"] = True
-        configs[session_key] = session_config
-
-        with open(sessions_file, "w") as f:
-            json.dump(configs, f, indent=2)
-
         if json_mode:
             _output_json({
                 "success": True,
@@ -2605,50 +2456,20 @@ def cmd_fork(args) -> int:
         )
         time.sleep(0.1)
 
-        # Load source session config to preserve settings
-        sessions_file = Path.home() / ".agentwire" / "sessions.json"
-        source_config = {}
-        if sessions_file.exists():
-            try:
-                with open(sessions_file) as f:
-                    configs = json.load(f)
-                    source_config = configs.get(source_session, {})
-            except Exception:
-                pass
-
-        restricted = source_config.get("restricted", False)
-        bypass_permissions = source_config.get("bypass_permissions", True)
-
-        # Build Claude command
-        if restricted or not bypass_permissions:
-            claude_cmd = "claude"
+        # Load source session config from .agentwire.yml to preserve settings
+        source_project_config = load_project_config(fork_path)
+        if source_project_config:
+            session_type = source_project_config.type
         else:
-            claude_cmd = "claude --dangerously-skip-permissions"
+            session_type = SessionType.CLAUDE_BYPASS  # Default
 
-        subprocess.run(
-            ["tmux", "send-keys", "-t", target_session, claude_cmd, "Enter"],
-            check=True
-        )
-
-        # Update sessions.json for target
-        configs = {}
-        if sessions_file.exists():
-            try:
-                with open(sessions_file) as f:
-                    configs = json.load(f)
-            except Exception:
-                pass
-
-        configs[target_session] = {
-            "bypass_permissions": bypass_permissions,
-            "path": str(fork_path),
-        }
-        if restricted:
-            configs[target_session]["restricted"] = True
-
-        sessions_file.parent.mkdir(parents=True, exist_ok=True)
-        with open(sessions_file, "w") as f:
-            json.dump(configs, f, indent=2)
+        # Build Claude command based on session type
+        claude_cmd = _build_claude_cmd(session_type, None)
+        if claude_cmd:
+            subprocess.run(
+                ["tmux", "send-keys", "-t", target_session, claude_cmd, "Enter"],
+                check=True
+            )
 
         if json_mode:
             _output_json({
@@ -2725,27 +2546,6 @@ def cmd_fork(args) -> int:
         ["tmux", "send-keys", "-t", target_session, claude_cmd, "Enter"],
         check=True
     )
-
-    # Update sessions.json
-    sessions_file = Path.home() / ".agentwire" / "sessions.json"
-    sessions_file.parent.mkdir(parents=True, exist_ok=True)
-
-    configs = {}
-    if sessions_file.exists():
-        try:
-            with open(sessions_file) as f:
-                configs = json.load(f)
-        except Exception:
-            pass
-
-    bypass_permissions = not (restricted or no_bypass)
-    session_config = {"bypass_permissions": bypass_permissions}
-    if restricted:
-        session_config["restricted"] = True
-    configs[target_session] = session_config
-
-    with open(sessions_file, "w") as f:
-        json.dump(configs, f, indent=2)
 
     if json_mode:
         _output_json({
@@ -2826,7 +2626,6 @@ def cmd_machine_remove(args) -> int:
     machine_id = args.machine_id
 
     machines_file = CONFIG_DIR / "machines.json"
-    sessions_file = CONFIG_DIR / "sessions.json"
 
     # Step 1: Load and check machines.json
     if not machines_file.exists():
@@ -2883,34 +2682,7 @@ def cmd_machine_remove(args) -> int:
         f.write("\n")
     print(f"  ✓ Removed '{machine_id}' from machines.json")
 
-    # Step 4: Clean sessions.json
-    print("Cleaning sessions.json...")
-    if sessions_file.exists():
-        try:
-            with open(sessions_file) as f:
-                sessions_data = json.load(f)
-
-            # Find sessions matching *@machine_id pattern
-            sessions_to_remove = [
-                s for s in sessions_data.keys()
-                if s.endswith(f"@{machine_id}")
-            ]
-
-            if sessions_to_remove:
-                for s in sessions_to_remove:
-                    del sessions_data[s]
-                with open(sessions_file, "w") as f:
-                    json.dump(sessions_data, f, indent=2)
-                    f.write("\n")
-                print(f"  ✓ Removed {len(sessions_to_remove)} session(s): {', '.join(sessions_to_remove)}")
-            else:
-                print(f"  - No session configs found for @{machine_id}")
-        except json.JSONDecodeError:
-            print(f"  - sessions.json is invalid, skipping")
-    else:
-        print(f"  - No sessions.json found")
-
-    # Step 5: Print manual steps
+    # Step 4: Print manual steps
     print()
     print("=" * 50)
     print("MANUAL STEPS REQUIRED:")

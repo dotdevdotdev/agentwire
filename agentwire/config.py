@@ -123,18 +123,6 @@ class MachinesConfig:
 
 
 @dataclass
-class SessionsConfig:
-    """Session configurations file path."""
-
-    file: Path = field(
-        default_factory=lambda: Path.home() / ".agentwire" / "sessions.json"
-    )
-
-    def __post_init__(self):
-        self.file = _expand_path(self.file) or self.file
-
-
-@dataclass
 class UploadsConfig:
     """Uploads directory for images shared across machines."""
 
@@ -254,7 +242,6 @@ class Config:
     stt: STTConfig = field(default_factory=STTConfig)
     agent: AgentConfig = field(default_factory=AgentConfig)
     machines: MachinesConfig = field(default_factory=MachinesConfig)
-    sessions: SessionsConfig = field(default_factory=SessionsConfig)
     uploads: UploadsConfig = field(default_factory=UploadsConfig)
     portal: PortalConfig = field(default_factory=PortalConfig)
     services: ServicesConfig = field(default_factory=ServicesConfig)
@@ -383,12 +370,6 @@ def _dict_to_config(data: dict) -> Config:
         file=machines_data.get("file", "~/.agentwire/machines.json"),
     )
 
-    # Sessions
-    sessions_data = data.get("sessions", {})
-    sessions = SessionsConfig(
-        file=sessions_data.get("file", "~/.agentwire/sessions.json"),
-    )
-
     # Uploads
     uploads_data = data.get("uploads", {})
     uploads = UploadsConfig(
@@ -437,7 +418,6 @@ def _dict_to_config(data: dict) -> Config:
         stt=stt,
         agent=agent,
         machines=machines,
-        sessions=sessions,
         uploads=uploads,
         portal=portal,
         services=services,
