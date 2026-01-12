@@ -130,10 +130,22 @@ class TmuxAgent(AgentBackend):
         Returns:
             Tuple of (session_name, machine_config or None for local)
         """
+        import socket
+        local_hostname = socket.gethostname().split('.')[0]
+
         if "@" in name:
             session, machine_id = name.rsplit("@", 1)
+
+            # Check if machine_id is the local hostname
+            if machine_id == local_hostname or machine_id == "local":
+                return session, None
+
             for machine in self.machines:
                 if machine.get("id") == machine_id or machine.get("host") == machine_id:
+                    # Check if this machine is marked as local
+                    if machine.get("local"):
+                        logger.debug(f"Resolved {name} -> session={session}, machine marked as local")
+                        return session, None
                     logger.debug(f"Resolved {name} -> session={session}, machine_id={machine_id}")
                     return session, machine
             logger.warning(f"Unknown machine: {machine_id} (available: {[m.get('id') for m in self.machines]}), treating as local")
