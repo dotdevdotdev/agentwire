@@ -16,7 +16,11 @@ agentwire portal start --dev
 agentwire rebuild
 ```
 
-## Use CLI, Not Raw tmux
+## CLI is the Single Source of Truth
+
+**Always use `agentwire` CLI for session management.** The CLI is the authoritative interface - the web portal is just a frontend that calls the same underlying commands.
+
+Never use raw tmux commands or create skills/commands that duplicate CLI functionality:
 
 ```bash
 agentwire new -s name           # not: tmux new-session
@@ -27,6 +31,8 @@ agentwire list                  # not: tmux list-sessions
 ```
 
 Session formats: `name`, `project/branch` (worktree), `name@machine` (remote)
+
+For CLI details: `agentwire --help` or `agentwire <cmd> --help`
 
 ## Config
 
