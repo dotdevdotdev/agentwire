@@ -75,6 +75,23 @@ function setupEventListeners() {
         }
     });
 
+    // Toggle dropdowns on click
+    document.querySelectorAll('.menu-bar .dropdown > .menu-item').forEach(menuItem => {
+        menuItem.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const dropdown = menuItem.parentElement;
+            const wasActive = dropdown.classList.contains('active');
+
+            // Close all other dropdowns
+            document.querySelectorAll('.dropdown').forEach(d => d.classList.remove('active'));
+
+            // Toggle this one
+            if (!wasActive) {
+                dropdown.classList.add('active');
+            }
+        });
+    });
+
     // Close dropdowns when clicking outside
     document.addEventListener('click', (e) => {
         if (!e.target.closest('.dropdown')) {
@@ -233,9 +250,22 @@ function openSessionWindow(sessionName) {
         },
         onminimize: () => {
             updateTaskbarButton(sessionName, true);
+            // Close WebSocket connection on minimize
+            if (win.ws) {
+                win.ws.close();
+                win.ws = null;
+            }
         },
         onrestore: () => {
             updateTaskbarButton(sessionName, false);
+            // Reconnect terminal on restore
+            if (win.terminal && win.fitAddon) {
+                setTimeout(() => {
+                    win.terminal.clear();
+                    win.fitAddon.fit();
+                    reconnectTerminal(sessionName, win);
+                }, 100);
+            }
         }
     });
 
@@ -300,12 +330,41 @@ function initTerminal(sessionName, win) {
         terminal.write('\r\n\x1b[31m● Disconnected\x1b[0m\r\n');
     };
 
-    // Send input as JSON
+    win.ws = ws;
+
+    // Send input as JSON (use win.ws so reconnects work)
     terminal.onData((data) => {
-        if (ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: 'input', data }));
+        if (win.ws && win.ws.readyState === WebSocket.OPEN) {
+            win.ws.send(JSON.stringify({ type: 'input', data }));
         }
     });
+}
+
+// Reconnect terminal WebSocket (used on restore from minimize)
+function reconnectTerminal(sessionName, win) {
+    const terminal = win.terminal;
+    if (!terminal) return;
+
+    const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const ws = new WebSocket(`${protocol}//${location.host}/ws/terminal/${sessionName}`);
+
+    ws.onopen = () => {
+        terminal.write('\x1b[32m● Reconnected\x1b[0m\r\n');
+    };
+
+    ws.onmessage = (event) => {
+        if (event.data instanceof Blob) {
+            event.data.text().then(text => terminal.write(text));
+        } else if (event.data instanceof ArrayBuffer) {
+            terminal.write(new TextDecoder().decode(event.data));
+        } else {
+            terminal.write(event.data);
+        }
+    };
+
+    ws.onclose = () => {
+        terminal.write('\r\n\x1b[31m● Disconnected\x1b[0m\r\n');
+    };
 
     win.ws = ws;
 }
