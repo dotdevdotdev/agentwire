@@ -10,13 +10,24 @@ You have access to a TTS voice layer for conversational communication.
 
 ## Using Voice
 
-Use the `say` command for spoken responses:
+Use the `say` command with `&` to speak asynchronously (fire and continue):
 
 ```bash
-say "Hello, I'll check that for you"
+say "Hello, I'll check that for you" &
 ```
 
-Audio routes automatically - if a browser is connected to your session, audio plays there. Otherwise it plays locally.
+**Say it and keep going.** Don't wait for speech to finish - queue the voice message and continue working. Audio routes automatically to browser or local speakers.
+
+## Voice-First by Default
+
+Use voice proactively throughout conversations - it's the primary communication channel:
+
+- **Acknowledge requests** before starting work
+- **Narrate progress** on longer tasks
+- **Report results** when things complete
+- **Ask questions** when you need input
+
+Text is for technical details the user needs to read/copy. Everything else should be spoken.
 
 ## When to Speak
 
@@ -39,13 +50,13 @@ Audio routes automatically - if a browser is connected to your session, audio pl
 ## Paralinguistic Tags
 
 ```bash
-say "[laugh] That's a creative solution"
-say "[sigh] Alright, let me dig into that"
-say "[chuckle] Well, that didn't work"
+say "[laugh] That's a creative solution" &
+say "[sigh] Alright, let me dig into that" &
+say "[chuckle] Well, that didn't work" &
 ```
 
 ## Key Points
 
-- Speech runs async (non-blocking)
+- **Always use `&`** to run async (non-blocking)
 - Keep spoken messages concise (1-2 sentences)
-- Use voice for conversational layer, text for technical details
+- Voice is the default - text only for technical details
