@@ -1,8 +1,10 @@
 """Safety CLI commands for AgentWire damage control integration."""
 
+import importlib.resources
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 from datetime import datetime, timedelta
@@ -20,6 +22,34 @@ CONFIG_DIR = Path.home() / ".agentwire"
 HOOKS_DIR = CONFIG_DIR / "hooks" / "damage-control"
 LOGS_DIR = CONFIG_DIR / "logs" / "damage-control"
 PATTERNS_FILE = HOOKS_DIR / "patterns.yaml"
+
+# Files to install from the package
+DAMAGE_CONTROL_FILES = [
+    "patterns.yaml",
+    "bash-tool-damage-control.py",
+    "edit-tool-damage-control.py",
+    "write-tool-damage-control.py",
+    "audit_logger.py",
+]
+
+
+def get_damage_control_source() -> Path:
+    """Get the path to the damage-control hooks in the installed package."""
+    # First try: hooks/damage-control inside the agentwire package
+    package_dir = Path(__file__).parent
+    source_dir = package_dir / "hooks" / "damage-control"
+    if source_dir.exists():
+        return source_dir
+
+    # Fallback: try importlib.resources (for installed packages)
+    try:
+        with importlib.resources.files("agentwire").joinpath("hooks/damage-control") as p:
+            if p.exists():
+                return Path(p)
+    except (TypeError, FileNotFoundError):
+        pass
+
+    raise FileNotFoundError("Could not find damage-control hooks in package")
 
 
 def is_glob_pattern(pattern: str) -> bool:
@@ -446,6 +476,14 @@ def safety_install_cmd() -> int:
         print("Installation cancelled.")
         return 0
 
+    # Find source files in package
+    try:
+        source_dir = get_damage_control_source()
+    except FileNotFoundError as e:
+        print(f"\n⚠️  {e}")
+        print("   The damage-control hooks are missing from the package.")
+        return 1
+
     # Create directories
     print()
     print("Creating directories...")
@@ -454,14 +492,20 @@ def safety_install_cmd() -> int:
     print(f"✓ Created {HOOKS_DIR}")
     print(f"✓ Created {LOGS_DIR}")
 
-    # Check if source patterns exist
-    source_patterns = Path("~/.agentwire/hooks/damage-control/patterns.yaml").expanduser()
-    if not source_patterns.exists():
-        print()
-        print(f"⚠️  Source patterns not found at: {source_patterns}")
-        print("   Please ensure damage-control hooks are properly set up.")
-        print("   See docs/missions/damage-control-integration.md")
-        return 1
+    # Copy files from package to user config
+    print()
+    print("Installing hooks...")
+    for filename in DAMAGE_CONTROL_FILES:
+        source_file = source_dir / filename
+        target_file = HOOKS_DIR / filename
+        if source_file.exists():
+            shutil.copy2(source_file, target_file)
+            # Make scripts executable
+            if filename.endswith(".py"):
+                target_file.chmod(0o755)
+            print(f"✓ Installed {filename}")
+        else:
+            print(f"⚠️  Missing {filename} in package")
 
     print()
     print("✓ Installation complete!")

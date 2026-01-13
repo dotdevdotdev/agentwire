@@ -72,6 +72,9 @@ packages = ["agentwire"]
 artifacts = [
     "agentwire/skills/*.md",
     "agentwire/sample_templates/*.yaml",
+    "agentwire/hooks/**/*.py",
+    "agentwire/hooks/**/*.yaml",
+    "agentwire/hooks/**/*.sh",
 ]
 exclude = [
     "agentwire/static/*.xcf",
