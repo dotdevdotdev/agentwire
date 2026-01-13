@@ -90,13 +90,13 @@ Copy lines 10-45 from cache_v2.py. Then modify the constructor to..."
 
 ```bash
 # Single worker for focused task
-agentwire new project/auth --roles worker
+agentwire new -s project/auth --roles worker
 agentwire send -s project/auth "Implement OAuth2 login flow..."
 
 # Parallel workers for independent tasks
-agentwire new project/frontend --roles worker
-agentwire new project/backend --roles worker
-agentwire new project/tests --roles worker
+agentwire new -s project/frontend --roles worker
+agentwire new -s project/backend --roles worker
+agentwire new -s project/tests --roles worker
 
 agentwire send -s project/frontend "Build the settings UI..."
 agentwire send -s project/backend "Add settings API endpoints..."
