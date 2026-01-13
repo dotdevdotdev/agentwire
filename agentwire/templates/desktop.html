@@ -1,0 +1,137 @@
+{% extends 'base.html' %}
+
+{% block title %}AgentWire Desktop{% endblock %}
+
+{% block styles %}
+<link rel="stylesheet" href="/static/css/desktop.css">
+{% endblock %}
+
+{% block content %}
+<div class="desktop-container">
+    <!-- Menu Bar -->
+    <div class="menu-bar">
+        <div class="menu-left">
+            <div class="menu-item logo">
+                <img src="/static/favicon-green.jpeg" alt="AgentWire">
+            </div>
+            <div class="menu-item dropdown" id="sessionsMenu">
+                <span>Sessions</span>
+                <div class="dropdown-content" id="sessionsDropdown">
+                    <div class="dropdown-header">Active Sessions</div>
+                    <div id="sessionsList" class="sessions-list">
+                        <div class="loading">Loading...</div>
+                    </div>
+                    <div class="dropdown-divider"></div>
+                    <div class="dropdown-item" id="newSessionBtn">
+                        <span class="icon">+</span> New Session
+                    </div>
+                </div>
+            </div>
+            <div class="menu-item dropdown" id="machinesMenu">
+                <span>Machines</span>
+                <div class="dropdown-content" id="machinesDropdown">
+                    <div class="dropdown-header">Connected Machines</div>
+                    <div id="machinesList" class="machines-list">
+                        <div class="loading">Loading...</div>
+                    </div>
+                </div>
+            </div>
+            <div class="menu-item dropdown" id="voiceMenu">
+                <span>Voice</span>
+                <div class="dropdown-content">
+                    <div class="dropdown-item" id="holdToTalkBtn">
+                        <span class="icon">🎤</span> Hold to Talk
+                    </div>
+                    <div class="dropdown-divider"></div>
+                    <div class="dropdown-header">Voice</div>
+                    <select id="voiceSelect" class="voice-select">
+                        {% for voice in voices %}
+                        <option value="{{ voice }}"{% if voice == default_voice %} selected{% endif %}>{{ voice }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+        </div>
+        <div class="menu-right">
+            <div class="status-item" id="connectionStatus">
+                <span class="status-dot disconnected"></span>
+                <span class="status-text">Disconnected</span>
+            </div>
+            <div class="status-item" id="sessionCount">
+                <span class="count">0</span> sessions
+            </div>
+            <div class="menu-time" id="menuTime"></div>
+        </div>
+    </div>
+
+    <!-- Desktop Area -->
+    <div class="desktop-area" id="desktopArea">
+        <div class="desktop-welcome" id="welcomeMessage">
+            <img src="/static/agentwire-logo-splash-green-dark.png" alt="AgentWire" class="welcome-logo">
+            <p>Select a session from the menu or create a new one</p>
+        </div>
+    </div>
+
+    <!-- Taskbar -->
+    <div class="taskbar" id="taskbar">
+        <div class="taskbar-windows" id="taskbarWindows">
+            <!-- Window buttons will be added here -->
+        </div>
+        <div class="taskbar-tray">
+            <div class="tray-item" id="voiceIndicator" title="Voice Status">
+                🔇
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- New Session Modal -->
+<div id="newSessionModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>New Session</h2>
+            <button class="modal-close" id="closeNewSessionModal">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-row">
+                <label>Session Name</label>
+                <input type="text" id="newSessionName" placeholder="e.g., my-project">
+            </div>
+            <div class="form-row">
+                <label>Machine</label>
+                <select id="newSessionMachine">
+                    <option value="">Local</option>
+                </select>
+            </div>
+            <div class="form-row">
+                <label>Project Path (optional)</label>
+                <input type="text" id="newSessionPath" placeholder="~/projects/name">
+            </div>
+            <div class="form-row">
+                <label>Voice</label>
+                <select id="newSessionVoice">
+                    {% for voice in voices %}
+                    <option value="{{ voice }}"{% if voice == default_voice %} selected{% endif %}>{{ voice }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="error" id="newSessionError"></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn secondary" id="cancelNewSession">Cancel</button>
+            <button class="btn primary" id="createNewSession">Create</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    window.AGENTWIRE_CONFIG = {
+        defaultVoice: '{{ default_voice }}',
+        voices: {{ voices | tojson }}
+    };
+</script>
+<script src="/static/js/winbox.bundle.min.js"></script>
+<script type="module" src="/static/js/desktop.js"></script>
+{% endblock %}
