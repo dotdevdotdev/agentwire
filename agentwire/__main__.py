@@ -2913,7 +2913,7 @@ def cmd_dev(args) -> int:
 
     # Load agentwire role for dev session
     dev_roles, _ = load_roles(["agentwire"], project_dir)
-    claude_cmd = _build_claude_cmd(bypass_permissions=True, roles=dev_roles if dev_roles else None)
+    claude_cmd = _build_claude_cmd(SessionType.CLAUDE_BYPASS, roles=dev_roles if dev_roles else None)
 
     # Create session
     print(f"Creating dev session '{session_name}' in {project_dir}...")
