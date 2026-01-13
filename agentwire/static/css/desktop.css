@@ -1,0 +1,488 @@
+/* Desktop UI - OS-like interface */
+
+:root {
+    --menu-height: 28px;
+    --taskbar-height: 40px;
+    --menu-bg: #1a1a1a;
+    --menu-hover: #333;
+    --menu-text: #e0e0e0;
+    --desktop-bg: #0d1117;
+    --accent: #2ea043;
+    --accent-hover: #3fb950;
+    --border-color: #30363d;
+    --dropdown-bg: #21262d;
+    --modal-bg: #161b22;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background: var(--desktop-bg);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 13px;
+    color: var(--menu-text);
+}
+
+.desktop-container {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    width: 100vw;
+}
+
+/* Menu Bar */
+.menu-bar {
+    height: var(--menu-height);
+    background: var(--menu-bg);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 8px;
+    border-bottom: 1px solid var(--border-color);
+    user-select: none;
+    z-index: 1000;
+}
+
+.menu-left, .menu-right {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.menu-item {
+    padding: 4px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    position: relative;
+}
+
+.menu-item:hover {
+    background: var(--menu-hover);
+}
+
+.menu-item.logo {
+    padding: 2px 8px;
+}
+
+.menu-item.logo img {
+    height: 18px;
+    width: 18px;
+    border-radius: 4px;
+}
+
+/* Dropdowns */
+.dropdown-content {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    min-width: 200px;
+    background: var(--dropdown-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    padding: 4px 0;
+    z-index: 1001;
+}
+
+.dropdown:hover .dropdown-content,
+.dropdown.active .dropdown-content {
+    display: block;
+}
+
+.dropdown-header {
+    padding: 6px 12px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #8b949e;
+    text-transform: uppercase;
+}
+
+.dropdown-item {
+    padding: 8px 12px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.dropdown-item:hover {
+    background: var(--menu-hover);
+}
+
+.dropdown-item .icon {
+    width: 16px;
+    text-align: center;
+}
+
+.dropdown-divider {
+    height: 1px;
+    background: var(--border-color);
+    margin: 4px 0;
+}
+
+.sessions-list, .machines-list {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.session-item, .machine-item {
+    padding: 8px 12px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.session-item:hover, .machine-item:hover {
+    background: var(--menu-hover);
+}
+
+.session-item .session-name {
+    font-weight: 500;
+}
+
+.session-item .session-status {
+    font-size: 11px;
+    color: #8b949e;
+}
+
+.session-item .session-status.active {
+    color: var(--accent);
+}
+
+.voice-select {
+    width: calc(100% - 24px);
+    margin: 4px 12px 8px;
+    padding: 6px 8px;
+    background: var(--menu-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    color: var(--menu-text);
+    font-size: 12px;
+}
+
+/* Status items */
+.status-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    font-size: 12px;
+}
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #f85149;
+}
+
+.status-dot.connected {
+    background: var(--accent);
+}
+
+.menu-time {
+    font-size: 12px;
+    padding: 4px 10px;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Desktop Area */
+.desktop-area {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+}
+
+.desktop-welcome {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    opacity: 0.6;
+}
+
+.welcome-logo {
+    max-width: 200px;
+    margin-bottom: 16px;
+}
+
+.desktop-welcome p {
+    color: #8b949e;
+    font-size: 14px;
+}
+
+/* Taskbar */
+.taskbar {
+    height: var(--taskbar-height);
+    background: var(--menu-bg);
+    border-top: 1px solid var(--border-color);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 8px;
+}
+
+.taskbar-windows {
+    display: flex;
+    gap: 4px;
+    flex: 1;
+    overflow-x: auto;
+}
+
+.taskbar-btn {
+    padding: 6px 12px;
+    background: var(--dropdown-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 180px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.taskbar-btn:hover {
+    background: var(--menu-hover);
+}
+
+.taskbar-btn.active {
+    background: var(--accent);
+    border-color: var(--accent);
+}
+
+.taskbar-tray {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-left: 8px;
+    border-left: 1px solid var(--border-color);
+}
+
+.tray-item {
+    padding: 4px 8px;
+    cursor: pointer;
+    border-radius: 4px;
+}
+
+.tray-item:hover {
+    background: var(--menu-hover);
+}
+
+/* Modal */
+.modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.6);
+    z-index: 2000;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal.active {
+    display: flex;
+}
+
+.modal-content {
+    background: var(--modal-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    width: 400px;
+    max-width: 90vw;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.modal-header h2 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    color: #8b949e;
+    font-size: 20px;
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+}
+
+.modal-close:hover {
+    color: var(--menu-text);
+}
+
+.modal-body {
+    padding: 16px;
+}
+
+.modal-footer {
+    padding: 16px;
+    border-top: 1px solid var(--border-color);
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.form-row {
+    margin-bottom: 12px;
+}
+
+.form-row label {
+    display: block;
+    margin-bottom: 4px;
+    font-size: 12px;
+    font-weight: 500;
+    color: #8b949e;
+}
+
+.form-row input,
+.form-row select {
+    width: 100%;
+    padding: 8px 12px;
+    background: var(--menu-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    color: var(--menu-text);
+    font-size: 13px;
+}
+
+.form-row input:focus,
+.form-row select:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.btn {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.btn.primary {
+    background: var(--accent);
+    color: white;
+}
+
+.btn.primary:hover {
+    background: var(--accent-hover);
+}
+
+.btn.secondary {
+    background: var(--dropdown-bg);
+    color: var(--menu-text);
+    border: 1px solid var(--border-color);
+}
+
+.btn.secondary:hover {
+    background: var(--menu-hover);
+}
+
+.error {
+    color: #f85149;
+    font-size: 12px;
+    margin-top: 8px;
+}
+
+.loading {
+    padding: 12px;
+    color: #8b949e;
+    font-size: 12px;
+    text-align: center;
+}
+
+/* WinBox customization */
+.winbox {
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.winbox.focus {
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.winbox .wb-header {
+    background: var(--menu-bg) !important;
+}
+
+.winbox .wb-title {
+    font-size: 13px;
+}
+
+.winbox .wb-body {
+    background: var(--desktop-bg);
+}
+
+/* Session window content */
+.session-window {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.session-terminal {
+    flex: 1;
+    overflow: hidden;
+}
+
+.session-toolbar {
+    height: 36px;
+    background: var(--menu-bg);
+    border-top: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 8px;
+}
+
+.session-voice-btn {
+    padding: 4px 12px;
+    background: var(--dropdown-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--menu-text);
+}
+
+.session-voice-btn:hover {
+    background: var(--menu-hover);
+}
+
+.session-voice-btn.recording {
+    background: #f85149;
+    border-color: #f85149;
+}
+
+.session-status-bar {
+    font-size: 11px;
+    color: #8b949e;
+}

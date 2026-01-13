@@ -144,6 +144,7 @@ class AgentWireServer:
         """Configure HTTP and WebSocket routes."""
         self.app.router.add_get("/health", self.handle_health)
         self.app.router.add_get("/", self.handle_dashboard)
+        self.app.router.add_get("/desktop", self.handle_desktop)
         self.app.router.add_get("/session/{name:.+}", self.handle_session)
         self.app.router.add_get("/ws/{name:.+}", self.handle_websocket)
         self.app.router.add_get("/ws/terminal/{name:.+}", self.handle_terminal_ws)
@@ -539,6 +540,18 @@ class AgentWireServer:
         response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
         return response
 
+    async def handle_desktop(self, request: web.Request) -> web.Response:
+        """Serve the desktop UI page."""
+        voices = await self._get_voices()
+        context = {
+            "version": __version__,
+            "voices": voices,
+            "default_voice": self.config.tts.default_voice,
+        }
+        response = aiohttp_jinja2.render_template("desktop.html", request, context)
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        return response
+
     # System sessions that get special treatment (restart instead of fork/new/recreate)
     SYSTEM_SESSIONS = {"agentwire", "agentwire-portal", "agentwire-tts"}
 
@@ -670,22 +683,44 @@ class AgentWireServer:
 
         try:
             # Parse session name for local vs remote
-            project, branch, machine = parse_session_name(session_name)
+            project, branch, machine_id = parse_session_name(session_name)
             session_name = f"{project}/{branch}" if branch else project
 
             # Build tmux attach command
-            if machine:
+            if machine_id:
+                # Look up machine config to get actual host
+                machine_config = self._get_machine_config(machine_id)
+                if not machine_config:
+                    logger.error(f"[Terminal] Machine not found: {machine_id}")
+                    await ws.close()
+                    return ws
+
+                ssh_host = machine_config.get("host", machine_id)
+                ssh_user = machine_config.get("user")
+                ssh_target = f"{ssh_user}@{ssh_host}" if ssh_user else ssh_host
+
                 # Remote session via SSH with PTY allocation
-                cmd = ["ssh", "-t", machine, "tmux", "attach", "-t", session_name]
+                cmd = ["ssh", "-t", "-o", "StrictHostKeyChecking=no", ssh_target, "tmux", "attach", "-t", session_name]
                 logger.info(f"[Terminal] Attaching to {session_name}: {' '.join(cmd)}")
 
-                # For remote, use subprocess with PTY via ssh -t
+                # Create PTY for SSH too (ssh -t needs local PTY)
+                master_fd, slave_fd = pty.openpty()
+
                 proc = await asyncio.create_subprocess_exec(
                     *cmd,
-                    stdin=asyncio.subprocess.PIPE,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
+                    stdin=slave_fd,
+                    stdout=slave_fd,
+                    stderr=slave_fd,
+                    preexec_fn=os.setsid,
                 )
+
+                os.close(slave_fd)
+                os.set_blocking(master_fd, False)
+
+                # Send initial window size to trigger tmux redraw
+                winsize = struct.pack("HHHH", 24, 80, 0, 0)
+                fcntl.ioctl(master_fd, termios.TIOCSWINSZ, winsize)
+                logger.info(f"[Terminal] Set initial PTY size for SSH to 80x24 (fd={master_fd})")
             else:
                 # Local session - use PTY
                 cmd = ["tmux", "attach", "-t", session_name]
