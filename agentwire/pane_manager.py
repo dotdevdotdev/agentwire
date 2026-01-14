@@ -59,6 +59,20 @@ def get_current_pane_index() -> int | None:
     return None
 
 
+def _get_window_dimensions(session: str) -> tuple[int, int]:
+    """Get window width and height for smart split direction."""
+    result = subprocess.run(
+        ["tmux", "display", "-t", f"{session}:0", "-p", "#{window_width}:#{window_height}"],
+        capture_output=True,
+        text=True
+    )
+    if result.returncode == 0:
+        parts = result.stdout.strip().split(":")
+        if len(parts) == 2:
+            return int(parts[0]), int(parts[1])
+    return 120, 40  # default to landscape
+
+
 def spawn_worker_pane(
     session: str | None = None,
     cwd: str | None = None,
@@ -82,15 +96,21 @@ def spawn_worker_pane(
         if session is None:
             raise RuntimeError("Not in tmux session and no session specified")
 
+    # Smart split direction based on terminal dimensions
+    # Default to stacked panes (-v) which works well on tablets/portrait
+    # Only use side-by-side (-h) when terminal is very wide (ultrawide/landscape)
+    width, height = _get_window_dimensions(session)
+    # Use side-by-side only if width is >2.5x height (clearly ultrawide)
+    split_flag = "-h" if width > height * 2.5 else "-v"
+
     # Build split-window command
-    # -h: horizontal split (side by side)
     # -d: don't change focus to new pane
     # -P: print pane info
     # -F: format string
     split_cmd = [
         "tmux", "split-window",
         "-t", f"{session}:0",  # target window 0
-        "-h",  # horizontal split
+        split_flag,  # smart split direction
         "-d",  # detached (don't steal focus)
         "-P", "-F", "#{pane_index}:#{pane_id}"  # return pane info
     ]
@@ -114,9 +134,11 @@ def spawn_worker_pane(
     if cmd:
         send_to_pane(session, pane_index, cmd)
 
-    # Rebalance panes for even layout
+    # Rebalance panes - use layout matching split direction
+    # even-vertical = stacked (for -v), even-horizontal = side by side (for -h)
+    layout = "even-horizontal" if split_flag == "-h" else "even-vertical"
     subprocess.run(
-        ["tmux", "select-layout", "-t", f"{session}:0", "tiled"],
+        ["tmux", "select-layout", "-t", f"{session}:0", layout],
         capture_output=True
     )
 

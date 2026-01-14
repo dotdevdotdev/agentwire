@@ -281,17 +281,26 @@ def _run_remote(machine_id: str, command: str) -> subprocess.CompletedProcess:
     else:
         ssh_target = host
 
-    # Build SSH command with optional port
-    ssh_cmd = ["ssh"]
+    # Build SSH command with optional port and connection timeout
+    ssh_cmd = ["ssh", "-o", "ConnectTimeout=5", "-o", "BatchMode=yes"]
     if port:
         ssh_cmd.extend(["-p", str(port)])
     ssh_cmd.extend([ssh_target, command])
 
-    return subprocess.run(
-        ssh_cmd,
-        capture_output=True,
-        text=True,
-    )
+    try:
+        return subprocess.run(
+            ssh_cmd,
+            capture_output=True,
+            text=True,
+            timeout=10,  # Hard timeout for command execution
+        )
+    except subprocess.TimeoutExpired:
+        return subprocess.CompletedProcess(
+            args=ssh_cmd,
+            returncode=1,
+            stdout="",
+            stderr=f"SSH connection to {machine_id} timed out",
+        )
 
 
 def _get_all_machines() -> list[dict]:
