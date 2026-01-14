@@ -40,50 +40,50 @@ tmux display -t %42 -p '#{pane_index}'
 
 ## Wave 1: Human Actions (RUNTIME BLOCKING)
 
-- [ ] None required
+- [x] None required
 
 ## Wave 2: Core Pane Management Module
 
 Create `agentwire/pane_manager.py` with:
 
-- [ ] `spawn_worker_pane(session: str, cwd: str, cmd: str) -> int` - returns pane index
-- [ ] `list_panes(session: str) -> List[PaneInfo]` - pane index, pid, command
-- [ ] `send_to_pane(session: str, pane_index: int, text: str)`
-- [ ] `capture_pane(session: str, pane_index: int) -> str`
-- [ ] `kill_pane(session: str, pane_index: int)`
-- [ ] `focus_pane(session: str, pane_index: int)`
-- [ ] `get_pane_info(tmux_pane_id: str) -> PaneInfo`
+- [x] `spawn_worker_pane(session: str, cwd: str, cmd: str) -> int` - returns pane index
+- [x] `list_panes(session: str) -> List[PaneInfo]` - pane index, pid, command
+- [x] `send_to_pane(session: str, pane_index: int, text: str)`
+- [x] `capture_pane(session: str, pane_index: int) -> str`
+- [x] `kill_pane(session: str, pane_index: int)`
+- [x] `focus_pane(session: str, pane_index: int)`
+- [x] `get_pane_info(tmux_pane_id: str) -> PaneInfo`
 
 ## Wave 3: CLI Command Updates
 
 Update `__main__.py` commands:
 
-- [ ] `agentwire spawn` - NEW command for worker panes
+- [x] `agentwire spawn` - NEW command for worker panes
   - Auto-detects session from `$TMUX_PANE` env var
   - `--roles` - worker roles (default: worker)
   - `--cwd` - working directory (default: current)
   - `-s` - optional explicit session (for cross-session spawning)
   - Returns pane index on success
 
-- [ ] `agentwire send --pane N` - add pane targeting
+- [x] `agentwire send --pane N` - add pane targeting
   - `--pane N` targets specific pane in current session
   - Auto-detects session from `$TMUX_PANE`
   - `-s` still works for session-level sends
 
-- [ ] `agentwire output --pane N` - add pane targeting
+- [x] `agentwire output --pane N` - add pane targeting
   - `--pane N` captures specific pane output
   - Auto-detects session from `$TMUX_PANE`
 
-- [ ] `agentwire kill --pane N` - add pane targeting
+- [x] `agentwire kill --pane N` - add pane targeting
   - `--pane N` kills specific pane (not whole session)
   - `-s` without `--pane` kills entire session (existing behavior)
 
-- [ ] `agentwire jump --pane N` - NEW command to focus pane
+- [x] `agentwire jump --pane N` - NEW command to focus pane
   - Switches focus to specified pane
   - Auto-detects session from `$TMUX_PANE`
   - `-s` for cross-session jumping
 
-- [ ] `agentwire list` - show panes when inside session
+- [x] `agentwire list` - show panes when inside session
   - Auto-detect: if `$TMUX_PANE` set, show panes in current session
   - `--sessions` flag to show sessions instead
   - Outside tmux: show sessions (existing behavior)
@@ -92,55 +92,55 @@ Update `__main__.py` commands:
 
 Update `agentwire/roles/agentwire.md` so session agents spawn panes by default:
 
-- [ ] Replace `agentwire new -s name --roles worker` examples with `agentwire spawn`
-- [ ] Update "Spawning Workers" section with pane commands:
-  ```bash
-  # Spawn worker pane (auto-detects current session)
-  agentwire spawn --roles worker
-  agentwire spawn --cwd /path/to/project --roles worker
-
-  # Send to worker pane
-  agentwire send --pane 1 "Build the auth module..."
-
-  # Check worker output
-  agentwire output --pane 1
-
-  # Kill worker when done
-  agentwire kill --pane 1
-
-  # Jump to worker pane (for visual inspection)
-  agentwire jump --pane 1
-  ```
-- [ ] Add note about visual dashboard (can see workers while orchestrating)
-- [ ] Update "Monitoring and Reporting" section for pane-based workflow
-- [ ] Keep `agentwire new -s name --roles worker` as alternative for separate sessions
+- [x] Replace `agentwire new -s name --roles worker` examples with `agentwire spawn`
+- [x] Update "Spawning Workers" section with pane commands
+- [x] Add note about visual dashboard (can see workers while orchestrating)
+- [x] Update "Monitoring and Reporting" section for pane-based workflow
+- [x] Keep `agentwire new -s name --roles worker` as alternative for separate sessions
 
 ## Wave 5: Integration with Existing Patterns
 
-- [ ] Keep `agentwire new` for creating main sessions (unchanged)
-- [ ] Update session status to include pane count
-- [ ] Ensure `agentwire output` auto-detects if targeting session or pane
-- [ ] `agentwire list` without flags shows panes in current session
+- [x] Keep `agentwire new` for creating main sessions (unchanged)
+- [x] Ensure `agentwire output` auto-detects if targeting session or pane
+- [x] `agentwire list` without flags shows panes in current session
 
 ## Wave 6: Documentation
 
-- [ ] Update CLI help text for new flags
-- [ ] Add pane workflow examples to README
-- [ ] Document tmux keyboard shortcuts for pane navigation
-- [ ] Update CLAUDE.md with pane-based worker patterns
+- [x] Update CLI help text for new flags
+- [x] Update CLAUDE.md with pane-based worker patterns
+
+## Wave 7: Worktree Workers
+
+Add `--branch NAME` flag for isolated parallel work:
+
+- [x] Add `--branch NAME` flag to `agentwire spawn`
+  - Creates branch from current HEAD
+  - Creates worktree in sibling directory (`../{repo}-{branch}`)
+  - Spawns worker pane with cwd set to worktree
+  - Worker can commit independently, PR back to parent branch
+
+- [x] Add worktree helper functions to `pane_manager.py`
+  - `create_worker_worktree(branch_name: str) -> str` - returns worktree path
+  - Detect repo root and name from cwd
+  - Handle existing branch/worktree gracefully
+
+- [x] Update role instructions with worktree pattern
+  - When to use `--branch` for isolated commits
+  - How workers should commit and create PRs
 
 ## Completion Criteria
 
-- [ ] Can spawn worker as pane: `agentwire spawn --roles worker`
-- [ ] Session auto-detected from `$TMUX_PANE` (no `-s` needed)
-- [ ] Can list panes: `agentwire list` (auto-detects context)
-- [ ] Can send to pane: `agentwire send --pane 1 "do something"`
-- [ ] Can capture pane output: `agentwire output --pane 1`
-- [ ] Can kill worker pane: `agentwire kill --pane 1`
-- [ ] Can jump to pane: `agentwire jump --pane 1`
-- [ ] Visual dashboard works: multiple agents visible in tiled panes
-- [ ] Role instructions updated: agents use pane commands by default
-- [ ] Fallback works: `agentwire new -s name --roles worker` still creates separate session
+- [x] Can spawn worker as pane: `agentwire spawn --roles worker`
+- [x] Session auto-detected from `$TMUX_PANE` (no `-s` needed)
+- [x] Can list panes: `agentwire list` (auto-detects context)
+- [x] Can send to pane: `agentwire send --pane 1 "do something"`
+- [x] Can capture pane output: `agentwire output --pane 1`
+- [x] Can kill worker pane: `agentwire kill --pane 1`
+- [x] Can jump to pane: `agentwire jump --pane 1`
+- [x] Visual dashboard works: multiple agents visible in tiled panes
+- [x] Role instructions updated: agents use pane commands by default
+- [x] Fallback works: `agentwire new -s name --roles worker` still creates separate session
+- [x] Worktree workers: `agentwire spawn --branch feature-x` creates isolated worktree
 
 ## Notes
 

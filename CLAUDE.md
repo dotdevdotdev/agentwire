@@ -28,9 +28,17 @@ agentwire send -s name "prompt" # not: tmux send-keys
 agentwire output -s name        # not: tmux capture-pane
 agentwire kill -s name          # not: tmux kill-session
 agentwire list                  # not: tmux list-sessions
+
+# Pane commands (for workers within same session)
+agentwire spawn --roles worker  # spawn worker pane
+agentwire send --pane 1 "task"  # send to pane
+agentwire output --pane 1       # read pane output
+agentwire kill --pane 1         # kill pane
+agentwire jump --pane 1         # focus pane
 ```
 
 Session formats: `name`, `project/branch` (worktree), `name@machine` (remote)
+Pane targeting: `--pane N` auto-detects session from `$TMUX_PANE`
 
 For CLI details: `agentwire --help` or `agentwire <cmd> --help`
 
@@ -52,12 +60,13 @@ Per-session config (type, roles, voice) lives in `.agentwire.yml` in each projec
 | Role | Created With | Restrictions |
 |------|--------------|--------------|
 | agentwire | `agentwire new -s name` or `--roles agentwire` | None (guided by role instructions) |
-| worker | `agentwire new -s name --roles worker` | No voice, no AskUserQuestion |
+| worker | `agentwire spawn` or `--roles worker` | No voice, no AskUserQuestion |
 
 ## Key Patterns
 
-- **agentwire sessions** coordinate via voice, delegate to workers for multi-file work
-- **worker sessions** execute autonomously, report factual results
+- **agentwire sessions** coordinate via voice, delegate to workers
+- **worker panes** spawn within the orchestrator's session (visible dashboard)
+- **Pane 0** = orchestrator, **panes 1+** = workers
 - **Damage-control hooks** block dangerous ops (`rm -rf`, `git push --force`, etc.)
 - **Smart TTS routing** - audio goes to browser if connected, local speakers if not
 
