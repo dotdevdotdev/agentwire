@@ -2213,9 +2213,8 @@ def cmd_kill(args) -> int:
             if not session:
                 return _output_result(False, json_mode, "Not in tmux session and no session specified")
 
-            # Send /exit for clean shutdown
-            target = f"{session}:0.{pane_index}"
-            subprocess.run(["tmux", "send-keys", "-t", target, "/exit", "Enter"])
+            # Send /exit for clean shutdown (use send_to_pane for proper timing)
+            pane_manager.send_to_pane(session, pane_index, "/exit")
             if not json_mode:
                 print(f"Sent /exit to pane {pane_index}, waiting 3s...")
             time.sleep(3)
