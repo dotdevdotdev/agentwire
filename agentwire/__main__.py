@@ -2299,11 +2299,27 @@ def cmd_spawn(args) -> int:
 
     Creates a new tmux pane in the orchestrator's session and starts
     Claude Code with the specified roles (default: worker).
+
+    With --branch, creates an isolated worktree for the worker to enable
+    parallel commits without conflicts.
     """
     json_mode = getattr(args, 'json', False)
     cwd = getattr(args, 'cwd', None) or os.getcwd()
     roles_arg = getattr(args, 'roles', 'worker')
     session = getattr(args, 'session', None)
+    branch = getattr(args, 'branch', None)
+
+    worktree_path = None
+
+    # Handle --branch: create worktree for isolated work
+    if branch:
+        try:
+            worktree_path = pane_manager.create_worker_worktree(branch, cwd)
+            cwd = worktree_path
+            if not json_mode:
+                print(f"Created worktree at {worktree_path}")
+        except RuntimeError as e:
+            return _output_result(False, json_mode, f"Failed to create worktree: {e}")
 
     # Parse roles
     role_names = [r.strip() for r in roles_arg.split(",") if r.strip()]
@@ -2325,12 +2341,16 @@ def cmd_spawn(args) -> int:
         )
 
         if json_mode:
-            _output_json({
+            result = {
                 "success": True,
                 "pane": pane_index,
                 "session": session or pane_manager.get_current_session(),
                 "roles": role_names,
-            })
+            }
+            if branch:
+                result["branch"] = branch
+                result["worktree"] = worktree_path
+            _output_json(result)
         else:
             print(f"Spawned pane {pane_index}")
 
@@ -5111,6 +5131,7 @@ def main() -> int:
     spawn_parser = subparsers.add_parser("spawn", help="Spawn a worker pane in current session")
     spawn_parser.add_argument("-s", "--session", help="Target session (default: auto-detect)")
     spawn_parser.add_argument("--cwd", help="Working directory (default: current)")
+    spawn_parser.add_argument("--branch", "-b", help="Create worktree on this branch for isolated commits")
     spawn_parser.add_argument("--roles", default="worker", help="Comma-separated roles (default: worker)")
     spawn_parser.add_argument("--json", action="store_true", help="Output as JSON")
     spawn_parser.set_defaults(func=cmd_spawn)

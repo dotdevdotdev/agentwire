@@ -119,6 +119,21 @@ agentwire send --pane 3 "Write integration tests for settings..."
 
 **Visual dashboard**: All worker panes are visible in your terminal - watch progress without polling.
 
+**Isolated branches** (for parallel commits): When workers need to commit independently:
+```bash
+# Each worker gets its own branch/worktree
+agentwire spawn --branch research-x --roles worker
+agentwire spawn --branch research-y --roles worker
+agentwire spawn --branch research-z --roles worker
+
+# Send tasks - each worker commits to their own branch
+agentwire send --pane 1 "Research topic X, commit findings, create PR to main"
+agentwire send --pane 2 "Research topic Y, commit findings, create PR to main"
+agentwire send --pane 3 "Research topic Z, commit findings, create PR to main"
+```
+
+Use `--branch` when workers need to make commits that would conflict in the same directory.
+
 **Alternative (separate sessions)**: For longer-running or isolated work:
 ```bash
 agentwire new -s project/auth --roles worker

@@ -109,6 +109,25 @@ Update `agentwire/roles/agentwire.md` so session agents spawn panes by default:
 - [x] Update CLI help text for new flags
 - [x] Update CLAUDE.md with pane-based worker patterns
 
+## Wave 7: Worktree Workers
+
+Add `--branch NAME` flag for isolated parallel work:
+
+- [x] Add `--branch NAME` flag to `agentwire spawn`
+  - Creates branch from current HEAD
+  - Creates worktree in sibling directory (`../{repo}-{branch}`)
+  - Spawns worker pane with cwd set to worktree
+  - Worker can commit independently, PR back to parent branch
+
+- [x] Add worktree helper functions to `pane_manager.py`
+  - `create_worker_worktree(branch_name: str) -> str` - returns worktree path
+  - Detect repo root and name from cwd
+  - Handle existing branch/worktree gracefully
+
+- [x] Update role instructions with worktree pattern
+  - When to use `--branch` for isolated commits
+  - How workers should commit and create PRs
+
 ## Completion Criteria
 
 - [x] Can spawn worker as pane: `agentwire spawn --roles worker`
@@ -121,6 +140,7 @@ Update `agentwire/roles/agentwire.md` so session agents spawn panes by default:
 - [x] Visual dashboard works: multiple agents visible in tiled panes
 - [x] Role instructions updated: agents use pane commands by default
 - [x] Fallback works: `agentwire new -s name --roles worker` still creates separate session
+- [x] Worktree workers: `agentwire spawn --branch feature-x` creates isolated worktree
 
 ## Notes
 

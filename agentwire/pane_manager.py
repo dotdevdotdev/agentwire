@@ -325,3 +325,160 @@ def get_pane_info(tmux_pane_id: str) -> PaneInfo | None:
         )
 
     return None
+
+
+# === Worktree Support ===
+
+
+@dataclass
+class RepoInfo:
+    """Information about a git repository."""
+    root: str  # Absolute path to repo root
+    name: str  # Repository name (directory name)
+    current_branch: str  # Current branch name
+
+
+def get_repo_info(cwd: str | None = None) -> RepoInfo | None:
+    """Get git repository info from the current or specified directory.
+
+    Args:
+        cwd: Directory to check (default: current working directory)
+
+    Returns:
+        RepoInfo if in a git repo, None otherwise.
+    """
+    if cwd is None:
+        cwd = os.getcwd()
+
+    # Get repo root
+    result = subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"],
+        capture_output=True,
+        text=True,
+        cwd=cwd
+    )
+    if result.returncode != 0:
+        return None
+
+    root = result.stdout.strip()
+    name = os.path.basename(root)
+
+    # Get current branch
+    result = subprocess.run(
+        ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+        capture_output=True,
+        text=True,
+        cwd=cwd
+    )
+    current_branch = result.stdout.strip() if result.returncode == 0 else "HEAD"
+
+    return RepoInfo(root=root, name=name, current_branch=current_branch)
+
+
+def create_worker_worktree(branch_name: str, cwd: str | None = None) -> str:
+    """Create a git worktree for a worker branch.
+
+    Creates a new branch from current HEAD and a worktree in a sibling directory.
+    If the branch already exists, uses it. If the worktree already exists, returns its path.
+
+    Args:
+        branch_name: Name for the new branch
+        cwd: Working directory (default: current)
+
+    Returns:
+        Absolute path to the worktree directory.
+
+    Raises:
+        RuntimeError: If not in a git repo or worktree creation fails.
+    """
+    repo = get_repo_info(cwd)
+    if repo is None:
+        raise RuntimeError("Not in a git repository")
+
+    # Worktree location: sibling directory named {repo}-{branch}
+    # e.g., /projects/agentwire -> /projects/agentwire-feature-x
+    parent_dir = os.path.dirname(repo.root)
+    worktree_path = os.path.join(parent_dir, f"{repo.name}-{branch_name}")
+
+    # Check if worktree already exists
+    if os.path.exists(worktree_path):
+        # Verify it's a valid worktree
+        result = subprocess.run(
+            ["git", "rev-parse", "--is-inside-work-tree"],
+            capture_output=True,
+            text=True,
+            cwd=worktree_path
+        )
+        if result.returncode == 0 and result.stdout.strip() == "true":
+            return worktree_path
+        else:
+            raise RuntimeError(f"Path exists but is not a git worktree: {worktree_path}")
+
+    # Check if branch exists
+    result = subprocess.run(
+        ["git", "show-ref", "--verify", "--quiet", f"refs/heads/{branch_name}"],
+        capture_output=True,
+        cwd=repo.root
+    )
+    branch_exists = result.returncode == 0
+
+    if branch_exists:
+        # Create worktree from existing branch
+        result = subprocess.run(
+            ["git", "worktree", "add", worktree_path, branch_name],
+            capture_output=True,
+            text=True,
+            cwd=repo.root
+        )
+    else:
+        # Create new branch and worktree from current HEAD
+        result = subprocess.run(
+            ["git", "worktree", "add", "-b", branch_name, worktree_path],
+            capture_output=True,
+            text=True,
+            cwd=repo.root
+        )
+
+    if result.returncode != 0:
+        raise RuntimeError(f"Failed to create worktree: {result.stderr}")
+
+    return worktree_path
+
+
+def remove_worker_worktree(worktree_path: str) -> bool:
+    """Remove a worker worktree.
+
+    Args:
+        worktree_path: Path to the worktree to remove
+
+    Returns:
+        True if removed successfully, False otherwise.
+    """
+    if not os.path.exists(worktree_path):
+        return True
+
+    # Get the main repo to run worktree remove from
+    repo = get_repo_info(worktree_path)
+    if repo is None:
+        return False
+
+    # Find the main worktree (not this one)
+    result = subprocess.run(
+        ["git", "worktree", "list", "--porcelain"],
+        capture_output=True,
+        text=True,
+        cwd=worktree_path
+    )
+
+    if result.returncode != 0:
+        return False
+
+    # Remove the worktree
+    result = subprocess.run(
+        ["git", "worktree", "remove", worktree_path],
+        capture_output=True,
+        text=True,
+        cwd=worktree_path
+    )
+
+    return result.returncode == 0
