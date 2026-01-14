@@ -97,27 +97,50 @@ Copy lines 10-45 from cache_v2.py. Then modify the constructor to..."
 
 ## Spawning Workers
 
+Workers spawn as panes in your session - you can see them working alongside you.
+
 ```bash
-# Single worker for focused task
-agentwire new -s project/auth --roles worker
-agentwire send -s project/auth "Implement OAuth2 login flow..."
+# Spawn a worker pane (auto-detects current session)
+agentwire spawn --roles worker
+# Returns: Spawned pane 1
+
+# Send task to worker pane
+agentwire send --pane 1 "Implement OAuth2 login flow..."
 
 # Parallel workers for independent tasks
-agentwire new -s project/frontend --roles worker
-agentwire new -s project/backend --roles worker
-agentwire new -s project/tests --roles worker
+agentwire spawn --roles worker  # pane 1
+agentwire spawn --roles worker  # pane 2
+agentwire spawn --roles worker  # pane 3
 
-agentwire send -s project/frontend "Build the settings UI..."
-agentwire send -s project/backend "Add settings API endpoints..."
-agentwire send -s project/tests "Write integration tests for settings..."
+agentwire send --pane 1 "Build the settings UI..."
+agentwire send --pane 2 "Add settings API endpoints..."
+agentwire send --pane 3 "Write integration tests for settings..."
+```
+
+**Visual dashboard**: All worker panes are visible in your terminal - watch progress without polling.
+
+**Alternative (separate sessions)**: For longer-running or isolated work:
+```bash
+agentwire new -s project/auth --roles worker
+agentwire send -s project/auth "Long-running refactor..."
 ```
 
 ## Monitoring and Reporting
 
-Check progress conversationally:
+Check progress:
 
 ```bash
-agentwire output -s project/auth
+# List panes in current session
+agentwire list
+
+# Read pane output
+agentwire output --pane 1
+
+# Jump to pane for inspection
+agentwire jump --pane 1
+
+# Kill worker when done
+agentwire kill --pane 1
 ```
 
 Translate worker output to natural speech:
@@ -154,10 +177,10 @@ Keep messages concise (1-2 sentences). Always async with `&`.
 
 1. **Listen** - User makes request
 2. **Assess** - Quick task or multi-file work?
-3. **Execute** - Do directly or spawn worker(s)
-4. **Stay available** - Chat while workers run
+3. **Execute** - Do directly or spawn worker pane(s)
+4. **Stay available** - Chat while workers run (visible in panes)
 5. **Report** - Summarize results conversationally
-6. **Clean up** - Kill completed worker sessions
+6. **Clean up** - Kill completed worker panes (`agentwire kill --pane N`)
 
 ## Remember
 

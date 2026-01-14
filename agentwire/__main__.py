@@ -19,6 +19,7 @@ from .worktree import parse_session_name, get_session_path, ensure_worktree, rem
 from . import cli_safety
 from .roles import RoleConfig, load_roles, merge_roles
 from .project_config import ProjectConfig, SessionType, save_project_config, get_voice_from_config, load_project_config
+from . import pane_manager
 
 # Default config directory
 CONFIG_DIR = Path.home() / ".agentwire"
@@ -1446,19 +1447,43 @@ def _remote_say(text: str, session: str, portal_url: str) -> int:
 # === Session Commands ===
 
 def cmd_send(args) -> int:
-    """Send a prompt to a tmux session (adds Enter automatically).
+    """Send a prompt to a tmux session or pane (adds Enter automatically).
 
     Supports remote sessions with session@machine format.
+    Use --pane N to send to a specific pane in the current session.
     """
-    session_full = args.session
+    session_full = getattr(args, 'session', None)
+    pane_index = getattr(args, 'pane', None)
     prompt = " ".join(args.prompt) if args.prompt else ""
     json_mode = getattr(args, 'json', False)
 
+    # Handle pane mode (auto-detect session from environment)
+    if pane_index is not None:
+        if not prompt:
+            return _output_result(False, json_mode, "Usage: agentwire send --pane N <prompt>")
+
+        try:
+            pane_manager.send_to_pane(session_full, pane_index, prompt)
+            if json_mode:
+                _output_json({
+                    "success": True,
+                    "pane": pane_index,
+                    "session": session_full or pane_manager.get_current_session(),
+                    "message": "Prompt sent"
+                })
+            else:
+                print(f"Sent to pane {pane_index}")
+            return 0
+        except RuntimeError as e:
+            return _output_result(False, json_mode, str(e))
+
+    # Session mode (original behavior)
     if not session_full:
         if json_mode:
-            print(json.dumps({"success": False, "error": "Session name required"}))
+            print(json.dumps({"success": False, "error": "Session name required (-s) or pane number (--pane)"}))
         else:
             print("Usage: agentwire send -s <session> <prompt>", file=sys.stderr)
+            print("   or: agentwire send --pane N <prompt>", file=sys.stderr)
         return 1
 
     if not prompt:
@@ -1550,10 +1575,48 @@ def cmd_send(args) -> int:
 
 
 def cmd_list(args) -> int:
-    """List all tmux sessions from all registered machines."""
+    """List tmux sessions or panes.
+
+    When inside a tmux session, shows panes by default.
+    Use --sessions to show sessions instead.
+    """
     json_mode = getattr(args, 'json', False)
     local_only = getattr(args, 'local', False)
+    show_sessions = getattr(args, 'sessions', False)
 
+    # Check if we're inside a tmux session
+    current_session = pane_manager.get_current_session()
+
+    # If inside tmux and not explicitly asking for sessions, show panes
+    if current_session and not show_sessions:
+        panes = pane_manager.list_panes(current_session)
+
+        if json_mode:
+            pane_data = [
+                {
+                    "index": p.index,
+                    "pane_id": p.pane_id,
+                    "pid": p.pid,
+                    "command": p.command,
+                    "active": p.active,
+                }
+                for p in panes
+            ]
+            _output_json({"success": True, "session": current_session, "panes": pane_data})
+            return 0
+
+        if not panes:
+            print(f"No panes in session '{current_session}'")
+            return 0
+
+        print(f"Panes in {current_session}:")
+        for p in panes:
+            active_marker = " *" if p.active else ""
+            role = "orchestrator" if p.index == 0 else "worker"
+            print(f"  {p.index}: [{role}] {p.command}{active_marker}")
+        return 0
+
+    # Show sessions (original behavior)
     all_sessions = []
 
     # Check if we're running in Docker container (portal-only mode)
@@ -2018,19 +2081,41 @@ def cmd_new(args) -> int:
 
 
 def cmd_output(args) -> int:
-    """Read output from a tmux session.
+    """Read output from a tmux session or pane.
 
     Supports remote sessions with session@machine format.
+    Use --pane N to read from a specific pane in the current session.
     """
-    session_full = args.session
+    session_full = getattr(args, 'session', None)
+    pane_index = getattr(args, 'pane', None)
     lines = args.lines or 50
     json_mode = getattr(args, 'json', False)
 
+    # Handle pane mode (auto-detect session from environment)
+    if pane_index is not None:
+        try:
+            output = pane_manager.capture_pane(session_full, pane_index, lines)
+            if json_mode:
+                _output_json({
+                    "success": True,
+                    "pane": pane_index,
+                    "session": session_full or pane_manager.get_current_session(),
+                    "lines": lines,
+                    "output": output
+                })
+            else:
+                print(output)
+            return 0
+        except RuntimeError as e:
+            return _output_result(False, json_mode, str(e))
+
+    # Session mode (original behavior)
     if not session_full:
         if json_mode:
-            print(json.dumps({"success": False, "error": "Session name required"}))
+            print(json.dumps({"success": False, "error": "Session name required (-s) or pane number (--pane)"}))
         else:
             print("Usage: agentwire output -s <session> [-n lines]", file=sys.stderr)
+            print("   or: agentwire output --pane N [-n lines]", file=sys.stderr)
         return 1
 
     # Parse session@machine format
@@ -2100,15 +2185,50 @@ def cmd_output(args) -> int:
 
 
 def cmd_kill(args) -> int:
-    """Kill a tmux session (with clean Claude exit).
+    """Kill a tmux session or pane (with clean Claude exit).
 
     Supports remote sessions with session@machine format.
+    Use --pane N to kill a specific pane in the current session.
     """
-    session_full = args.session
+    session_full = getattr(args, 'session', None)
+    pane_index = getattr(args, 'pane', None)
     json_mode = getattr(args, 'json', False)
 
+    # Handle pane mode (auto-detect session from environment)
+    if pane_index is not None:
+        if pane_index == 0:
+            return _output_result(False, json_mode, "Cannot kill pane 0 (orchestrator)")
+
+        try:
+            session = session_full or pane_manager.get_current_session()
+            if not session:
+                return _output_result(False, json_mode, "Not in tmux session and no session specified")
+
+            # Send /exit for clean shutdown
+            target = f"{session}:0.{pane_index}"
+            subprocess.run(["tmux", "send-keys", "-t", target, "/exit", "Enter"])
+            if not json_mode:
+                print(f"Sent /exit to pane {pane_index}, waiting 3s...")
+            time.sleep(3)
+
+            # Kill the pane
+            pane_manager.kill_pane(session, pane_index)
+
+            if json_mode:
+                _output_json({
+                    "success": True,
+                    "pane": pane_index,
+                    "session": session,
+                })
+            else:
+                print(f"Killed pane {pane_index}")
+            return 0
+        except RuntimeError as e:
+            return _output_result(False, json_mode, str(e))
+
+    # Session mode (original behavior)
     if not session_full:
-        return _output_result(False, json_mode, "Usage: agentwire kill -s <session>")
+        return _output_result(False, json_mode, "Usage: agentwire kill -s <session> or --pane N")
 
     # Parse session@machine format
     session, machine_id = _parse_session_target(session_full)
@@ -2164,6 +2284,79 @@ def cmd_kill(args) -> int:
     if json_mode:
         _output_json({"success": True, "session": session_full})
     return 0
+
+
+def cmd_spawn(args) -> int:
+    """Spawn a worker pane in the current session.
+
+    Creates a new tmux pane in the orchestrator's session and starts
+    Claude Code with the specified roles (default: worker).
+    """
+    json_mode = getattr(args, 'json', False)
+    cwd = getattr(args, 'cwd', None) or os.getcwd()
+    roles_arg = getattr(args, 'roles', 'worker')
+    session = getattr(args, 'session', None)
+
+    # Parse roles
+    role_names = [r.strip() for r in roles_arg.split(",") if r.strip()]
+
+    # Load and validate roles
+    roles, missing = load_roles(role_names, Path(cwd))
+    if missing:
+        return _output_result(False, json_mode, f"Roles not found: {', '.join(missing)}")
+
+    # Build claude command with roles
+    claude_cmd = _build_claude_cmd(SessionType.CLAUDE_BYPASS, roles if roles else None)
+
+    try:
+        # Spawn pane
+        pane_index = pane_manager.spawn_worker_pane(
+            session=session,
+            cwd=cwd,
+            cmd=claude_cmd
+        )
+
+        if json_mode:
+            _output_json({
+                "success": True,
+                "pane": pane_index,
+                "session": session or pane_manager.get_current_session(),
+                "roles": role_names,
+            })
+        else:
+            print(f"Spawned pane {pane_index}")
+
+        return 0
+
+    except RuntimeError as e:
+        return _output_result(False, json_mode, str(e))
+
+
+def cmd_jump(args) -> int:
+    """Jump to (focus) a specific pane."""
+    json_mode = getattr(args, 'json', False)
+    pane_index = getattr(args, 'pane', None)
+    session = getattr(args, 'session', None)
+
+    if pane_index is None:
+        return _output_result(False, json_mode, "Usage: agentwire jump --pane N")
+
+    try:
+        pane_manager.focus_pane(session, pane_index)
+
+        if json_mode:
+            _output_json({
+                "success": True,
+                "pane": pane_index,
+                "session": session or pane_manager.get_current_session(),
+            })
+        else:
+            print(f"Jumped to pane {pane_index}")
+
+        return 0
+
+    except RuntimeError as e:
+        return _output_result(False, json_mode, str(e))
 
 
 def cmd_send_keys(args) -> int:
@@ -4853,8 +5046,9 @@ def main() -> int:
     say_parser.set_defaults(func=cmd_say)
 
     # === send command ===
-    send_parser = subparsers.add_parser("send", help="Send prompt to a session (adds Enter)")
-    send_parser.add_argument("-s", "--session", required=True, help="Target session (supports session@machine)")
+    send_parser = subparsers.add_parser("send", help="Send prompt to a session or pane (adds Enter)")
+    send_parser.add_argument("-s", "--session", help="Target session (supports session@machine)")
+    send_parser.add_argument("--pane", type=int, help="Target pane index (auto-detects session)")
     send_parser.add_argument("prompt", nargs="*", help="Prompt to send")
     send_parser.add_argument("--json", action="store_true", help="Output as JSON")
     send_parser.set_defaults(func=cmd_send)
@@ -4868,9 +5062,10 @@ def main() -> int:
     send_keys_parser.set_defaults(func=cmd_send_keys)
 
     # === list command (top-level) ===
-    list_parser = subparsers.add_parser("list", help="List all tmux sessions (local + remote)")
+    list_parser = subparsers.add_parser("list", help="List panes (in tmux) or sessions")
     list_parser.add_argument("--json", action="store_true", help="Output as JSON")
     list_parser.add_argument("--local", action="store_true", help="Only show local sessions")
+    list_parser.add_argument("--sessions", action="store_true", help="Show sessions instead of panes")
     list_parser.set_defaults(func=cmd_list)
 
     # === new command (top-level) ===
@@ -4890,17 +5085,34 @@ def main() -> int:
     new_parser.set_defaults(func=cmd_new)
 
     # === output command (top-level) ===
-    output_parser = subparsers.add_parser("output", help="Read session output")
-    output_parser.add_argument("-s", "--session", required=True, help="Session name (supports session@machine)")
+    output_parser = subparsers.add_parser("output", help="Read session or pane output")
+    output_parser.add_argument("-s", "--session", help="Session name (supports session@machine)")
+    output_parser.add_argument("--pane", type=int, help="Target pane index (auto-detects session)")
     output_parser.add_argument("-n", "--lines", type=int, default=50, help="Lines to show (default: 50)")
     output_parser.add_argument("--json", action="store_true", help="Output as JSON")
     output_parser.set_defaults(func=cmd_output)
 
     # === kill command (top-level) ===
-    kill_parser = subparsers.add_parser("kill", help="Kill a session (clean shutdown)")
-    kill_parser.add_argument("-s", "--session", required=True, help="Session name (supports session@machine)")
+    kill_parser = subparsers.add_parser("kill", help="Kill a session or pane (clean shutdown)")
+    kill_parser.add_argument("-s", "--session", help="Session name (supports session@machine)")
+    kill_parser.add_argument("--pane", type=int, help="Target pane index (auto-detects session)")
     kill_parser.add_argument("--json", action="store_true", help="Output as JSON")
     kill_parser.set_defaults(func=cmd_kill)
+
+    # === spawn command (top-level) ===
+    spawn_parser = subparsers.add_parser("spawn", help="Spawn a worker pane in current session")
+    spawn_parser.add_argument("-s", "--session", help="Target session (default: auto-detect)")
+    spawn_parser.add_argument("--cwd", help="Working directory (default: current)")
+    spawn_parser.add_argument("--roles", default="worker", help="Comma-separated roles (default: worker)")
+    spawn_parser.add_argument("--json", action="store_true", help="Output as JSON")
+    spawn_parser.set_defaults(func=cmd_spawn)
+
+    # === jump command (top-level) ===
+    jump_parser = subparsers.add_parser("jump", help="Jump to (focus) a specific pane")
+    jump_parser.add_argument("-s", "--session", help="Target session (default: auto-detect)")
+    jump_parser.add_argument("--pane", type=int, required=True, help="Pane index to focus")
+    jump_parser.add_argument("--json", action="store_true", help="Output as JSON")
+    jump_parser.set_defaults(func=cmd_jump)
 
     # === recreate command (top-level) ===
     recreate_parser = subparsers.add_parser("recreate", help="Destroy and recreate session with fresh worktree")
