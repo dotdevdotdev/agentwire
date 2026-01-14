@@ -182,11 +182,21 @@ def send_to_pane(session: str | None, pane_index: int, text: str, enter: bool = 
             raise RuntimeError("Not in tmux session and no session specified")
 
     target = f"{session}:0.{pane_index}"
-    cmd = ["tmux", "send-keys", "-t", target, text]
-    if enter:
-        cmd.append("Enter")
 
-    subprocess.run(cmd, capture_output=True)
+    # Send text first
+    subprocess.run(["tmux", "send-keys", "-t", target, text], capture_output=True)
+
+    if enter:
+        # Wait for text to be displayed before sending Enter
+        # Longer text needs more time (Claude Code shows "[Pasted text...]")
+        wait_time = 0.5 if len(text) < 200 else 1.0
+        time.sleep(wait_time)
+        subprocess.run(["tmux", "send-keys", "-t", target, "Enter"], capture_output=True)
+
+        # For multi-line text, send another Enter to confirm paste
+        if "\n" in text or len(text) > 200:
+            time.sleep(0.5)
+            subprocess.run(["tmux", "send-keys", "-t", target, "Enter"], capture_output=True)
 
 
 def capture_pane(
