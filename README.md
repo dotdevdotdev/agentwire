@@ -212,9 +212,6 @@ tts:
   url: "http://localhost:8100"
   default_voice: "default"
 
-stt:
-  url: "http://localhost:8100"  # agentwire-stt server URL
-
 agent:
   command: "claude --dangerously-skip-permissions"
 ```
@@ -381,21 +378,14 @@ tts:
 
 ## STT (Speech-to-Text)
 
-STT uses agentwire-stt server. Run it via Docker or standalone:
+STT runs locally using WhisperKit (Apple's CoreML-optimized Whisper). No server or Docker needed.
 
-```bash
-# Docker (recommended)
-docker-compose up stt
+**Requirements:**
+- macOS with Apple Silicon (M1/M2/M3)
+- [whisperkit-cli](https://github.com/argmaxinc/WhisperKit): `brew install whisperkit-cli`
+- A WhisperKit model (e.g., via [MacWhisper](https://goodsnooze.gumroad.com/l/macwhisper))
 
-# Or standalone
-python -m agentwire.stt.stt_server
-```
-
-Configure the URL in `config.yaml`:
-```yaml
-stt:
-  url: "http://localhost:8100"
-```
+**Default model path:** `~/Library/Application Support/MacWhisper/models/whisperkit/models/argmaxinc/whisperkit-coreml/openai_whisper-large-v3-v20240930`
 
 ## Architecture
 

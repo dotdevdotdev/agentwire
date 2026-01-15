@@ -1158,7 +1158,7 @@ def _infer_session_from_path() -> str | None:
 def _check_portal_connections(session: str, portal_url: str) -> tuple[bool, str]:
     """Check if portal has active browser connections for a session.
 
-    Tries session name variants: as-is, with hostname, with @local (Docker).
+    Tries session name variants: as-is, with hostname.
 
     Returns:
         Tuple of (has_connections, actual_session_name)
@@ -1359,7 +1359,6 @@ def cmd_say(args) -> int:
 
         if has_connections:
             # Send to portal - browser will play the audio
-            # Use actual_session which may include @local suffix for Docker portal
             return _remote_say(text, actual_session, portal_url)
 
     # No portal connections (or no session) - generate locally
@@ -1628,33 +1627,28 @@ def cmd_list(args) -> int:
     # Show sessions (original behavior)
     all_sessions = []
 
-    # Check if we're running in Docker container (portal-only mode)
-    in_container = os.path.exists('/.dockerenv')
-
-    # Get local sessions (only if not in container)
+    # Get local sessions
     local_sessions = []
-    if not in_container:
-        result = subprocess.run(
-            ["tmux", "list-sessions", "-F", "#{session_name}:#{session_windows}:#{pane_current_path}"],
-            capture_output=True,
-            text=True
-        )
+    result = subprocess.run(
+        ["tmux", "list-sessions", "-F", "#{session_name}:#{session_windows}:#{pane_current_path}"],
+        capture_output=True,
+        text=True
+    )
 
-        if result.returncode == 0:
-            for line in result.stdout.strip().split("\n"):
-                if line:
-                    parts = line.split(":", 2)
-                    if len(parts) >= 2:
-                        # Determine local machine ID (hostname or "local")
-                        local_machine_id = socket.gethostname().split('.')[0]
-                        session_info = {
-                            "name": f"{parts[0]}@{local_machine_id}",
-                            "windows": int(parts[1]) if parts[1].isdigit() else 1,
-                            "path": parts[2] if len(parts) > 2 else "",
-                            "machine": local_machine_id,
-                        }
-                        local_sessions.append(session_info)
-                        all_sessions.append(session_info)
+    if result.returncode == 0:
+        for line in result.stdout.strip().split("\n"):
+            if line:
+                parts = line.split(":", 2)
+                if len(parts) >= 2:
+                    local_machine_id = socket.gethostname().split('.')[0]
+                    session_info = {
+                        "name": f"{parts[0]}@{local_machine_id}",
+                        "windows": int(parts[1]) if parts[1].isdigit() else 1,
+                        "path": parts[2] if len(parts) > 2 else "",
+                        "machine": local_machine_id,
+                    }
+                    local_sessions.append(session_info)
+                    all_sessions.append(session_info)
 
     # Get remote sessions from all registered machines
     remote_by_machine = {}
@@ -1665,9 +1659,8 @@ def cmd_list(args) -> int:
             if not machine_id:
                 continue
 
-            # Skip "local" machine when running on host (not in container)
-            # "local" is for container to reach host via host.docker.internal
-            if not in_container and machine_id == "local":
+            # Skip "local" machine (legacy Docker config)
+            if machine_id == "local":
                 continue
 
             cmd = "tmux list-sessions -F '#{session_name}:#{session_windows}:#{pane_current_path}' 2>/dev/null || echo ''"
@@ -2358,6 +2351,45 @@ def cmd_spawn(args) -> int:
 
     except RuntimeError as e:
         return _output_result(False, json_mode, str(e))
+
+
+def cmd_split(args) -> int:
+    """Add terminal pane(s) to current session with even vertical layout."""
+    count = getattr(args, 'count', 1)
+    cwd = getattr(args, 'cwd', None) or os.getcwd()
+    session = getattr(args, 'session', None)
+
+    # Get current session if not specified
+    if not session:
+        session = os.environ.get("TMUX_PANE")
+        if session:
+            # We're in tmux, get session name
+            result = subprocess.run(
+                ["tmux", "display-message", "-p", "#{session_name}"],
+                capture_output=True, text=True
+            )
+            if result.returncode == 0:
+                session = result.stdout.strip()
+            else:
+                session = None
+
+    if not session:
+        print("Error: Not in a tmux session and no --session specified")
+        return 1
+
+    # Add panes
+    for _ in range(count):
+        subprocess.run([
+            "tmux", "split-window", "-h", "-t", session, "-c", cwd
+        ], capture_output=True)
+
+    # Even vertical layout and focus pane 0
+    subprocess.run(["tmux", "select-layout", "-t", session, "even-horizontal"], capture_output=True)
+    subprocess.run(["tmux", "select-pane", "-t", f"{session}:0.0"], capture_output=True)
+
+    pane_count = 1 + count  # original + new
+    print(f"Added {count} pane(s) - now {pane_count} even vertical panes")
+    return 0
 
 
 def cmd_jump(args) -> int:
@@ -3195,10 +3227,11 @@ def cmd_listen_start(args) -> int:
 
 
 def cmd_listen_stop(args) -> int:
-    """Stop recording, transcribe, send to session."""
+    """Stop recording, transcribe, send to session or type at cursor."""
     from .listen import stop_recording
     session = args.session or "agentwire"
-    return stop_recording(session, voice_prompt=not args.no_prompt)
+    type_at_cursor = getattr(args, 'type', False)
+    return stop_recording(session, voice_prompt=not args.no_prompt, type_at_cursor=type_at_cursor)
 
 
 def cmd_listen_cancel(args) -> int:
@@ -5136,6 +5169,13 @@ def main() -> int:
     spawn_parser.add_argument("--json", action="store_true", help="Output as JSON")
     spawn_parser.set_defaults(func=cmd_spawn)
 
+    # === split command (top-level) ===
+    split_parser = subparsers.add_parser("split", help="Add terminal pane(s) with even vertical layout")
+    split_parser.add_argument("-n", "--count", type=int, default=1, help="Number of panes to add (default: 1)")
+    split_parser.add_argument("-s", "--session", help="Target session (default: auto-detect)")
+    split_parser.add_argument("--cwd", help="Working directory (default: current)")
+    split_parser.set_defaults(func=cmd_split)
+
     # === jump command (top-level) ===
     jump_parser = subparsers.add_parser("jump", help="Jump to (focus) a specific pane")
     jump_parser.add_argument("-s", "--session", help="Target session (default: auto-detect)")
@@ -5192,6 +5232,7 @@ def main() -> int:
     listen_stop = listen_subparsers.add_parser("stop", help="Stop and send")
     listen_stop.add_argument("--session", "-s", type=str, help="Target session")
     listen_stop.add_argument("--no-prompt", action="store_true")
+    listen_stop.add_argument("--type", action="store_true", help="Type at cursor instead of sending to session")
     listen_stop.set_defaults(func=cmd_listen_stop)
 
     # listen cancel
