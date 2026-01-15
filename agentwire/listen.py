@@ -1,6 +1,5 @@
 """Voice input: record, transcribe, send to session."""
 
-import json
 import os
 import signal
 import subprocess
@@ -75,7 +74,7 @@ def start_recording() -> int:
     log("start_recording called")
 
     # Clean up any stale recording
-    subprocess.run(["pkill", "-9", "-f", "ffmpeg.*agentwire-listen"],
+    subprocess.run(["pkill", "-9", "-f", "ffmpeg.*agentwire-listen\\.wav"],
                    capture_output=True)
     LOCK_FILE.unlink(missing_ok=True)
     PID_FILE.unlink(missing_ok=True)
@@ -118,8 +117,14 @@ def start_recording() -> int:
     return 0
 
 
-def stop_recording(session: str, voice_prompt: bool = True) -> int:
-    """Stop recording, transcribe, and send to session."""
+def stop_recording(session: str, voice_prompt: bool = True, type_at_cursor: bool = False) -> int:
+    """Stop recording, transcribe, and send to session or type at cursor.
+
+    Args:
+        session: Target tmux session (ignored if type_at_cursor=True)
+        voice_prompt: Prepend voice prompt hint (ignored if type_at_cursor=True)
+        type_at_cursor: If True, type text at cursor instead of sending to session
+    """
     log("stop_recording called")
 
     if not LOCK_FILE.exists():
@@ -131,73 +136,85 @@ def stop_recording(session: str, voice_prompt: bool = True) -> int:
     beep("stop")
     log("Stopping ffmpeg")
 
-    # Stop ffmpeg
+    # Stop ffmpeg gracefully
     if PID_FILE.exists():
         try:
             pid = int(PID_FILE.read_text().strip())
             os.kill(pid, signal.SIGTERM)
+            # Give ffmpeg time to flush and exit gracefully
+            time.sleep(0.3)
         except (ValueError, ProcessLookupError):
             pass
         PID_FILE.unlink(missing_ok=True)
 
-    subprocess.run(["pkill", "-9", "-f", "ffmpeg.*agentwire-listen"],
+    # Force kill any remaining ffmpeg processes
+    subprocess.run(["pkill", "-9", "-f", "ffmpeg.*agentwire-listen\\.wav"],
                    capture_output=True)
     LOCK_FILE.unlink(missing_ok=True)
 
-    # Wait for file to be written
+    # Wait for file to be fully written
     time.sleep(0.3)
 
+    # Verify file exists and has content
     if not AUDIO_FILE.exists():
         log("ERROR: No audio file")
         notify("Recording failed")
         beep("error")
         return 1
 
-    log("Transcribing...")
-    notify("Transcribing...")
+    # Wait for file to stabilize (size stops changing)
+    last_size = 0
+    for _ in range(10):  # Max 1 second wait
+        current_size = AUDIO_FILE.stat().st_size
+        if current_size > 0 and current_size == last_size:
+            break
+        last_size = current_size
+        time.sleep(0.1)
 
-    # Get STT URL from config
-    config = load_config()
-    stt_url = config.get("stt", {}).get("url")
-    if not stt_url:
-        log("ERROR: stt.url not configured")
-        notify("STT URL not configured in config.yaml")
+    if AUDIO_FILE.stat().st_size < 1000:  # Less than 1KB is likely corrupt
+        log(f"ERROR: Audio file too small ({AUDIO_FILE.stat().st_size} bytes)")
+        notify("Recording too short")
         beep("error")
         return 1
 
-    # Transcribe via remote STT server
-    import urllib.request
+    log("Transcribing...")
+    notify("Transcribing...")
 
-    transcribe_url = f"{stt_url}/transcribe"
+    # Get optional model path from config
+    config = load_config()
+    stt_config = config.get("stt", {})
+    model_path = stt_config.get("model_path") or os.path.expanduser(
+        "~/Library/Application Support/MacWhisper/models/whisperkit/models/"
+        "argmaxinc/whisperkit-coreml/openai_whisper-large-v3-v20240930"
+    )
+
     text = ""
 
     try:
-        # Read audio file
-        with open(AUDIO_FILE, 'rb') as f:
-            audio_data = f.read()
-
-        # Create multipart form data
-        boundary = '----WebKitFormBoundary' + os.urandom(16).hex()
-        body = (
-            f'--{boundary}\r\n'
-            f'Content-Disposition: form-data; name="file"; filename="audio.wav"\r\n'
-            f'Content-Type: audio/wav\r\n\r\n'
-        ).encode('utf-8') + audio_data + f'\r\n--{boundary}--\r\n'.encode('utf-8')
-
-        # POST to STT server
-        req = urllib.request.Request(
-            transcribe_url,
-            data=body,
-            headers={
-                'Content-Type': f'multipart/form-data; boundary={boundary}',
-                'Content-Length': str(len(body))
-            }
+        result = subprocess.run(
+            [
+                "whisperkit-cli", "transcribe",
+                "--audio-path", str(AUDIO_FILE),
+                "--model-path", model_path,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=60,
         )
 
-        with urllib.request.urlopen(req, timeout=30) as response:
-            result = json.loads(response.read().decode('utf-8'))
-            text = result.get("text", "")
+        if result.returncode != 0:
+            log(f"ERROR: whisperkit-cli failed: {result.stderr}")
+            notify("Transcription failed")
+            beep("error")
+            return 1
 
+        text = result.stdout.strip()
+
+    except subprocess.TimeoutExpired:
+        log("ERROR: whisperkit-cli timed out")
+        notify("Transcription timed out")
+        beep("error")
+        return 1
     except Exception as e:
         log(f"ERROR: STT failed: {e}")
         notify(f"Transcription failed: {e}")
@@ -213,41 +230,81 @@ def stop_recording(session: str, voice_prompt: bool = True) -> int:
 
     log(f"Transcribed: {text}")
 
-    # Check if session exists
-    if not tmux_session_exists(session):
-        log(f"ERROR: No session '{session}'")
-        notify(f"No session: {session}")
-        beep("error")
-        print(f"Transcribed: {text}")
-        print(f"But session '{session}' not running. Start with: agentwire dev")
-        AUDIO_FILE.unlink(missing_ok=True)
-        return 1
+    if type_at_cursor:
+        # Type at cursor using Hammerspoon
+        log("Typing at cursor...")
 
-    # Build message
-    if voice_prompt:
-        full_text = f"[Voice input - respond with say command] {text}"
+        # Escape text for Lua string (handle quotes and backslashes)
+        escaped_text = text.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n')
+
+        # Use Hammerspoon to paste from clipboard, wait, press Enter, restore clipboard
+        hs_script = f'''
+            local original = hs.pasteboard.getContents()
+            hs.pasteboard.setContents("{escaped_text}")
+            hs.eventtap.keyStroke({{"cmd"}}, "v")
+            hs.timer.usleep(1000000)
+            hs.eventtap.keyStroke({{}}, "return")
+            hs.timer.usleep(100000)
+            if original then
+                hs.pasteboard.setContents(original)
+            else
+                hs.pasteboard.clearContents()
+            end
+        '''
+
+        result = subprocess.run(
+            ["hs", "-c", hs_script],
+            capture_output=True,
+            text=True,
+        )
+
+        if result.returncode != 0:
+            log(f"ERROR: Hammerspoon failed: {result.stderr}")
+            notify("Failed to type text")
+            beep("error")
+            AUDIO_FILE.unlink(missing_ok=True)
+            return 1
+
+        beep("done")
+        log("SUCCESS: Typed at cursor")
+        notify(f"Typed: {text[:30]}...")
+        print(f"Typed: {text}")
     else:
-        full_text = text
+        # Send to tmux session (original behavior)
+        if not tmux_session_exists(session):
+            log(f"ERROR: No session '{session}'")
+            notify(f"No session: {session}")
+            beep("error")
+            print(f"Transcribed: {text}")
+            print(f"But session '{session}' not running. Start with: agentwire dev")
+            AUDIO_FILE.unlink(missing_ok=True)
+            return 1
 
-    log(f"Sending to session: {session}")
+        # Build message
+        if voice_prompt:
+            full_text = f"[Voice input - respond with say command] {text}"
+        else:
+            full_text = text
 
-    # Use paste-buffer for reliable submission
-    with tempfile.NamedTemporaryFile(mode='w', delete=False) as f:
-        f.write(full_text)
-        tmpfile = f.name
+        log(f"Sending to session: {session}")
 
-    subprocess.run(["tmux", "load-buffer", tmpfile], check=True)
-    Path(tmpfile).unlink()
-    subprocess.run(["tmux", "paste-buffer", "-t", session], check=True)
-    time.sleep(0.2)
-    subprocess.run(["tmux", "send-keys", "-t", session, "Enter"], check=True)
-    time.sleep(0.1)
-    subprocess.run(["tmux", "send-keys", "-t", session, "Enter"], check=True)
+        # Use paste-buffer for reliable submission
+        with tempfile.NamedTemporaryFile(mode='w', delete=False) as f:
+            f.write(full_text)
+            tmpfile = f.name
 
-    beep("done")
-    log("SUCCESS: Sent to session")
-    notify(f"Sent: {text[:30]}...")
-    print(f"Sent to {session}: {text}")
+        subprocess.run(["tmux", "load-buffer", tmpfile], check=True)
+        Path(tmpfile).unlink()
+        subprocess.run(["tmux", "paste-buffer", "-t", session], check=True)
+        time.sleep(0.2)
+        subprocess.run(["tmux", "send-keys", "-t", session, "Enter"], check=True)
+        time.sleep(0.1)
+        subprocess.run(["tmux", "send-keys", "-t", session, "Enter"], check=True)
+
+        beep("done")
+        log("SUCCESS: Sent to session")
+        notify(f"Sent: {text[:30]}...")
+        print(f"Sent to {session}: {text}")
 
     AUDIO_FILE.unlink(missing_ok=True)
     return 0
@@ -263,7 +320,7 @@ def cancel_recording() -> int:
             pass
         PID_FILE.unlink(missing_ok=True)
 
-    subprocess.run(["pkill", "-9", "-f", "ffmpeg.*agentwire-listen"],
+    subprocess.run(["pkill", "-9", "-f", "ffmpeg.*agentwire-listen\\.wav"],
                    capture_output=True)
     LOCK_FILE.unlink(missing_ok=True)
     AUDIO_FILE.unlink(missing_ok=True)

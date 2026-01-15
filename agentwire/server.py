@@ -1700,9 +1700,6 @@ tts:
   url: "http://localhost:8100"
   default_voice: "dotdev"
 
-stt:
-  url: "http://localhost:8100"  # agentwire-stt server URL
-
 projects:
   dir: "~/projects"
   worktrees:
