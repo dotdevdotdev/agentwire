@@ -196,6 +196,58 @@ body {
     background: var(--accent);
 }
 
+.status-dot.disconnected {
+    background: var(--error);
+}
+
+/* Session window status indicator (used by SessionWindow class) */
+.session-window-content .status-indicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    flex-shrink: 0;
+}
+
+.session-window-content .status-indicator.connecting {
+    background: #f59e0b;
+    animation: pulse 1s ease-in-out infinite;
+}
+
+.session-window-content .status-indicator.connected {
+    background: var(--accent);
+}
+
+.session-window-content .status-indicator.disconnected {
+    background: var(--text-muted);
+}
+
+.session-window-content .status-indicator.error {
+    background: var(--error);
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+.session-window-content .session-status-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    font-size: 11px;
+    color: var(--text-muted);
+    background: var(--chrome);
+    border-top: 1px solid var(--chrome-border);
+}
+
+.session-window-content .status-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .menu-time {
     font-size: 12px;
     padding: 4px 10px;

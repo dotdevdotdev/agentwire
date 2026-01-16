@@ -1,28 +1,29 @@
 /**
  * Desktop UI - OS-like window manager for AgentWire
+ *
+ * Refactored to use modular architecture:
+ * - DesktopManager for WebSocket and state
+ * - SessionWindow for terminal windows
+ * - List windows for sessions/machines/config
  */
 
-// State
-const state = {
-    sessions: [],
-    machines: [],
-    windows: new Map(), // sessionName -> WinBox instance
-    activeWindow: null,
-    ws: null,
-};
+import { desktop } from './desktop-manager.js';
+import { SessionWindow } from './session-window.js';
+import { openSessionsWindow } from './windows/sessions-window.js';
+import { openMachinesWindow } from './windows/machines-window.js';
+import { openConfigWindow } from './windows/config-window.js';
 
-// DOM Elements
+// State - track open SessionWindows
+const sessionWindows = new Map();  // sessionId -> SessionWindow instance
+let windowCounter = 0;  // For cascading positions
+
+// DOM Elements (simplified - only what we need)
 const elements = {
-    sessionsList: document.getElementById('sessionsList'),
-    machinesList: document.getElementById('machinesList'),
-    sessionCount: document.getElementById('sessionCount'),
-    connectionStatus: document.getElementById('connectionStatus'),
     desktopArea: document.getElementById('desktopArea'),
     taskbarWindows: document.getElementById('taskbarWindows'),
     menuTime: document.getElementById('menuTime'),
-    welcomeMessage: document.getElementById('welcomeMessage'),
-    newSessionModal: document.getElementById('newSessionModal'),
-    voiceIndicator: document.getElementById('voiceIndicator'),
+    connectionStatus: document.getElementById('connectionStatus'),
+    sessionCount: document.getElementById('sessionCount'),
 };
 
 // Initialize
@@ -30,27 +31,41 @@ document.addEventListener('DOMContentLoaded', init);
 
 async function init() {
     setupClock();
-    setupEventListeners();
+    setupMenuListeners();
     setupPageUnload();
-    await loadSessions();
-    await loadMachines();
-    connectWebSocket();
+    await desktop.connect();
+    updateConnectionStatus(true);
+
+    // Fetch initial data
+    await desktop.fetchSessions();
+
+    // Listen for desktop events
+    desktop.on('sessions', updateSessionCount);
+    desktop.on('disconnect', () => updateConnectionStatus(false));
+    desktop.on('connect', () => updateConnectionStatus(true));
 }
 
 // Clean up on page unload
 function setupPageUnload() {
     window.addEventListener('beforeunload', () => {
-        // Close all session windows and their WebSocket connections
-        state.windows.forEach((win) => {
-            if (win.ws) {
-                win.ws.close();
-                win.ws = null;
-            }
-            if (win.terminal) {
-                win.terminal.dispose();
-            }
-        });
-        state.windows.clear();
+        // Disconnect main WebSocket
+        desktop.disconnect();
+
+        // Close all session windows (which closes their WebSockets)
+        sessionWindows.forEach(sw => sw.close());
+    });
+}
+
+// Menu listeners - open windows when menu items clicked
+function setupMenuListeners() {
+    document.getElementById('sessionsMenu')?.addEventListener('click', () => {
+        openSessionsWindow();
+    });
+    document.getElementById('machinesMenu')?.addEventListener('click', () => {
+        openMachinesWindow();
+    });
+    document.getElementById('configMenu')?.addEventListener('click', () => {
+        openConfigWindow();
     });
 }
 
@@ -67,428 +82,82 @@ function setupClock() {
     setInterval(updateTime, 1000);
 }
 
-// Event Listeners
-function setupEventListeners() {
-    // New session button
-    document.getElementById('newSessionBtn').addEventListener('click', () => {
-        elements.newSessionModal.classList.add('active');
-    });
-
-    // Modal close
-    document.getElementById('closeNewSessionModal').addEventListener('click', () => {
-        elements.newSessionModal.classList.remove('active');
-    });
-
-    document.getElementById('cancelNewSession').addEventListener('click', () => {
-        elements.newSessionModal.classList.remove('active');
-    });
-
-    // Create session
-    document.getElementById('createNewSession').addEventListener('click', createSession);
-
-    // Close modal on backdrop click
-    elements.newSessionModal.addEventListener('click', (e) => {
-        if (e.target === elements.newSessionModal) {
-            elements.newSessionModal.classList.remove('active');
-        }
-    });
-
-    // Toggle dropdowns on click
-    document.querySelectorAll('.menu-bar .dropdown > .menu-item').forEach(menuItem => {
-        menuItem.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const dropdown = menuItem.parentElement;
-            const wasActive = dropdown.classList.contains('active');
-
-            // Close all other dropdowns
-            document.querySelectorAll('.dropdown').forEach(d => d.classList.remove('active'));
-
-            // Toggle this one
-            if (!wasActive) {
-                dropdown.classList.add('active');
-            }
-        });
-    });
-
-    // Close dropdowns when clicking outside
-    document.addEventListener('click', (e) => {
-        if (!e.target.closest('.dropdown')) {
-            document.querySelectorAll('.dropdown').forEach(d => d.classList.remove('active'));
-        }
-    });
+// Connection status
+function updateConnectionStatus(connected) {
+    elements.connectionStatus.innerHTML = connected
+        ? '<span class="status-dot connected"></span><span class="status-text">Connected</span>'
+        : '<span class="status-dot disconnected"></span><span class="status-text">Disconnected</span>';
 }
 
-// Load sessions
-async function loadSessions() {
-    try {
-        const response = await fetch('/api/sessions');
-        const data = await response.json();
-        // API returns {machines: [{sessions: [...]}]} - flatten to get all sessions
-        const allSessions = [];
-        for (const machine of (data.machines || [])) {
-            for (const session of (machine.sessions || [])) {
-                allSessions.push(session);
-            }
-        }
-        state.sessions = allSessions;
-        renderSessionsList();
-        updateSessionCount();
-    } catch (error) {
-        console.error('Failed to load sessions:', error);
-    }
-}
-
-// Load machines
-async function loadMachines() {
-    try {
-        const response = await fetch('/api/machines');
-        const data = await response.json();
-        // API returns array directly, not {machines: [...]}
-        state.machines = Array.isArray(data) ? data : (data.machines || []);
-        renderMachinesList();
-        populateMachineSelect();
-    } catch (error) {
-        console.error('Failed to load machines:', error);
-    }
-}
-
-// Render sessions list in dropdown
-function renderSessionsList() {
-    if (state.sessions.length === 0) {
-        elements.sessionsList.innerHTML = '<div class="loading">No active sessions</div>';
-        return;
-    }
-
-    elements.sessionsList.innerHTML = state.sessions.map(session => `
-        <div class="session-item" data-session="${session.name}">
-            <div>
-                <div class="session-name">${session.name}</div>
-                <div class="session-status ${session.status === 'active' ? 'active' : ''}">${session.status}</div>
-            </div>
-        </div>
-    `).join('');
-
-    // Add click handlers
-    elements.sessionsList.querySelectorAll('.session-item').forEach(item => {
-        item.addEventListener('click', () => {
-            const name = item.dataset.session;
-            openSessionWindow(name);
-        });
-    });
-}
-
-// Render machines list
-function renderMachinesList() {
-    if (state.machines.length === 0) {
-        elements.machinesList.innerHTML = '<div class="loading">No machines configured</div>';
-        return;
-    }
-
-    elements.machinesList.innerHTML = state.machines.map(machine => `
-        <div class="machine-item" data-machine="${machine.id}">
-            <span>${machine.id}</span>
-            <span class="status-dot ${machine.status === 'online' ? 'connected' : ''}"></span>
-        </div>
-    `).join('');
-}
-
-// Populate machine select in new session modal
-function populateMachineSelect() {
-    const select = document.getElementById('newSessionMachine');
-    select.innerHTML = '<option value="">Local</option>' +
-        state.machines.map(m => `<option value="${m.id}">${m.id}</option>`).join('');
-}
-
-// Update session count
-function updateSessionCount() {
-    const count = state.sessions.length;
+// Session count
+function updateSessionCount(sessions) {
+    const count = sessions?.length || 0;
     elements.sessionCount.innerHTML = `<span class="count">${count}</span> session${count !== 1 ? 's' : ''}`;
 }
 
-// Open session window
-function openSessionWindow(sessionName) {
-    // Check if window already exists
-    if (state.windows.has(sessionName)) {
-        const win = state.windows.get(sessionName);
-        win.focus();
+/**
+ * Open a session terminal window.
+ * Exported for use by sessions-window.js and other modules.
+ *
+ * @param {string} session - Session name
+ * @param {'monitor'|'terminal'} mode - Window mode
+ * @param {string|null} machine - Remote machine ID (optional)
+ */
+export function openSessionTerminal(session, mode, machine = null) {
+    const id = machine ? `${session}@${machine}` : session;
+
+    // Check if already open
+    if (sessionWindows.has(id)) {
+        sessionWindows.get(id).focus();
         return;
     }
 
-    // Hide welcome message
-    elements.welcomeMessage.style.display = 'none';
+    // Calculate cascade position
+    const offset = (windowCounter++ % 10) * 30;
 
-    // Create window content
-    const content = document.createElement('div');
-    content.className = 'session-window';
-    content.innerHTML = `
-        <div class="session-terminal" id="terminal-${sessionName}"></div>
-        <div class="session-toolbar">
-            <button class="session-voice-btn" id="voice-${sessionName}">
-                🎤 Hold to Talk
-            </button>
-            <div class="session-status-bar">
-                Connected to ${sessionName}
-            </div>
-        </div>
-    `;
-
-    // Calculate position (cascade windows)
-    const offset = state.windows.size * 30;
-    const x = 50 + offset;
-    const y = 50 + offset;
-
-    // Create WinBox window
-    const win = new WinBox({
-        title: sessionName,
-        mount: content,
+    const sw = new SessionWindow({
+        session,
+        mode,
+        machine,
         root: elements.desktopArea,
-        x: x,
-        y: y,
-        width: 700,
-        height: 500,
-        minwidth: 400,
-        minheight: 300,
-        onclose: () => {
-            state.windows.delete(sessionName);
-            removeTaskbarButton(sessionName);
-            if (state.windows.size === 0) {
-                elements.welcomeMessage.style.display = 'block';
-            }
-            // Clean up terminal
-            if (win.terminal) {
-                win.terminal.dispose();
-            }
-            if (win.ws) {
-                win.ws.close();
-            }
+        position: { x: 50 + offset, y: 50 + offset },
+        onClose: (win) => {
+            sessionWindows.delete(id);
+            removeTaskbarButton(id);
         },
-        onfocus: () => {
-            state.activeWindow = sessionName;
-            updateTaskbarActive(sessionName);
-        },
-        onminimize: () => {
-            updateTaskbarButton(sessionName, true);
-            // Close WebSocket connection on minimize
-            if (win.ws) {
-                win.ws.close();
-                win.ws = null;
-            }
-        },
-        onrestore: () => {
-            updateTaskbarButton(sessionName, false);
-            // Reconnect terminal on restore
-            if (win.terminal && win.fitAddon) {
-                setTimeout(() => {
-                    win.terminal.clear();
-                    win.fitAddon.fit();
-                    reconnectTerminal(sessionName, win);
-                }, 100);
-            }
+        onFocus: (win) => {
+            updateTaskbarActive(id);
         }
     });
 
-    state.windows.set(sessionName, win);
-    addTaskbarButton(sessionName, win);
-
-    // Initialize terminal
-    initTerminal(sessionName, win);
-}
-
-// Initialize terminal in window
-function initTerminal(sessionName, win) {
-    const terminalEl = document.getElementById(`terminal-${sessionName}`);
-    if (!terminalEl || typeof Terminal === 'undefined') return;
-
-    const terminal = new Terminal({
-        cursorBlink: true,
-        fontSize: 13,
-        fontFamily: 'Menlo, Monaco, "Courier New", monospace',
-        theme: {
-            background: '#0d1117',
-            foreground: '#e6edf3',
-            cursor: '#2ea043',
-            selection: 'rgba(46, 160, 67, 0.3)',
-        }
-    });
-
-    const fitAddon = new FitAddon.FitAddon();
-    terminal.loadAddon(fitAddon);
-    terminal.open(terminalEl);
-    fitAddon.fit();
-
-    win.terminal = terminal;
-    win.fitAddon = fitAddon;
-
-    // Handle window resize
-    const resizeObserver = new ResizeObserver(() => {
-        fitAddon.fit();
-    });
-    resizeObserver.observe(terminalEl);
-
-    // Connect to terminal WebSocket
-    const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const ws = new WebSocket(`${protocol}//${location.host}/ws/terminal/${sessionName}`);
-
-    ws.onopen = () => {
-        terminal.write('\x1b[32m● Connected to session\x1b[0m\r\n\r\n');
-    };
-
-    ws.onmessage = (event) => {
-        // Handle binary data (terminal output)
-        if (event.data instanceof Blob) {
-            event.data.text().then(text => terminal.write(text));
-        } else if (event.data instanceof ArrayBuffer) {
-            terminal.write(new TextDecoder().decode(event.data));
-        } else {
-            terminal.write(event.data);
-        }
-    };
-
-    ws.onclose = () => {
-        terminal.write('\r\n\x1b[31m● Disconnected\x1b[0m\r\n');
-    };
-
-    win.ws = ws;
-
-    // Send input as JSON (use win.ws so reconnects work)
-    terminal.onData((data) => {
-        if (win.ws && win.ws.readyState === WebSocket.OPEN) {
-            win.ws.send(JSON.stringify({ type: 'input', data }));
-        }
-    });
-}
-
-// Reconnect terminal WebSocket (used on restore from minimize)
-function reconnectTerminal(sessionName, win) {
-    const terminal = win.terminal;
-    if (!terminal) return;
-
-    const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const ws = new WebSocket(`${protocol}//${location.host}/ws/terminal/${sessionName}`);
-
-    ws.onopen = () => {
-        terminal.write('\x1b[32m● Reconnected\x1b[0m\r\n');
-    };
-
-    ws.onmessage = (event) => {
-        if (event.data instanceof Blob) {
-            event.data.text().then(text => terminal.write(text));
-        } else if (event.data instanceof ArrayBuffer) {
-            terminal.write(new TextDecoder().decode(event.data));
-        } else {
-            terminal.write(event.data);
-        }
-    };
-
-    ws.onclose = () => {
-        terminal.write('\r\n\x1b[31m● Disconnected\x1b[0m\r\n');
-    };
-
-    win.ws = ws;
+    sw.open();
+    sessionWindows.set(id, sw);
+    addTaskbarButton(id, sw);
 }
 
 // Taskbar management
-function addTaskbarButton(sessionName, win) {
+function addTaskbarButton(id, sessionWindow) {
     const btn = document.createElement('div');
     btn.className = 'taskbar-btn active';
-    btn.dataset.session = sessionName;
-    btn.innerHTML = `
-        <img src="/static/favicon-green.jpeg" class="taskbar-icon">
-        <span class="taskbar-label">${sessionName}</span>
-    `;
+    btn.dataset.session = id;
+    btn.innerHTML = `<span>📟</span> ${id}`;
     btn.addEventListener('click', () => {
-        if (win.min) {
-            win.restore();
+        if (sessionWindow.isMinimized) {
+            sessionWindow.restore();
         } else {
-            win.focus();
+            sessionWindow.focus();
         }
     });
     elements.taskbarWindows.appendChild(btn);
 }
 
-function removeTaskbarButton(sessionName) {
-    const btn = elements.taskbarWindows.querySelector(`[data-session="${sessionName}"]`);
+function removeTaskbarButton(id) {
+    const btn = elements.taskbarWindows.querySelector(`[data-session="${id}"]`);
     if (btn) btn.remove();
 }
 
-function updateTaskbarActive(sessionName) {
+function updateTaskbarActive(id) {
     elements.taskbarWindows.querySelectorAll('.taskbar-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.session === sessionName);
+        btn.classList.toggle('active', btn.dataset.session === id);
     });
-}
-
-function updateTaskbarButton(sessionName, minimized) {
-    const btn = elements.taskbarWindows.querySelector(`[data-session="${sessionName}"]`);
-    if (btn) {
-        btn.classList.toggle('minimized', minimized);
-        btn.classList.toggle('active', !minimized);
-    }
-}
-
-// Create new session
-async function createSession() {
-    const name = document.getElementById('newSessionName').value.trim();
-    const machine = document.getElementById('newSessionMachine').value;
-    const path = document.getElementById('newSessionPath').value.trim();
-    const voice = document.getElementById('newSessionVoice').value;
-    const errorEl = document.getElementById('newSessionError');
-
-    if (!name) {
-        errorEl.textContent = 'Session name is required';
-        return;
-    }
-
-    errorEl.textContent = '';
-
-    const sessionName = machine ? `${name}@${machine}` : name;
-
-    try {
-        const response = await fetch('/api/create', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                session: sessionName,
-                path: path || undefined,
-                voice: voice,
-                type: 'claude-bypass',
-            })
-        });
-
-        if (!response.ok) {
-            const data = await response.json();
-            errorEl.textContent = data.error || 'Failed to create session';
-            return;
-        }
-
-        elements.newSessionModal.classList.remove('active');
-        document.getElementById('newSessionName').value = '';
-        document.getElementById('newSessionPath').value = '';
-
-        // Reload sessions and open the new one
-        await loadSessions();
-        openSessionWindow(sessionName);
-
-    } catch (error) {
-        errorEl.textContent = 'Failed to create session';
-        console.error(error);
-    }
-}
-
-// WebSocket for real-time updates
-function connectWebSocket() {
-    const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-
-    // We'll use a general status endpoint or poll for now
-    // The main WS connections are per-session
-
-    // Update connection status
-    elements.connectionStatus.innerHTML = `
-        <span class="status-dot connected"></span>
-        <span class="status-text">Connected</span>
-    `;
-
-    // Poll for session updates every 10s
-    setInterval(async () => {
-        await loadSessions();
-    }, 10000);
 }
