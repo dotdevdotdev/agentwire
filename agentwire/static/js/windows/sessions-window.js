@@ -88,12 +88,12 @@ function handleSessionAction(action, item) {
 
 /**
  * Open a session in terminal or monitor mode
+ * Uses the exported function from desktop.js for proper taskbar integration
  * @param {string} session - Session name
  * @param {string} mode - 'monitor' or 'terminal'
  */
 function openSessionTerminal(session, mode) {
-    import('../session-window.js').then(({ SessionWindow }) => {
-        const sw = new SessionWindow({ session, mode });
-        sw.open();
+    import('../desktop.js').then(({ openSessionTerminal: openTerminal }) => {
+        openTerminal(session, mode);
     });
 }
