@@ -31,9 +31,27 @@ document.addEventListener('DOMContentLoaded', init);
 async function init() {
     setupClock();
     setupEventListeners();
+    setupPageUnload();
     await loadSessions();
     await loadMachines();
     connectWebSocket();
+}
+
+// Clean up on page unload
+function setupPageUnload() {
+    window.addEventListener('beforeunload', () => {
+        // Close all session windows and their WebSocket connections
+        state.windows.forEach((win) => {
+            if (win.ws) {
+                win.ws.close();
+                win.ws = null;
+            }
+            if (win.terminal) {
+                win.terminal.dispose();
+            }
+        });
+        state.windows.clear();
+    });
 }
 
 // Clock
@@ -374,7 +392,10 @@ function addTaskbarButton(sessionName, win) {
     const btn = document.createElement('div');
     btn.className = 'taskbar-btn active';
     btn.dataset.session = sessionName;
-    btn.innerHTML = `<span>📟</span> ${sessionName}`;
+    btn.innerHTML = `
+        <img src="/static/favicon-green.jpeg" class="taskbar-icon">
+        <span class="taskbar-label">${sessionName}</span>
+    `;
     btn.addEventListener('click', () => {
         if (win.min) {
             win.restore();
@@ -400,6 +421,7 @@ function updateTaskbarButton(sessionName, minimized) {
     const btn = elements.taskbarWindows.querySelector(`[data-session="${sessionName}"]`);
     if (btn) {
         btn.classList.toggle('minimized', minimized);
+        btn.classList.toggle('active', !minimized);
     }
 }
 

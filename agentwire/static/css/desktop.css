@@ -285,6 +285,22 @@ body {
     color: #000000;
 }
 
+.taskbar-btn.minimized {
+    opacity: 0.5;
+}
+
+.taskbar-icon {
+    width: 16px;
+    height: 16px;
+    border-radius: 2px;
+    flex-shrink: 0;
+}
+
+.taskbar-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 .taskbar-tray {
     display: flex;
     align-items: center;
