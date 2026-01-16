@@ -1680,7 +1680,31 @@ class AgentWireServer:
             return web.json_response({"error": str(e)})
 
     async def api_get_config(self, request: web.Request) -> web.Response:
-        """Get config file contents."""
+        """Get config file contents or display format.
+
+        Query params:
+            format=display - Return key/value pairs for UI display
+        """
+        # Check if display format requested
+        if request.query.get("format") == "display":
+            # Return flattened key/value pairs from current config
+            items = [
+                {"key": "TTS Backend", "value": self.config.tts.backend},
+                {"key": "TTS URL", "value": self.config.tts.url},
+                {"key": "TTS Default Voice", "value": self.config.tts.default_voice},
+                {"key": "STT URL", "value": self.config.stt.url},
+                {"key": "Server Host", "value": self.config.server.host},
+                {"key": "Server Port", "value": self.config.server.port},
+                {"key": "SSL Enabled", "value": self.config.server.ssl.enabled},
+                {"key": "Projects Directory", "value": str(self.config.projects.dir)},
+                {"key": "Worktrees Enabled", "value": self.config.projects.worktrees.enabled},
+                {"key": "Worktrees Suffix", "value": self.config.projects.worktrees.suffix},
+                {"key": "Agent Command", "value": self.config.agent.command},
+                {"key": "Machines File", "value": str(self.config.machines.file)},
+            ]
+            return web.json_response({"items": items})
+
+        # Default: return raw config file contents
         config_path = Path.home() / ".agentwire" / "config.yaml"
         content = ""
         if config_path.exists():

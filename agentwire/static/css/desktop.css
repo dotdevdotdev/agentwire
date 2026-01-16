@@ -705,3 +705,48 @@ body {
     font-size: 11px;
     color: var(--text-muted);
 }
+
+/* Config window items */
+.config-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--chrome-border);
+}
+
+.config-item:last-child {
+    border-bottom: none;
+}
+
+.config-key {
+    color: var(--text-muted);
+    font-size: 13px;
+}
+
+.config-value {
+    color: var(--text);
+    font-size: 13px;
+    text-align: right;
+    max-width: 60%;
+    word-break: break-all;
+}
+
+.config-null {
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+.config-enabled {
+    color: var(--accent);
+}
+
+.config-disabled {
+    color: var(--text-muted);
+}
+
+.config-object {
+    font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+    font-size: 11px;
+    color: var(--text-muted);
+}
