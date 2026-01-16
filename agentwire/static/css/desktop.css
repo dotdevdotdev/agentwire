@@ -491,21 +491,63 @@ body {
     background-color: var(--hover) !important;
 }
 
-/* List window styles */
+/* ListWindow component */
 .list-window {
-    background: var(--background);
-    padding: var(--spacing-base);
+    display: flex;
+    flex-direction: column;
     height: 100%;
+    background: var(--background);
+}
+
+.list-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--spacing-base) 12px;
+    background: var(--chrome);
+    border-bottom: 1px solid var(--chrome-border);
+    flex-shrink: 0;
+}
+
+.list-title {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.list-refresh-btn {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 14px;
+    cursor: pointer;
+    padding: 4px var(--spacing-base);
+    border-radius: 4px;
+    transition: background 0.15s, color 0.15s;
+}
+
+.list-refresh-btn:hover {
+    background: var(--hover);
+    color: var(--accent);
+}
+
+.list-content {
+    flex: 1;
     overflow-y: auto;
+    padding: 4px 0;
 }
 
 .list-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: var(--spacing-base) 12px;
-    border-radius: 4px;
-    margin-bottom: 4px;
+    padding: 10px 12px;
+    cursor: pointer;
+    border-bottom: 1px solid var(--chrome-border);
+    transition: background 0.15s;
+}
+
+.list-item:last-child {
+    border-bottom: none;
 }
 
 .list-item:hover {
@@ -530,10 +572,60 @@ body {
 
 .list-item-actions {
     display: flex;
-    align-items: center;
-    gap: var(--spacing-base);
+    gap: 6px;
+    margin-top: var(--spacing-base);
 }
 
+.list-item-actions button {
+    padding: 4px 10px;
+    font-size: 11px;
+    background: var(--background);
+    border: 1px solid var(--chrome-border);
+    border-radius: 4px;
+    color: var(--text);
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+}
+
+.list-item-actions button:hover {
+    background: var(--hover);
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.list-item-actions button.danger {
+    color: var(--error);
+}
+
+.list-item-actions button.danger:hover {
+    background: rgba(248, 81, 73, 0.15);
+    border-color: var(--error);
+}
+
+.list-item-actions button.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #000000;
+}
+
+.list-item-actions button.primary:hover {
+    background: #6ee7a0;
+}
+
+.list-loading,
+.list-empty,
+.list-error {
+    padding: 24px 12px;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 13px;
+}
+
+.list-error {
+    color: var(--error);
+}
+
+/* Legacy button classes (for compatibility) */
 .btn-monitor,
 .btn-connect {
     padding: 4px 12px;
