@@ -641,6 +641,24 @@ def cmd_portal_status(args) -> int:
         return 1
 
 
+def cmd_portal_restart(args) -> int:
+    """Restart the AgentWire portal (stop + start)."""
+    import time
+
+    print("Stopping portal...")
+    stop_result = cmd_portal_stop(args)
+
+    if stop_result != 0:
+        # Portal wasn't running, just start it
+        print("Portal was not running, starting fresh...")
+
+    # Brief pause to ensure clean shutdown
+    time.sleep(0.5)
+
+    print("Starting portal...")
+    return cmd_portal_start(args)
+
+
 # === TTS Commands ===
 
 
@@ -2185,6 +2203,87 @@ def cmd_output(args) -> int:
         }))
     else:
         print(result.stdout)
+    return 0
+
+
+def cmd_info(args) -> int:
+    """Get session information as JSON.
+
+    Returns working directory, pane count, and other metadata.
+    """
+    session_full = args.session
+    json_mode = getattr(args, 'json', True)  # Default to JSON
+
+    if not session_full:
+        return _output_result(False, json_mode, "Session name required (-s)")
+
+    # Parse session@machine format
+    session, machine_id = _parse_session_target(session_full)
+
+    if machine_id:
+        # Remote session
+        machine = _get_machine_config(machine_id)
+        if machine is None:
+            return _output_result(False, json_mode, f"Machine '{machine_id}' not found")
+
+        # Get session info via SSH
+        cmd = f"tmux display-message -t {shlex.quote(session)} -p '#{{pane_current_path}}:#{{window_panes}}' 2>/dev/null"
+        result = _run_remote(machine_id, cmd)
+
+        if result.returncode != 0:
+            return _output_result(False, json_mode, f"Session '{session}' not found on {machine_id}")
+
+        parts = result.stdout.strip().split(":")
+        cwd = parts[0] if parts else ""
+        pane_count = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 1
+
+        info = {
+            "success": True,
+            "session": session_full,
+            "name": session,
+            "machine": machine_id,
+            "cwd": cwd,
+            "pane_count": pane_count,
+            "is_remote": True,
+        }
+    else:
+        # Local session
+        if not tmux_session_exists(session):
+            return _output_result(False, json_mode, f"Session '{session}' not found")
+
+        # Get working directory
+        result = subprocess.run(
+            ["tmux", "display-message", "-t", session, "-p", "#{pane_current_path}:#{window_panes}"],
+            capture_output=True,
+            text=True,
+        )
+
+        if result.returncode != 0:
+            return _output_result(False, json_mode, f"Could not get info for '{session}'")
+
+        parts = result.stdout.strip().split(":")
+        cwd = parts[0] if parts else ""
+        pane_count = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 1
+
+        info = {
+            "success": True,
+            "session": session,
+            "name": session,
+            "machine": None,
+            "cwd": cwd,
+            "pane_count": pane_count,
+            "is_remote": False,
+        }
+
+    if json_mode:
+        print(json.dumps(info))
+    else:
+        print(f"Session: {info['name']}")
+        if info['machine']:
+            print(f"Machine: {info['machine']}")
+        print(f"CWD: {info['cwd']}")
+        print(f"Panes: {info['pane_count']}")
+
     return 0
 
 
@@ -5072,6 +5171,17 @@ def main() -> int:
     portal_status = portal_subparsers.add_parser("status", help="Check portal status")
     portal_status.set_defaults(func=cmd_portal_status)
 
+    # portal restart
+    portal_restart = portal_subparsers.add_parser("restart", help="Restart the portal (stop + start)")
+    portal_restart.add_argument("--config", type=Path, help="Config file path")
+    portal_restart.add_argument("--port", type=int, help="Override port")
+    portal_restart.add_argument("--host", type=str, help="Override host")
+    portal_restart.add_argument("--no-tts", action="store_true", help="Disable TTS")
+    portal_restart.add_argument("--no-stt", action="store_true", help="Disable STT")
+    portal_restart.add_argument("--dev", action="store_true",
+                                help="Run from source (uv run) - picks up code changes")
+    portal_restart.set_defaults(func=cmd_portal_restart)
+
     # portal generate-certs
     portal_certs = portal_subparsers.add_parser(
         "generate-certs", help="Generate SSL certificates"
@@ -5204,6 +5314,13 @@ def main() -> int:
     output_parser.add_argument("-n", "--lines", type=int, default=50, help="Lines to show (default: 50)")
     output_parser.add_argument("--json", action="store_true", help="Output as JSON")
     output_parser.set_defaults(func=cmd_output)
+
+    # === info command (top-level) ===
+    info_parser = subparsers.add_parser("info", help="Get session information (cwd, panes, etc.)")
+    info_parser.add_argument("-s", "--session", required=True, help="Session name (supports session@machine)")
+    info_parser.add_argument("--json", action="store_true", default=True, help="Output as JSON (default)")
+    info_parser.add_argument("--no-json", dest="json", action="store_false", help="Human-readable output")
+    info_parser.set_defaults(func=cmd_info)
 
     # === kill command (top-level) ===
     kill_parser = subparsers.add_parser("kill", help="Kill a session or pane (clean shutdown)")

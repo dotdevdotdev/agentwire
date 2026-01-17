@@ -4,7 +4,6 @@ import os
 import signal
 import subprocess
 import sys
-import tempfile
 import time
 from pathlib import Path
 
@@ -288,18 +287,19 @@ def stop_recording(session: str, voice_prompt: bool = True, type_at_cursor: bool
 
         log(f"Sending to session: {session}")
 
-        # Use paste-buffer for reliable submission
-        with tempfile.NamedTemporaryFile(mode='w', delete=False) as f:
-            f.write(full_text)
-            tmpfile = f.name
+        # Use agentwire send CLI for consistent behavior
+        result = subprocess.run(
+            ["agentwire", "send", "-s", session, full_text],
+            capture_output=True,
+            text=True,
+        )
 
-        subprocess.run(["tmux", "load-buffer", tmpfile], check=True)
-        Path(tmpfile).unlink()
-        subprocess.run(["tmux", "paste-buffer", "-t", session], check=True)
-        time.sleep(0.2)
-        subprocess.run(["tmux", "send-keys", "-t", session, "Enter"], check=True)
-        time.sleep(0.1)
-        subprocess.run(["tmux", "send-keys", "-t", session, "Enter"], check=True)
+        if result.returncode != 0:
+            log(f"ERROR: agentwire send failed: {result.stderr}")
+            notify("Failed to send to session")
+            beep("error")
+            AUDIO_FILE.unlink(missing_ok=True)
+            return 1
 
         beep("done")
         log("SUCCESS: Sent to session")

@@ -2418,13 +2418,12 @@ projects:
                     # AskUserQuestion doesn't need permission keystroke
                     if tool_name == "Bash":
                         try:
-                            if machine:
-                                await self._run_ssh_command(machine, f"tmux send-keys -t {shlex.quote(tmux_session)} 2")
-                            else:
-                                subprocess.run(
-                                    ["tmux", "send-keys", "-t", tmux_session, "2"],
-                                    check=True, capture_output=True
-                                )
+                            # Use CLI for consistent behavior (handles local and remote)
+                            session_target = f"{tmux_session}@{machine}" if machine else tmux_session
+                            subprocess.run(
+                                ["agentwire", "send-keys", "-s", session_target, "2"],
+                                check=True, capture_output=True
+                            )
                         except Exception as e:
                             logger.error(f"[{name}] Failed to send allow keystroke: {e}")
                     return web.json_response({"decision": "allow_always"})
@@ -2432,13 +2431,12 @@ projects:
                     # Auto-deny: send "Escape" keystroke (deny silently)
                     logger.info(f"[{name}] Restricted mode: auto-denying {tool_name}")
                     try:
-                        if machine:
-                            await self._run_ssh_command(machine, f"tmux send-keys -t {shlex.quote(tmux_session)} Escape")
-                        else:
-                            subprocess.run(
-                                ["tmux", "send-keys", "-t", tmux_session, "Escape"],
-                                check=True, capture_output=True
-                            )
+                        # Use CLI for consistent behavior (handles local and remote)
+                        session_target = f"{tmux_session}@{machine}" if machine else tmux_session
+                        subprocess.run(
+                            ["agentwire", "send-keys", "-s", session_target, "Escape"],
+                            check=True, capture_output=True
+                        )
                     except Exception as e:
                         logger.error(f"[{name}] Failed to send deny keystroke: {e}")
                     return web.json_response({
@@ -2512,30 +2510,18 @@ projects:
                 session.pending_permission.decision["message"] = data.get("message", "User denied permission")
             session.pending_permission.event.set()
 
-            # Send keystroke to tmux session to respond to Claude's interactive prompt
-            # Get session name (strip @machine suffix if present)
-            session_name = name.split("@")[0]
-
+            # Send keystroke to session to respond to Claude's interactive prompt
+            # Use CLI for consistent behavior (handles local and remote via session@machine format)
             try:
                 import subprocess
-                import time as sync_time
 
                 if decision == "custom":
                     # Custom feedback: send "3", then message, then Enter
                     custom_message = data.get("message", "")
                     if custom_message:
+                        # send-keys handles pauses between key groups
                         subprocess.run(
-                            ["tmux", "send-keys", "-t", session_name, "3"],
-                            check=True, capture_output=True
-                        )
-                        sync_time.sleep(0.3)
-                        subprocess.run(
-                            ["tmux", "send-keys", "-t", session_name, custom_message],
-                            check=True, capture_output=True
-                        )
-                        sync_time.sleep(0.3)
-                        subprocess.run(
-                            ["tmux", "send-keys", "-t", session_name, "Enter"],
+                            ["agentwire", "send-keys", "-s", name, "3", custom_message, "Enter"],
                             check=True, capture_output=True
                         )
                         logger.info(f"[{name}] Sent custom feedback: {custom_message[:50]}...")
@@ -2548,7 +2534,7 @@ projects:
                     }
                     keystroke = keystroke_map.get(decision, "Escape")
                     subprocess.run(
-                        ["tmux", "send-keys", "-t", session_name, keystroke],
+                        ["agentwire", "send-keys", "-s", name, keystroke],
                         check=True, capture_output=True
                     )
                     logger.info(f"[{name}] Sent keystroke '{keystroke}' to session")
