@@ -747,6 +747,13 @@ class AgentWireServer:
         tmux_to_ws_task = None
         ws_to_tmux_task = None
 
+        # Track this connection for TTS routing (so audio goes to browser, not local speakers)
+        if session_name not in self.active_sessions:
+            self.active_sessions[session_name] = Session(name=session_name, config=self._get_session_config(session_name))
+        session = self.active_sessions[session_name]
+        session.clients.add(ws)
+        logger.info(f"[Terminal] Client connected to {session_name} (total: {len(session.clients)})")
+
         try:
             # Parse session name for local vs remote
             project, branch, machine_id = parse_session_name(session_name)
@@ -1016,6 +1023,10 @@ class AgentWireServer:
                     os.close(master_fd)
                 except Exception as e:
                     logger.debug(f"[Terminal] Error closing master fd: {e}")
+
+            # Remove client from session tracking
+            session.clients.discard(ws)
+            logger.info(f"[Terminal] Client disconnected from {session.name} (remaining: {len(session.clients)})")
 
         return ws
 
