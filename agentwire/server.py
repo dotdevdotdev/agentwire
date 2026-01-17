@@ -1255,7 +1255,7 @@ class AgentWireServer:
             # Group sessions by machine
             machine_sessions = {}
             for s in all_sessions:
-                machine_id = s.get("machine", "local")
+                machine_id = s.get("machine") or "local"  # Handle null/None
                 if machine_id not in machine_sessions:
                     machine_sessions[machine_id] = []
                 machine_sessions[machine_id].append(s)

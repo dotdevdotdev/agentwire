@@ -33,16 +33,17 @@ async function init() {
     setupClock();
     setupMenuListeners();
     setupPageUnload();
-    await desktop.connect();
-    updateConnectionStatus(true);
 
-    // Fetch initial data
-    await desktop.fetchSessions();
-
-    // Listen for desktop events
+    // Set up event listeners BEFORE fetching data
     desktop.on('sessions', updateSessionCount);
     desktop.on('disconnect', () => updateConnectionStatus(false));
     desktop.on('connect', () => updateConnectionStatus(true));
+
+    await desktop.connect();
+    updateConnectionStatus(true);
+
+    // Fetch initial data (will emit events to listeners above)
+    await desktop.fetchSessions();
 }
 
 // Clean up on page unload
