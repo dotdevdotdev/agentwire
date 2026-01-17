@@ -2569,6 +2569,38 @@ def cmd_jump(args) -> int:
         return _output_result(False, json_mode, str(e))
 
 
+def cmd_resize(args) -> int:
+    """Resize tmux window to fit the largest attached client."""
+    json_mode = getattr(args, 'json', False)
+    session = getattr(args, 'session', None)
+
+    # Get session name
+    if not session:
+        session = pane_manager.get_current_session()
+        if not session:
+            return _output_result(False, json_mode, "Not in a tmux session. Use -s to specify session.")
+
+    try:
+        result = subprocess.run(
+            ["tmux", "resize-window", "-A", "-t", session],
+            capture_output=True,
+            text=True,
+        )
+
+        if result.returncode != 0:
+            return _output_result(False, json_mode, f"Failed to resize: {result.stderr.strip()}")
+
+        if json_mode:
+            _output_json({"success": True, "session": session})
+        else:
+            print(f"Resized {session} to fit largest client")
+
+        return 0
+
+    except Exception as e:
+        return _output_result(False, json_mode, str(e))
+
+
 def cmd_send_keys(args) -> int:
     """Send raw keys to a tmux session (no automatic Enter).
 
@@ -5358,6 +5390,12 @@ def main() -> int:
     jump_parser.add_argument("--pane", type=int, required=True, help="Pane index to focus")
     jump_parser.add_argument("--json", action="store_true", help="Output as JSON")
     jump_parser.set_defaults(func=cmd_jump)
+
+    # === resize command (top-level) ===
+    resize_parser = subparsers.add_parser("resize", help="Resize window to fit largest client")
+    resize_parser.add_argument("-s", "--session", help="Target session (default: auto-detect)")
+    resize_parser.add_argument("--json", action="store_true", help="Output as JSON")
+    resize_parser.set_defaults(func=cmd_resize)
 
     # === recreate command (top-level) ===
     recreate_parser = subparsers.add_parser("recreate", help="Destroy and recreate session with fresh worktree")

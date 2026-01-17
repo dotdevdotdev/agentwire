@@ -377,6 +377,40 @@ body {
     background: var(--hover);
 }
 
+/* Tray PTT Button */
+.tray-ptt {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 2px solid var(--chrome-border);
+    background: var(--surface);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.tray-ptt:hover {
+    border-color: var(--primary);
+    background: var(--hover);
+}
+
+.tray-ptt.recording {
+    border-color: var(--error);
+    background: rgba(248, 81, 73, 0.2);
+    animation: ptt-pulse 1s ease-in-out infinite;
+}
+
+.tray-ptt.processing {
+    border-color: var(--warning);
+    opacity: 0.7;
+}
+
+.tray-ptt .ptt-icon {
+    font-size: 14px;
+}
+
 /* Modal */
 .modal {
     display: none;
