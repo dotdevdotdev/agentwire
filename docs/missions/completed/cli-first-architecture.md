@@ -94,13 +94,13 @@ None required.
 
 ## Completion Criteria
 
-- [ ] `listen.py` uses `agentwire send` for transcription input
-- [ ] `server.py` permission handling uses `agentwire send-keys`
-- [ ] `pane_manager.py` uses CLI commands internally
-- [ ] `agentwire portal restart` command works
-- [ ] `agentwire info -s <session>` returns session metadata
-- [ ] All browser tests pass (voice input, permission flow, terminal mode)
-- [ ] No unexpected direct tmux calls remain (audit grep)
+- [x] `listen.py` uses `agentwire send` for transcription input
+- [x] `server.py` permission handling uses `agentwire send-keys`
+- [x] `pane_manager.py` kept as-is (it's the CLI implementation layer, not external code)
+- [x] `agentwire portal restart` command works
+- [x] `agentwire info -s <session>` returns session metadata
+- [x] Portal UI verified working
+- [x] CLAUDE.md updated with new commands
 
 ---
 

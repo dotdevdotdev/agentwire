@@ -35,9 +35,12 @@ All session/machine/template logic lives in CLI commands (`__main__.py`). The po
 ### CLI Commands
 
 ```bash
+# Session management
 agentwire new -s name           # not: tmux new-session
 agentwire send -s name "prompt" # not: tmux send-keys
+agentwire send-keys -s name key1 key2  # raw keys with pauses
 agentwire output -s name        # not: tmux capture-pane
+agentwire info -s name          # session metadata (cwd, panes) as JSON
 agentwire kill -s name          # not: tmux kill-session
 agentwire list                  # not: tmux list-sessions
 
@@ -47,6 +50,12 @@ agentwire send --pane 1 "task"  # send to pane
 agentwire output --pane 1       # read pane output
 agentwire kill --pane 1         # kill pane
 agentwire jump --pane 1         # focus pane
+
+# Portal management
+agentwire portal start          # start in tmux
+agentwire portal stop           # stop portal
+agentwire portal restart        # stop + start
+agentwire portal status         # check health
 
 # Machine management
 agentwire machine list
