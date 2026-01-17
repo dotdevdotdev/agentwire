@@ -258,8 +258,7 @@ async function processGlobalRecording() {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    prompt: text,
-                    voice: true
+                    text: `[Voice input - respond with say command] ${text}`
                 })
             });
             console.log('[GlobalPTT] Sent to agentwire:', text);
