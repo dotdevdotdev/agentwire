@@ -5303,7 +5303,7 @@ def main() -> int:
     type_group.add_argument("--prompted", action="store_true", help="Claude with permission hooks (no bypass)")
     type_group.add_argument("--restricted", action="store_true", help="Claude restricted to say command only")
     # Roles
-    new_parser.add_argument("--roles", help="Comma-separated list of roles to apply (e.g., worker,code-review)")
+    new_parser.add_argument("--roles", default="agentwire", help="Comma-separated list of roles (default: agentwire)")
     new_parser.add_argument("--json", action="store_true", help="Output as JSON")
     new_parser.set_defaults(func=cmd_new)
 
