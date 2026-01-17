@@ -787,6 +787,84 @@ body {
     word-wrap: break-word;
 }
 
+/* PTT (Push-to-talk) button */
+.ptt-button {
+    position: absolute;
+    bottom: 40px;  /* Above status bar */
+    right: 12px;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: 2px solid var(--chrome-border);
+    background: rgba(26, 26, 26, 0.9);
+    color: var(--text);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
+    z-index: 10;
+    backdrop-filter: blur(4px);
+}
+
+.ptt-button:hover {
+    border-color: var(--accent);
+    background: rgba(26, 26, 26, 0.95);
+    transform: scale(1.05);
+}
+
+.ptt-button.recording {
+    border-color: var(--error);
+    background: rgba(248, 81, 73, 0.2);
+    animation: ptt-pulse 1s ease-in-out infinite;
+}
+
+.ptt-button.processing {
+    border-color: #f59e0b;
+    background: rgba(245, 158, 11, 0.2);
+}
+
+.ptt-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.ptt-icon {
+    font-size: 20px;
+    line-height: 1;
+}
+
+.ptt-button.recording .ptt-icon {
+    color: var(--error);
+}
+
+.ptt-button.processing .ptt-icon::after {
+    content: '';
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border: 2px solid #f59e0b;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: ptt-spin 0.8s linear infinite;
+    position: absolute;
+}
+
+@keyframes ptt-pulse {
+    0%, 100% {
+        box-shadow: 0 0 0 0 rgba(248, 81, 73, 0.4);
+    }
+    50% {
+        box-shadow: 0 0 0 8px rgba(248, 81, 73, 0);
+    }
+}
+
+@keyframes ptt-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
 .session-toolbar {
     height: 36px;
     background: var(--chrome);
