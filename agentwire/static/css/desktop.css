@@ -755,9 +755,9 @@ body {
     overflow: auto;
     margin: 0;
     padding: 8px 12px;
-    background: #0d1117;
+    background: #000;
     color: #e6edf3;
-    font-family: Menlo, Monaco, "Courier New", monospace;
+    font-family: "FiraMono Nerd Font Mono", Menlo, Monaco, "Courier New", monospace;
     font-size: 13px;
     line-height: 1.4;
     white-space: pre-wrap;
