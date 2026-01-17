@@ -17,6 +17,11 @@ import { openConfigWindow } from './windows/config-window.js';
 const sessionWindows = new Map();  // sessionId -> SessionWindow instance
 let windowCounter = 0;  // For cascading positions
 
+// Global PTT state
+let globalPttState = 'idle';  // idle | recording | processing
+let globalMediaRecorder = null;
+let globalAudioChunks = [];
+
 // DOM Elements (simplified - only what we need)
 const elements = {
     desktopArea: document.getElementById('desktopArea'),
@@ -24,6 +29,7 @@ const elements = {
     menuTime: document.getElementById('menuTime'),
     connectionStatus: document.getElementById('connectionStatus'),
     sessionCount: document.getElementById('sessionCount'),
+    globalPtt: document.getElementById('globalPtt'),
 };
 
 // Initialize
@@ -33,6 +39,7 @@ async function init() {
     setupClock();
     setupMenuListeners();
     setupPageUnload();
+    setupGlobalPtt();
 
     // Set up event listeners BEFORE fetching data
     desktop.on('sessions', updateSessionCount);
@@ -161,4 +168,127 @@ function updateTaskbarActive(id) {
     elements.taskbarWindows.querySelectorAll('.taskbar-btn').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.session === id);
     });
+}
+
+// Global PTT - always sends to "agentwire" session
+function setupGlobalPtt() {
+    const btn = elements.globalPtt;
+    if (!btn) return;
+
+    // Mouse events
+    btn.addEventListener('mousedown', startGlobalRecording);
+    btn.addEventListener('mouseup', stopGlobalRecording);
+    btn.addEventListener('mouseleave', stopGlobalRecording);
+
+    // Touch events for mobile
+    btn.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        startGlobalRecording();
+    });
+    btn.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        stopGlobalRecording();
+    });
+
+    // Global keyboard shortcut (Ctrl/Cmd + Space)
+    document.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.code === 'Space' && globalPttState === 'idle') {
+            e.preventDefault();
+            startGlobalRecording();
+        }
+    });
+    document.addEventListener('keyup', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.code === 'Space' && globalPttState === 'recording') {
+            e.preventDefault();
+            stopGlobalRecording();
+        }
+    });
+}
+
+async function startGlobalRecording() {
+    if (globalPttState !== 'idle') return;
+
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        globalMediaRecorder = new MediaRecorder(stream, {
+            mimeType: 'audio/webm;codecs=opus'
+        });
+
+        globalAudioChunks = [];
+        globalMediaRecorder.ondataavailable = (e) => {
+            if (e.data.size > 0) globalAudioChunks.push(e.data);
+        };
+
+        globalMediaRecorder.onstop = async () => {
+            stream.getTracks().forEach(t => t.stop());
+            if (globalAudioChunks.length > 0) {
+                await processGlobalRecording();
+            }
+        };
+
+        globalMediaRecorder.start();
+        updateGlobalPttState('recording');
+    } catch (err) {
+        console.error('[GlobalPTT] Failed to start recording:', err);
+    }
+}
+
+function stopGlobalRecording() {
+    if (globalPttState !== 'recording' || !globalMediaRecorder) return;
+    globalMediaRecorder.stop();
+    updateGlobalPttState('processing');
+}
+
+async function processGlobalRecording() {
+    try {
+        const blob = new Blob(globalAudioChunks, { type: 'audio/webm' });
+        const formData = new FormData();
+        formData.append('audio', blob, 'recording.webm');
+
+        // Transcribe
+        const transcribeRes = await fetch('/transcribe', {
+            method: 'POST',
+            body: formData
+        });
+        const { text } = await transcribeRes.json();
+
+        if (text && text.trim()) {
+            // Send to agentwire session with voice prompt
+            await fetch('/send/agentwire', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    prompt: text,
+                    voice: true
+                })
+            });
+            console.log('[GlobalPTT] Sent to agentwire:', text);
+        }
+    } catch (err) {
+        console.error('[GlobalPTT] Processing failed:', err);
+    } finally {
+        updateGlobalPttState('idle');
+    }
+}
+
+function updateGlobalPttState(state) {
+    globalPttState = state;
+    const btn = elements.globalPtt;
+    if (!btn) return;
+
+    btn.classList.remove('recording', 'processing');
+    const icon = btn.querySelector('.ptt-icon');
+
+    switch (state) {
+        case 'recording':
+            btn.classList.add('recording');
+            if (icon) icon.textContent = '🔴';
+            break;
+        case 'processing':
+            btn.classList.add('processing');
+            if (icon) icon.textContent = '⏳';
+            break;
+        default:
+            if (icon) icon.textContent = '🎤';
+    }
 }

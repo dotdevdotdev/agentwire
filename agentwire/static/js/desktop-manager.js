@@ -46,6 +46,9 @@ class DesktopManager {
 
         /** @type {string|null} */
         this.activeWindow = null;
+
+        /** @type {AudioContext|null} */
+        this._audioContext = null;
     }
 
     // ============================================
@@ -196,6 +199,16 @@ class DesktopManager {
 
             case 'session_closed':
                 this.emit('session_closed', { session: msg.session });
+                break;
+
+            case 'tts_start':
+                console.log('[DesktopManager] TTS starting for session:', msg.session);
+                this.emit('tts_start', { session: msg.session, text: msg.text });
+                break;
+
+            case 'audio':
+                console.log('[DesktopManager] Audio received for session:', msg.session, 'length:', msg.data?.length);
+                this._playAudio(msg.data);
                 break;
 
             default:
@@ -461,6 +474,49 @@ class DesktopManager {
                     console.error(`[DesktopManager] Error in ${event} handler:`, err);
                 }
             });
+        }
+    }
+
+    // ============================================
+    // Audio Playback
+    // ============================================
+
+    /**
+     * Play base64-encoded audio data.
+     * @param {string} base64Data - Base64 encoded audio (WAV format)
+     */
+    async _playAudio(base64Data) {
+        if (!base64Data) {
+            console.warn('[DesktopManager] No audio data to play');
+            return;
+        }
+
+        try {
+            // Decode base64 to binary
+            const binaryString = atob(base64Data);
+            const bytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+
+            // Create or resume AudioContext
+            if (!this._audioContext) {
+                this._audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (this._audioContext.state === 'suspended') {
+                await this._audioContext.resume();
+            }
+
+            // Decode and play
+            const audioBuffer = await this._audioContext.decodeAudioData(bytes.buffer.slice(0));
+            const source = this._audioContext.createBufferSource();
+            source.buffer = audioBuffer;
+            source.connect(this._audioContext.destination);
+            source.start(0);
+
+            console.log('[DesktopManager] Audio playback started');
+        } catch (err) {
+            console.error('[DesktopManager] Audio playback failed:', err);
         }
     }
 }

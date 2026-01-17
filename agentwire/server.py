@@ -747,6 +747,13 @@ class AgentWireServer:
         tmux_to_ws_task = None
         ws_to_tmux_task = None
 
+        # Track this connection for TTS routing (so audio goes to browser, not local speakers)
+        if session_name not in self.active_sessions:
+            self.active_sessions[session_name] = Session(name=session_name, config=self._get_session_config(session_name))
+        session = self.active_sessions[session_name]
+        session.clients.add(ws)
+        logger.info(f"[Terminal] Client connected to {session_name} (total: {len(session.clients)})")
+
         try:
             # Parse session name for local vs remote
             project, branch, machine_id = parse_session_name(session_name)
@@ -1016,6 +1023,10 @@ class AgentWireServer:
                     os.close(master_fd)
                 except Exception as e:
                     logger.debug(f"[Terminal] Error closing master fd: {e}")
+
+            # Remove client from session tracking
+            session.clients.discard(ws)
+            logger.info(f"[Terminal] Client disconnected from {session.name} (remaining: {len(session.clients)})")
 
         return ws
 
@@ -2832,48 +2843,54 @@ projects:
             return web.json_response({"error": str(e)}, status=500)
 
     async def speak(self, session_name: str, text: str):
-        """Generate TTS audio and send to session clients."""
-        if session_name not in self.active_sessions:
-            logger.warning(f"[{session_name}] speak: session not found")
+        """Generate TTS audio and send to portal dashboard clients.
+
+        Audio is broadcast to all dashboard clients (anyone viewing the portal).
+        This is simpler than per-session routing and matches the mental model:
+        if the request came from the portal, audio goes to the portal.
+        """
+        # Check if any dashboard clients are connected
+        if not self.dashboard_clients:
+            logger.warning(f"[{session_name}] speak: no dashboard clients connected")
             return
 
-        session = self.active_sessions[session_name]
-        if not session.clients:
-            logger.warning(f"[{session_name}] speak: no clients connected")
-            return
+        logger.info(f"[{session_name}] speak: {len(self.dashboard_clients)} dashboard client(s)")
 
-        logger.info(f"[{session_name}] speak: {len(session.clients)} client(s) connected")
+        # Get voice settings from session if it exists
+        voice = self.config.tts.default_voice
+        exaggeration = 0.5
+        cfg_weight = 0.5
+        if session_name in self.active_sessions:
+            session = self.active_sessions[session_name]
+            voice = session.config.voice
+            exaggeration = session.config.exaggeration
+            cfg_weight = session.config.cfg_weight
 
-        # Notify clients TTS is starting (include text for display)
-        await self._broadcast(session, {"type": "tts_start", "text": text})
+        # Notify clients TTS is starting
+        await self.broadcast_dashboard("tts_start", {"text": text, "session": session_name})
 
         try:
             # Generate audio
-            logger.info(f"[{session_name}] TTS voice: {session.config.voice}")
+            logger.info(f"[{session_name}] TTS voice: {voice}")
             audio_data = await self.tts.generate(
                 text=text,
-                voice=session.config.voice,
-                exaggeration=session.config.exaggeration,
-                cfg_weight=session.config.cfg_weight,
+                voice=voice,
+                exaggeration=exaggeration,
+                cfg_weight=cfg_weight,
             )
 
             if audio_data:
                 # Prepend silence to prevent first syllable cutoff
                 audio_data = self._prepend_silence(audio_data, ms=300)
-                # Send base64 encoded audio
+                # Send base64 encoded audio to all dashboard clients
                 audio_b64 = base64.b64encode(audio_data).decode()
-                logger.info(f"[{session_name}] Broadcasting audio ({len(audio_b64)} bytes b64)")
-                await self._broadcast(session, {"type": "audio", "data": audio_b64})
+                logger.info(f"[{session_name}] Broadcasting audio to dashboard ({len(audio_b64)} bytes b64)")
+                await self.broadcast_dashboard("audio", {"data": audio_b64, "session": session_name})
             else:
                 logger.warning(f"[{session_name}] TTS returned no audio data")
 
         except Exception as e:
             logger.error(f"TTS failed for {session_name}: {e}")
-        finally:
-            # Unlock session after TTS
-            if session.locked_by:
-                session.locked_by = None
-                await self._broadcast(session, {"type": "session_unlocked"})
 
 
 async def run_server(config: Config):
