@@ -33,6 +33,12 @@ export class SessionWindow {
         this.ws = null;
         this.resizeObserver = null;
         this.isOpen = false;
+
+        // PTT (Push-to-talk) state
+        this.pttButton = null;
+        this.mediaRecorder = null;
+        this.audioChunks = [];
+        this.pttState = 'idle'; // idle | recording | processing
     }
 
     /**
@@ -52,6 +58,10 @@ export class SessionWindow {
         this._createTerminal(container);
         this._connectWebSocket();
         this._setupResizeObserver(container);
+        // Set up PTT button for terminal mode
+        if (this.mode === 'terminal') {
+            this._setupPTT(container);
+        }
 
         this.isOpen = true;
     }
@@ -66,6 +76,18 @@ export class SessionWindow {
         if (this.resizeObserver) {
             this.resizeObserver.disconnect();
             this.resizeObserver = null;
+        }
+
+        // Clean up PTT keyboard handler
+        if (this._pttKeyHandler) {
+            document.removeEventListener('keydown', this._pttKeyHandler);
+            document.removeEventListener('keyup', this._pttKeyHandler);
+            this._pttKeyHandler = null;
+        }
+
+        // Cancel any active recording
+        if (this.mediaRecorder && this.pttState === 'recording') {
+            this._cancelRecording();
         }
 
         // Close WebSocket
@@ -155,9 +177,12 @@ export class SessionWindow {
                 </div>
             `;
         } else {
-            // Terminal mode: xterm.js for interactive terminal
+            // Terminal mode: xterm.js for interactive terminal + PTT button
             container.innerHTML = `
                 <div class="session-terminal"></div>
+                <button class="ptt-button" title="Hold to record voice input">
+                    <span class="ptt-icon">🎤</span>
+                </button>
                 <div class="session-status-bar">
                     <span class="status-indicator connecting"></span>
                     <span class="status-text">Connecting...</span>
@@ -647,5 +672,196 @@ export class SessionWindow {
 
         // Wrap in initial span and close at end
         return `<span>${html}</span>`;
+    }
+
+    // PTT (Push-to-talk) Methods
+
+    _setupPTT(container) {
+        this.pttButton = container.querySelector('.ptt-button');
+        if (!this.pttButton) return;
+
+        // Mouse events
+        this.pttButton.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            this._startRecording();
+        });
+        this.pttButton.addEventListener('mouseup', () => this._stopRecording());
+        this.pttButton.addEventListener('mouseleave', () => {
+            if (this.pttState === 'recording') {
+                this._stopRecording();
+            }
+        });
+
+        // Touch events for mobile
+        this.pttButton.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            this._startRecording();
+        });
+        this.pttButton.addEventListener('touchend', () => this._stopRecording());
+        this.pttButton.addEventListener('touchcancel', () => {
+            if (this.pttState === 'recording') {
+                this._cancelRecording();
+            }
+        });
+
+        // Keyboard shortcut: Ctrl+Space to toggle recording (when window focused)
+        this._pttKeyHandler = (e) => {
+            // Only respond when this window is focused
+            if (!this.winbox || !document.activeElement?.closest('.winbox')?.contains(container)) {
+                return;
+            }
+
+            // Ctrl+Space (or Cmd+Space on Mac) to record
+            if (e.code === 'Space' && (e.ctrlKey || e.metaKey)) {
+                e.preventDefault();
+                e.stopPropagation();
+
+                if (e.type === 'keydown' && this.pttState === 'idle') {
+                    this._startRecording();
+                } else if (e.type === 'keyup' && this.pttState === 'recording') {
+                    this._stopRecording();
+                }
+            }
+        };
+
+        document.addEventListener('keydown', this._pttKeyHandler);
+        document.addEventListener('keyup', this._pttKeyHandler);
+    }
+
+    async _startRecording() {
+        if (this.pttState !== 'idle') return;
+
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            this.audioChunks = [];
+
+            // Use webm/opus for efficient transfer
+            const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+                ? 'audio/webm;codecs=opus'
+                : 'audio/webm';
+
+            this.mediaRecorder = new MediaRecorder(stream, { mimeType });
+
+            this.mediaRecorder.ondataavailable = (e) => {
+                if (e.data.size > 0) {
+                    this.audioChunks.push(e.data);
+                }
+            };
+
+            this.mediaRecorder.onstop = () => {
+                // Stop all tracks to release microphone
+                stream.getTracks().forEach(track => track.stop());
+
+                if (this.audioChunks.length > 0 && this.pttState === 'processing') {
+                    const blob = new Blob(this.audioChunks, { type: mimeType });
+                    this._processRecording(blob);
+                }
+            };
+
+            this.mediaRecorder.start();
+            this._setPTTState('recording');
+            console.log('[SessionWindow] Recording started');
+
+        } catch (err) {
+            console.error('[SessionWindow] Failed to start recording:', err);
+            this._updateStatus('error', 'Microphone access denied');
+            this._setPTTState('idle');
+        }
+    }
+
+    _stopRecording() {
+        if (this.pttState !== 'recording' || !this.mediaRecorder) return;
+
+        this._setPTTState('processing');
+        this.mediaRecorder.stop();
+        console.log('[SessionWindow] Recording stopped, processing...');
+    }
+
+    _cancelRecording() {
+        if (!this.mediaRecorder) return;
+
+        this.audioChunks = [];
+        this.mediaRecorder.stop();
+        this._setPTTState('idle');
+        console.log('[SessionWindow] Recording cancelled');
+    }
+
+    async _processRecording(blob) {
+        try {
+            // Step 1: Transcribe audio
+            const formData = new FormData();
+            formData.append('audio', blob, 'recording.webm');
+
+            const transcribeRes = await fetch('/transcribe', {
+                method: 'POST',
+                body: formData,
+            });
+
+            const transcribeData = await transcribeRes.json();
+
+            if (transcribeData.error) {
+                throw new Error(transcribeData.error);
+            }
+
+            const text = transcribeData.text?.trim();
+            if (!text) {
+                this._updateStatus('error', 'No speech detected');
+                this._setPTTState('idle');
+                return;
+            }
+
+            console.log('[SessionWindow] Transcribed:', text);
+
+            // Step 2: Send to session with voice prompt hint
+            const sendRes = await fetch(`/send/${this.sessionId}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    text: `[Voice input - respond with say command] ${text}`
+                }),
+            });
+
+            const sendData = await sendRes.json();
+
+            if (sendData.error) {
+                throw new Error(sendData.error);
+            }
+
+            console.log('[SessionWindow] Sent to session:', this.sessionId);
+            this._updateStatus('connected', `Sent: "${text.substring(0, 30)}${text.length > 30 ? '...' : ''}"`);
+
+            // Reset status after a moment
+            setTimeout(() => {
+                if (this.pttState === 'idle') {
+                    this._updateStatus('connected', 'Connected');
+                }
+            }, 3000);
+
+        } catch (err) {
+            console.error('[SessionWindow] PTT processing failed:', err);
+            this._updateStatus('error', err.message || 'Voice input failed');
+        } finally {
+            this._setPTTState('idle');
+        }
+    }
+
+    _setPTTState(state) {
+        this.pttState = state;
+        if (!this.pttButton) return;
+
+        this.pttButton.classList.remove('recording', 'processing');
+
+        switch (state) {
+            case 'recording':
+                this.pttButton.classList.add('recording');
+                this.pttButton.querySelector('.ptt-icon').textContent = '🔴';
+                break;
+            case 'processing':
+                this.pttButton.classList.add('processing');
+                this.pttButton.querySelector('.ptt-icon').textContent = '⏳';
+                break;
+            default:
+                this.pttButton.querySelector('.ptt-icon').textContent = '🎤';
+        }
     }
 }

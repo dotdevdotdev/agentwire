@@ -20,13 +20,13 @@ User holds PTT button
     ↓
 Browser: MediaRecorder captures audio (WebM/Opus)
     ↓
-POST /api/transcribe with audio blob
+POST /transcribe with audio blob
     ↓
-Backend: Save temp file, run whisperkit-cli
+Backend: Save temp file, convert to wav, transcribe via STT backend
     ↓
 Return transcription text
     ↓
-Browser: Send to session via POST /api/session/{name}/send
+Browser: Send to session via POST /send/{session}
     ↓
 Backend: agentwire send -s {session} "{text}"
 ```
@@ -35,8 +35,8 @@ Backend: agentwire send -s {session} "{text}"
 
 ## Wave 1: Human Actions (RUNTIME BLOCKING)
 
-- [ ] Ensure whisperkit-cli is installed and working
-- [ ] Verify microphone permissions work in browser
+- [x] Ensure whisperkit-cli is installed and working
+- [x] Verify microphone permissions work in browser
 
 ---
 
@@ -44,15 +44,15 @@ Backend: agentwire send -s {session} "{text}"
 
 Create `/api/transcribe` endpoint that accepts audio and returns transcription.
 
-### 2.1 Add transcription API route
+### 2.1 Add transcription API route ✅
 
 **Files:** `agentwire/server.py`
 
-- Add `POST /api/transcribe` endpoint
-- Accept multipart audio file upload
-- Save to temp file, call whisperkit-cli (reuse logic from listen.py)
-- Return JSON with transcription text
-- Handle errors gracefully (no speech detected, timeout, etc.)
+- Already exists at `POST /transcribe`
+- Accepts multipart audio file upload (webm)
+- Converts to wav, transcribes via configured STT backend
+- Returns JSON with transcription text
+- Handles errors gracefully
 
 ---
 
@@ -60,24 +60,24 @@ Create `/api/transcribe` endpoint that accepts audio and returns transcription.
 
 Add the floating PTT button to session windows.
 
-### 3.1 Create PTT button HTML/CSS
+### 3.1 Create PTT button HTML/CSS ✅
 
 **Files:** `agentwire/static/js/session-window.js`, `agentwire/static/css/desktop.css`
 
-- Add PTT button element in `_createContainer()` method
+- Added PTT button element in `_createContainer()` method
 - Position: absolute, bottom-right corner, floating over terminal
-- States: idle (mic icon), recording (red pulse), processing (spinner)
-- Semi-transparent background so terminal is still visible beneath
+- States: idle (🎤), recording (🔴 with red pulse), processing (⏳)
+- Semi-transparent background with backdrop blur
 
-### 3.2 Implement audio recording
+### 3.2 Implement audio recording ✅
 
 **Files:** `agentwire/static/js/session-window.js`
 
-- Use MediaRecorder API with getUserMedia
-- Start recording on mousedown/touchstart
-- Stop recording on mouseup/touchend/mouseleave
-- Encode as WebM/Opus for efficient transfer
-- Handle permission errors gracefully
+- Uses MediaRecorder API with getUserMedia
+- Starts recording on mousedown/touchstart
+- Stops recording on mouseup/touchend/mouseleave
+- Encodes as WebM/Opus for efficient transfer
+- Handles permission errors gracefully
 
 ---
 
@@ -85,41 +85,41 @@ Add the floating PTT button to session windows.
 
 Wire up the PTT button to backend and session.
 
-### 4.1 Connect PTT to transcription flow
+### 4.1 Connect PTT to transcription flow ✅
 
 **Files:** `agentwire/static/js/session-window.js`
 
-- On recording stop, POST audio blob to `/api/transcribe`
-- On success, POST transcription to `/api/session/{session}/send`
-- Update button state throughout (recording → processing → idle)
-- Show brief toast/status on success or error
+- On recording stop, POST audio blob to `/transcribe`
+- On success, POST transcription to `/send/{session}` with voice prompt hint
+- Updates button state throughout (recording → processing → idle)
+- Shows status in window status bar
 
 ---
 
 ## Wave 5: Polish
 
-### 5.1 Add keyboard shortcut
+### 5.1 Add keyboard shortcut ✅
 
-**Files:** `agentwire/static/js/desktop.js` or `session-window.js`
+**Files:** `agentwire/static/js/session-window.js`
 
-- Global keyboard shortcut (configurable, default: hold space when window focused)
-- Only active when a session window has focus
+- Ctrl+Space (or Cmd+Space on Mac) to toggle recording
+- Only active when session window is focused
 - Same behavior as button: hold to record, release to send
 
-### 5.2 Visual feedback
+### 5.2 Visual feedback ✅
 
 **Files:** `agentwire/static/css/desktop.css`
 
 - Smooth transitions between states
-- Audio level visualization while recording (optional)
+- Pulsing red animation while recording
 - Clear visual indication of recording state
 
 ---
 
 ## Completion Criteria
 
-- [ ] PTT button appears in session windows (terminal mode only)
-- [ ] Hold button records, release sends transcription to session
-- [ ] Visual states: idle → recording (red) → processing (spinner) → idle
-- [ ] Errors shown gracefully (no mic, transcription failed, etc.)
-- [ ] Keyboard shortcut works when window focused
+- [x] PTT button appears in session windows (terminal mode only)
+- [x] Hold button records, release sends transcription to session
+- [x] Visual states: idle → recording (red) → processing (spinner) → idle
+- [x] Errors shown gracefully (no mic, transcription failed, etc.)
+- [x] Keyboard shortcut works when window focused (Ctrl/Cmd+Space)
