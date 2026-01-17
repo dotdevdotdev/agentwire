@@ -733,6 +733,8 @@ body {
 .session-window .wb-body {
     display: flex;
     flex-direction: column;
+    height: 100%;
+    overflow: hidden;
 }
 
 .session-window-content {
@@ -747,6 +749,27 @@ body {
     min-height: 0;
     overflow: hidden;
     position: relative;
+}
+
+/* xterm.js needs explicit sizing and font to fill container correctly */
+.session-terminal .xterm {
+    height: 100%;
+    width: 100%;
+    font-family: "FiraMono Nerd Font Mono", Menlo, Monaco, "Courier New", monospace !important;
+    font-size: 14px !important;
+}
+
+.session-terminal .xterm-rows {
+    font-family: "FiraMono Nerd Font Mono", Menlo, Monaco, "Courier New", monospace !important;
+    font-size: 14px !important;
+}
+
+.session-terminal .xterm-viewport {
+    overflow-y: auto !important;
+}
+
+.session-terminal .xterm-screen {
+    height: 100% !important;
 }
 
 .session-output {

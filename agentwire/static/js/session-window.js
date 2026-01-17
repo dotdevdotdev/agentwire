@@ -179,10 +179,10 @@ export class SessionWindow {
 
         this.terminal = new Terminal({
             cursorBlink: true,
-            fontSize: 13,
-            fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+            fontSize: 14,
+            fontFamily: '"FiraMono Nerd Font Mono", Menlo, Monaco, "Courier New", monospace',
             theme: {
-                background: '#0d1117',
+                background: '#000',
                 foreground: '#e6edf3',
                 cursor: '#2ea043',
                 selection: 'rgba(46, 160, 67, 0.3)',
@@ -204,11 +204,37 @@ export class SessionWindow {
 
         this.terminal.open(terminalEl);
 
-        // Fit after layout is complete
-        requestAnimationFrame(() => {
-            this._handleResize();
-            setTimeout(() => this._handleResize(), 100);
-        });
+        // Fit after font loads and layout is complete
+        const fontFamily = '"FiraMono Nerd Font Mono", Menlo, Monaco, "Courier New", monospace';
+        const fontSize = 14;
+
+        const doInitialFit = (fontLoaded) => {
+            requestAnimationFrame(() => {
+                if (fontLoaded) {
+                    // Force xterm to recalculate cell dimensions by re-setting font
+                    // This triggers internal re-measurement with the now-loaded font
+                    this.terminal.options.fontFamily = fontFamily;
+                    this.terminal.options.fontSize = fontSize;
+                }
+                this._handleResize();
+                setTimeout(() => this._handleResize(), 100);
+            });
+        };
+
+        if (document.fonts && document.fonts.load) {
+            // Wait for font to load, then fit
+            document.fonts.load(`${fontSize}px ${fontFamily}`).then(() => {
+                console.log('[SessionWindow] Font loaded, fitting terminal');
+                doInitialFit(true);
+            }).catch(() => {
+                // Font load failed, fit anyway with fallback font
+                console.warn('[SessionWindow] Font load failed, using fallback');
+                doInitialFit(false);
+            });
+        } else {
+            // Font loading API not available, use delayed fit
+            doInitialFit(false);
+        }
     }
 
     _createWinBox(container) {
@@ -241,12 +267,21 @@ export class SessionWindow {
             onresize: () => {
                 this._handleResize();
             },
+            onmaximize: () => {
+                // WinBox animates maximize - wait for animation to complete
+                this._handleResizeAfterAnimation();
+            },
+            onfullscreen: () => {
+                // Browser fullscreen uses fullscreenchange event, not CSS transitions
+                this._handleFullscreenResize();
+            },
             onminimize: () => {
                 // Optionally disconnect on minimize to save resources
                 // For now, keep connection alive
             },
             onrestore: () => {
-                this._handleResize();
+                // Restore from maximize/minimize animates
+                this._handleResizeAfterAnimation();
                 // Reconnect if disconnected
                 if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
                     this._connectWebSocket();
@@ -350,23 +385,131 @@ export class SessionWindow {
 
     _handleResize() {
         if (this.mode === 'terminal' && this.fitAddon && this.terminal) {
+            requestAnimationFrame(() => {
+                try {
+                    // Ensure font options are correct before fitting
+                    const fontFamily = '"FiraMono Nerd Font Mono", Menlo, Monaco, "Courier New", monospace';
+                    const fontSize = 14;
+                    this.terminal.options.fontFamily = fontFamily;
+                    this.terminal.options.fontSize = fontSize;
+
+                    this.fitAddon.fit();
+                    this._sendResize();
+                } catch (e) {
+                    // Terminal might not be fully initialized
+                }
+            });
+        }
+    }
+
+    _handleFullscreenResize() {
+        // Handle browser fullscreen - uses fullscreenchange event, not CSS transitions
+        if (this.mode !== 'terminal' || !this.fitAddon || !this.terminal) return;
+
+        const doFit = () => {
             try {
+                const container = this.winbox?.body?.querySelector('.session-terminal');
+                console.log('[SessionWindow] Fullscreen container:', container?.offsetWidth, 'x', container?.offsetHeight);
+
+                const fontFamily = '"FiraMono Nerd Font Mono", Menlo, Monaco, "Courier New", monospace';
+                const fontSize = 14;
+                this.terminal.options.fontFamily = fontFamily;
+                this.terminal.options.fontSize = fontSize;
                 this.fitAddon.fit();
                 this._sendResize();
-            } catch (e) {
-                // Terminal might not be fully initialized
+                console.log('[SessionWindow] Fullscreen terminal:', this.terminal.cols, 'x', this.terminal.rows);
+            } catch (err) {
+                console.error('[SessionWindow] Fullscreen fit error:', err);
             }
-        }
+        };
+
+        // fullscreenchange fires AFTER the browser completes the fullscreen transition
+        const onFullscreenChange = () => {
+            document.removeEventListener('fullscreenchange', onFullscreenChange);
+            console.log('[SessionWindow] fullscreenchange fired, isFullscreen:', !!document.fullscreenElement);
+
+            // Multiple fits with increasing delays to ensure it sticks
+            setTimeout(doFit, 50);
+            setTimeout(doFit, 150);
+            setTimeout(doFit, 300);
+        };
+
+        document.addEventListener('fullscreenchange', onFullscreenChange);
+
+        // Fallback: if fullscreenchange doesn't fire within 1s, force fit
+        setTimeout(() => {
+            document.removeEventListener('fullscreenchange', onFullscreenChange);
+            console.log('[SessionWindow] Fullscreen fallback triggered');
+            doFit();
+            setTimeout(doFit, 200);
+        }, 1000);
+    }
+
+    _handleResizeAfterAnimation() {
+        // Listen for CSS transition to complete before fitting terminal
+        if (this.mode !== 'terminal' || !this.fitAddon || !this.terminal || !this.winbox) return;
+
+        const doFit = () => {
+            try {
+                const container = this.winbox.body.querySelector('.session-terminal');
+                console.log('[SessionWindow] Container dimensions:', container?.offsetWidth, container?.offsetHeight);
+                console.log('[SessionWindow] Terminal before fit:', this.terminal.cols, 'x', this.terminal.rows);
+
+                // Ensure font options are set before fitting (in case they weren't applied correctly)
+                const fontFamily = '"FiraMono Nerd Font Mono", Menlo, Monaco, "Courier New", monospace';
+                const fontSize = 14;
+                this.terminal.options.fontFamily = fontFamily;
+                this.terminal.options.fontSize = fontSize;
+
+                this.fitAddon.fit();
+                console.log('[SessionWindow] Terminal after fit:', this.terminal.cols, 'x', this.terminal.rows);
+                this._sendResize();
+            } catch (err) {
+                console.error('[SessionWindow] Fit error:', err);
+            }
+        };
+
+        const winboxEl = this.winbox.window;
+        let handled = false;
+
+        const onTransitionEnd = (e) => {
+            console.log('[SessionWindow] transitionend:', e.propertyName, e.target);
+            if (e.target === winboxEl && (e.propertyName === 'width' || e.propertyName === 'height')) {
+                handled = true;
+                winboxEl.removeEventListener('transitionend', onTransitionEnd);
+                doFit();
+            }
+        };
+
+        winboxEl.addEventListener('transitionend', onTransitionEnd);
+
+        // Fallback: if transitionend doesn't fire within 500ms, force fit
+        setTimeout(() => {
+            if (!handled) {
+                console.log('[SessionWindow] transitionend timeout - forcing fit');
+                winboxEl.removeEventListener('transitionend', onTransitionEnd);
+                doFit();
+            }
+        }, 500);
     }
 
     _sendResize() {
         // Only terminal mode sends resize (monitor doesn't need it)
         if (this.mode === 'terminal' && this.ws && this.ws.readyState === WebSocket.OPEN && this.terminal) {
-            this.ws.send(JSON.stringify({
+            const msg = {
                 type: 'resize',
                 cols: this.terminal.cols,
                 rows: this.terminal.rows,
-            }));
+            };
+            console.log('[SessionWindow] Sending resize:', msg);
+            this.ws.send(JSON.stringify(msg));
+        } else {
+            console.log('[SessionWindow] Cannot send resize:', {
+                mode: this.mode,
+                wsExists: !!this.ws,
+                wsState: this.ws?.readyState,
+                terminalExists: !!this.terminal
+            });
         }
     }
 

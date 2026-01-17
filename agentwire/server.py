@@ -13,6 +13,7 @@ import os
 import pty
 import re
 import shlex
+import signal
 import socket
 import ssl
 import struct
@@ -798,13 +799,19 @@ class AgentWireServer:
                 # Create PTY for local tmux attach
                 master_fd, slave_fd = pty.openpty()
 
+                # Setup function to make PTY the controlling terminal
+                def setup_pty_session():
+                    os.setsid()  # Create new session (required first)
+                    # Make the PTY the controlling terminal
+                    fcntl.ioctl(slave_fd, termios.TIOCSCTTY, 0)
+
                 # Spawn process with slave PTY as stdin/stdout/stderr
                 proc = await asyncio.create_subprocess_exec(
                     *cmd,
                     stdin=slave_fd,
                     stdout=slave_fd,
                     stderr=slave_fd,
-                    preexec_fn=os.setsid,  # Create new session
+                    preexec_fn=setup_pty_session,
                 )
 
                 # Close slave fd in parent - child keeps it open
@@ -830,7 +837,7 @@ class AgentWireServer:
                     """Called when PTY master FD has data to read."""
                     try:
                         data = os.read(master_fd, 8192)
-                        logger.info(f"[Terminal] on_readable callback: read {len(data) if data else 0} bytes")
+                        logger.debug(f"[Terminal] on_readable callback: read {len(data) if data else 0} bytes")
                         if data:
                             # Schedule putting data in queue from event loop
                             asyncio.create_task(data_queue.put(data))
@@ -853,10 +860,10 @@ class AgentWireServer:
                             if data is None:  # EOF signal
                                 logger.info(f"[Terminal] Received EOF from PTY for {session_name}")
                                 break
-                            logger.info(f"[Terminal] Read {len(data)} bytes from PTY for {session_name}")
+                            logger.debug(f"[Terminal] Read {len(data)} bytes from PTY for {session_name}")
                             if not ws.closed:
                                 await ws.send_bytes(data)
-                                logger.info(f"[Terminal] Sent {len(data)} bytes to WebSocket for {session_name}")
+                                logger.debug(f"[Terminal] Sent {len(data)} bytes to WebSocket for {session_name}")
                         else:
                             # Remote: read from subprocess stdout
                             data = await proc.stdout.read(8192)
@@ -903,12 +910,25 @@ class AgentWireServer:
                                     # Terminal resize
                                     cols = payload.get("cols", 80)
                                     rows = payload.get("rows", 24)
-                                    logger.debug(f"[Terminal] Resize {session_name} to {cols}x{rows}")
+                                    logger.info(f"[Terminal] Resize {session_name} to {cols}x{rows}")
 
                                     if master_fd is not None:
                                         # Local: use TIOCSWINSZ ioctl to resize PTY
                                         winsize = struct.pack("HHHH", rows, cols, 0, 0)
                                         fcntl.ioctl(master_fd, termios.TIOCSWINSZ, winsize)
+                                        # Send SIGWINCH to notify tmux of size change
+                                        if proc and proc.pid:
+                                            try:
+                                                os.kill(proc.pid, signal.SIGWINCH)
+                                            except (OSError, ProcessLookupError):
+                                                pass  # Process may have exited
+                                        # Force tmux to resize window to fit largest client
+                                        resize_proc = await asyncio.create_subprocess_exec(
+                                            "tmux", "resize-window", "-a", "-t", session_name,
+                                            stdout=asyncio.subprocess.DEVNULL,
+                                            stderr=asyncio.subprocess.DEVNULL,
+                                        )
+                                        await resize_proc.wait()
                                     else:
                                         # Remote: send tmux resize-window command
                                         resize_cmd = f"tmux resize-window -t {session_name} -x {cols} -y {rows}\n"
