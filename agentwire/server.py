@@ -13,6 +13,7 @@ import os
 import pty
 import re
 import shlex
+import socket
 import ssl
 import struct
 import subprocess
@@ -124,6 +125,7 @@ class AgentWireServer:
         self.config = config
         self.active_sessions: dict[str, Session] = {}  # Active sessions with connected clients
         self.session_activity: dict[str, dict] = {}  # Global activity tracking for all sessions
+        self.dashboard_clients: set = set()  # WebSocket clients for dashboard updates
         self.tts = None
         self.stt = None
         self.agent = None
@@ -143,12 +145,13 @@ class AgentWireServer:
     def _setup_routes(self):
         """Configure HTTP and WebSocket routes."""
         self.app.router.add_get("/health", self.handle_health)
-        self.app.router.add_get("/", self.handle_dashboard)
-        self.app.router.add_get("/desktop", self.handle_desktop)
-        self.app.router.add_get("/session/{name:.+}", self.handle_session)
+        self.app.router.add_get("/", self.handle_index)
+        self.app.router.add_get("/ws", self.handle_dashboard_ws)
         self.app.router.add_get("/ws/{name:.+}", self.handle_websocket)
         self.app.router.add_get("/ws/terminal/{name:.+}", self.handle_terminal_ws)
         self.app.router.add_get("/api/sessions", self.api_sessions)
+        self.app.router.add_get("/api/sessions/local", self.api_sessions_local)
+        self.app.router.add_get("/api/sessions/remote", self.api_sessions_remote)
         self.app.router.add_get("/api/machine/{machine_id}/status", self.api_machine_status)
         self.app.router.add_get("/api/check-path", self.api_check_path)
         self.app.router.add_get("/api/check-branches", self.api_check_branches)
@@ -528,20 +531,8 @@ class AgentWireServer:
         """Health check endpoint for network diagnostics."""
         return web.json_response({"status": "ok", "version": __version__})
 
-    async def handle_dashboard(self, request: web.Request) -> web.Response:
-        """Serve the dashboard page."""
-        voices = await self._get_voices()
-        context = {
-            "version": __version__,
-            "voices": voices,
-            "default_voice": self.config.tts.default_voice,
-        }
-        response = aiohttp_jinja2.render_template("dashboard.html", request, context)
-        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-        return response
-
-    async def handle_desktop(self, request: web.Request) -> web.Response:
-        """Serve the desktop UI page."""
+    async def handle_index(self, request: web.Request) -> web.Response:
+        """Serve the desktop UI."""
         voices = await self._get_voices()
         context = {
             "version": __version__,
@@ -551,6 +542,100 @@ class AgentWireServer:
         response = aiohttp_jinja2.render_template("desktop.html", request, context)
         response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
         return response
+
+    async def handle_dashboard_ws(self, request: web.Request) -> web.WebSocketResponse:
+        """WebSocket endpoint for dashboard updates (sessions, machines, config)."""
+        ws = web.WebSocketResponse()
+        await ws.prepare(request)
+
+        self.dashboard_clients.add(ws)
+        logger.info(f"Dashboard client connected (total: {len(self.dashboard_clients)})")
+
+        # Send initial state
+        try:
+            sessions_data = await self._get_sessions_data()
+            await ws.send_json({"type": "sessions_update", "sessions": sessions_data})
+
+            machines_data = await self._get_machines_data()
+            await ws.send_json({"type": "machines_update", "machines": machines_data})
+        except Exception as e:
+            logger.error(f"Failed to send initial dashboard state: {e}")
+
+        try:
+            async for msg in ws:
+                if msg.type == web.WSMsgType.TEXT:
+                    try:
+                        data = json.loads(msg.data)
+                        await self._handle_dashboard_message(ws, data)
+                    except json.JSONDecodeError:
+                        pass
+                elif msg.type == web.WSMsgType.ERROR:
+                    logger.error(f"Dashboard WebSocket error: {ws.exception()}")
+        finally:
+            self.dashboard_clients.discard(ws)
+            logger.info(f"Dashboard client disconnected (total: {len(self.dashboard_clients)})")
+
+        return ws
+
+    async def _handle_dashboard_message(self, ws: web.WebSocketResponse, data: dict):
+        """Handle messages from dashboard clients."""
+        msg_type = data.get("type")
+
+        if msg_type == "refresh_sessions":
+            sessions_data = await self._get_sessions_data()
+            await ws.send_json({"type": "sessions_update", "sessions": sessions_data})
+
+        elif msg_type == "refresh_machines":
+            machines_data = await self._get_machines_data()
+            await ws.send_json({"type": "machines_update", "machines": machines_data})
+
+    async def _get_sessions_data(self) -> list:
+        """Get local sessions list for dashboard (fast, no SSH)."""
+        try:
+            success, result = await self.run_agentwire_cmd(["list", "--local", "--sessions"])
+            if not success:
+                return []
+
+            sessions = result.get("sessions", [])
+            for s in sessions:
+                s["activity"] = self._get_global_session_activity(s.get("name", ""))
+            return sessions
+        except Exception as e:
+            logger.error(f"Failed to get sessions data: {e}")
+            return []
+
+    async def _get_machines_data(self) -> list:
+        """Get machines list (without slow SSH status checks)."""
+        try:
+            machines = []
+            if hasattr(self.agent, 'machines'):
+                for m in self.agent.machines:
+                    machines.append({
+                        "id": m.get("id"),
+                        "host": m.get("host"),
+                        "status": "unknown",  # Don't check SSH on initial load
+                    })
+            return machines
+        except Exception as e:
+            logger.error(f"Failed to get machines data: {e}")
+            return []
+
+    async def broadcast_dashboard(self, msg_type: str, data: dict):
+        """Broadcast a message to all connected dashboard clients."""
+        if not self.dashboard_clients:
+            return
+
+        message = {"type": msg_type, **data}
+        closed = []
+
+        for ws in self.dashboard_clients:
+            try:
+                await ws.send_json(message)
+            except Exception:
+                closed.append(ws)
+
+        for ws in closed:
+            self.dashboard_clients.discard(ws)
 
     # System sessions that get special treatment (restart instead of fork/new/recreate)
     SYSTEM_SESSIONS = {"agentwire", "agentwire-portal", "agentwire-tts"}
@@ -593,26 +678,6 @@ class AgentWireServer:
         threshold = self.config.server.activity_threshold_seconds
 
         return "active" if time_since_last_output <= threshold else "idle"
-
-    async def handle_session(self, request: web.Request) -> web.Response:
-        """Serve a session page."""
-        name = request.match_info["name"]
-        session_config = self._get_session_config(name)
-        voices = await self._get_voices()
-        is_system_session = self._is_system_session(name)
-
-        context = {
-            "session_name": name,
-            "config": session_config,
-            "voices": voices,
-            "current_voice": session_config.voice,
-            "is_system_session": is_system_session,
-            "is_project_session": not is_system_session,
-            "is_system_session_js": "true" if is_system_session else "false",
-        }
-        response = aiohttp_jinja2.render_template("session.html", request, context)
-        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-        return response
 
     async def handle_websocket(self, request: web.Request) -> web.WebSocketResponse:
         """Handle WebSocket connections for a session."""
@@ -952,6 +1017,14 @@ class AgentWireServer:
             # Unlock will happen after TTS completes or on disconnect
             pass
 
+        elif msg_type == "resize":
+            # Resize tmux pane for monitor mode (so captured output fits the viewer)
+            cols = data.get("cols", 80)
+            rows = data.get("rows", 24)
+            logger.info(f"[{session.name}] Resize request: {cols}x{rows}")
+            # Note: Resizing won't reformat existing scrollback content.
+            # For proper display, use terminal mode (Connect) instead of monitor mode.
+
     # Patterns for say command detection
     SAY_PATTERN = re.compile(r'say\s+(?:"([^"]+)"|\'([^\']+)\')', re.IGNORECASE)
     ANSI_PATTERN = re.compile(r'\x1b\[[0-9;]*m|\x1b\].*?\x07')
@@ -1025,6 +1098,11 @@ class AgentWireServer:
                     # Notify clients that agent is actively working
                     if old_output:  # Skip first poll
                         await self._broadcast(session, {"type": "activity"})
+                        # Also notify dashboard clients
+                        await self.broadcast_dashboard("session_activity", {
+                            "session": session.name,
+                            "active": True
+                        })
 
                     # Detect say commands in NEW content only
                     # If output doesn't start with old_output (terminal scrolled),
@@ -1135,78 +1213,91 @@ class AgentWireServer:
     # API Handlers
 
     async def api_sessions(self, request: web.Request) -> web.Response:
-        """List all active sessions grouped by machine."""
+        """List all active sessions grouped by machine via CLI."""
         try:
-            sessions = self.agent.list_sessions()
+            # Get local sessions via CLI
+            local_success, local_result = await self.run_agentwire_cmd(["list", "--local", "--sessions"])
+            local_sessions = local_result.get("sessions", []) if local_success else []
 
-            # Load machines for status checks
-            machines_dict = {}
-            if hasattr(self.agent, 'machines'):
-                for m in self.agent.machines:
-                    machines_dict[m.get('id')] = m
+            # Get remote sessions via CLI (includes SSH checks)
+            remote_success, remote_result = await self.run_agentwire_cmd(["list", "--remote", "--sessions"])
+            remote_sessions = remote_result.get("sessions", []) if remote_success else []
 
-            # Group sessions by machine (everything is machine-based now)
-            machine_sessions = {}  # machine_id -> list of sessions
+            # Combine and add activity status
+            all_sessions = local_sessions + remote_sessions
+            for s in all_sessions:
+                s["activity"] = self._get_global_session_activity(s.get("name", ""))
 
-            for name in sessions:
-                project, branch, machine_id = parse_session_name(name)
-
-                # Get config dynamically from .agentwire.yml
-                config = self._get_session_config(name)
-
-                # Get working directory from tmux
-                base_name = name.split("@")[0] if "@" in name else name
-                cwd = self._get_session_cwd(base_name, machine_id)
-                path = cwd or str(self.config.projects.dir / project)
-
-                # Calculate activity status from global tracking (works even without active session)
-                activity_status = self._get_global_session_activity(name)
-
-                session_data = {
-                    "name": name,
-                    "path": path,
-                    "machine": machine_id,
-                    "voice": config.voice,
-                    "project_type": get_project_type(Path(path)) if Path(path).exists() else "scratch",
-                    "type": config.type,
-                    "activity": activity_status,
-                }
-
-                # All sessions grouped by machine_id (no special "local" section)
+            # Group sessions by machine
+            machine_sessions = {}
+            for s in all_sessions:
+                machine_id = s.get("machine", "local")
                 if machine_id not in machine_sessions:
                     machine_sessions[machine_id] = []
-                machine_sessions[machine_id].append(session_data)
+                machine_sessions[machine_id].append(s)
 
-            # Build machine list with status
-            # Include ALL configured machines, even if they have no sessions
+            # Build machine list
             machines = []
-            all_machine_ids = set(machines_dict.keys()) | set(machine_sessions.keys())
-            for machine_id in all_machine_ids:
-                machine_config = machines_dict.get(machine_id, {})
-                sessions_list = machine_sessions.get(machine_id, [])
-
-                # Check machine status via SSH
-                status = await self._check_machine_status(machine_config)
-
+            for machine_id, sessions_list in machine_sessions.items():
                 machines.append({
                     "id": machine_id,
-                    "host": machine_config.get("host", machine_id),
-                    "status": status,
+                    "host": machine_id,
+                    "status": "online",  # If we got sessions, machine is online
                     "session_count": len(sessions_list),
                     "sessions": sessions_list,
                 })
 
-            # Sort machines: "local" first, then others alphabetically
-            machines.sort(key=lambda m: (m["id"] != "local", m["id"]))
+            # Sort machines: local first, then others alphabetically
+            machines.sort(key=lambda m: (m["id"] != "local" and not m["id"].endswith(socket.gethostname().split('.')[0]), m["id"]))
 
-            # Return machine-based structure (no separate "local" section)
-            result = {
-                "machines": machines,
-            }
-
-            return web.json_response(result)
+            return web.json_response({"machines": machines})
         except Exception as e:
             logger.error(f"Failed to list sessions: {e}")
+            return web.json_response({"machines": []})
+
+    async def api_sessions_local(self, request: web.Request) -> web.Response:
+        """Fast endpoint for local sessions only (no SSH checks)."""
+        try:
+            success, result = await self.run_agentwire_cmd(["list", "--local", "--sessions"])
+            if not success:
+                return web.json_response({"sessions": []})
+
+            sessions = result.get("sessions", [])
+            # Add activity status
+            for s in sessions:
+                s["activity"] = self._get_global_session_activity(s.get("name", ""))
+
+            return web.json_response({"sessions": sessions})
+        except Exception as e:
+            logger.error(f"Failed to list local sessions: {e}")
+            return web.json_response({"sessions": []})
+
+    async def api_sessions_remote(self, request: web.Request) -> web.Response:
+        """Endpoint for remote sessions grouped by machine (includes SSH checks)."""
+        try:
+            success, result = await self.run_agentwire_cmd(["list", "--remote", "--sessions"])
+            if not success:
+                return web.json_response({"machines": []})
+
+            sessions = result.get("sessions", [])
+
+            # Group by machine and add activity status
+            machines_dict = {}
+            for s in sessions:
+                machine_id = s.get("machine", "unknown")
+                if machine_id not in machines_dict:
+                    machines_dict[machine_id] = []
+                s["activity"] = self._get_global_session_activity(s.get("name", ""))
+                machines_dict[machine_id].append(s)
+
+            machines = [
+                {"id": mid, "sessions": sess}
+                for mid, sess in machines_dict.items()
+            ]
+
+            return web.json_response({"machines": machines})
+        except Exception as e:
+            logger.error(f"Failed to list remote sessions: {e}")
             return web.json_response({"machines": []})
 
     async def api_machine_status(self, request: web.Request) -> web.Response:
@@ -1452,6 +1543,11 @@ class AgentWireServer:
                 yaml_config["voice"] = voice
                 self._write_agentwire_yaml(session_path, yaml_config, machine_id)
 
+            # Broadcast session created to dashboard clients
+            await self.broadcast_dashboard("session_created", {"session": session_name})
+            sessions_data = await self._get_sessions_data()
+            await self.broadcast_dashboard("sessions_update", {"sessions": sessions_data})
+
             return web.json_response({"success": True, "name": session_name, "template": template_name})
 
         except Exception as e:
@@ -1474,6 +1570,11 @@ class AgentWireServer:
                 if session.output_task:
                     session.output_task.cancel()
                 del self.active_sessions[name]
+
+            # Broadcast session closed to dashboard clients
+            await self.broadcast_dashboard("session_closed", {"session": name})
+            sessions_data = await self._get_sessions_data()
+            await self.broadcast_dashboard("sessions_update", {"sessions": sessions_data})
 
             return web.json_response({"success": True})
 
@@ -1956,7 +2057,7 @@ projects:
             return web.json_response({"error": str(e)})
 
     async def handle_send(self, request: web.Request) -> web.Response:
-        """Send text to an agent session."""
+        """Send text to an agent session via CLI."""
         name = request.match_info["name"]
         try:
             data = await request.json()
@@ -1965,10 +2066,12 @@ projects:
             if not text:
                 return web.json_response({"error": "No text provided"})
 
-            success = self.agent.send_input(name, text)
+            # Use CLI: agentwire send -s <session> <text>
+            success, result = await self.run_agentwire_cmd(["send", "-s", name, text])
 
             if not success:
-                return web.json_response({"error": "Failed to send to session"})
+                error_msg = result.get("error", "Failed to send to session")
+                return web.json_response({"error": error_msg})
 
             return web.json_response({"success": True})
 

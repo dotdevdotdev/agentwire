@@ -3,46 +3,48 @@
  */
 
 import { ListWindow } from '../list-window.js';
-import { desktop } from '../desktop-manager.js';
+
+/** @type {ListWindow|null} */
+let sessionsWindow = null;
 
 /**
  * Open the Sessions window
  * @returns {ListWindow} The sessions window instance
  */
 export function openSessionsWindow() {
-    const win = new ListWindow({
+    if (sessionsWindow?.winbox) {
+        sessionsWindow.winbox.focus();
+        return sessionsWindow;
+    }
+
+    sessionsWindow = new ListWindow({
         id: 'sessions',
         title: 'Sessions',
         fetchData: fetchSessions,
         renderItem: renderSessionItem,
         onItemAction: handleSessionAction,
-        refreshInterval: 5000
+        emptyMessage: 'No sessions'
     });
 
-    win.open();
-    return win;
+    sessionsWindow._cleanup = () => {
+        sessionsWindow = null;
+    };
+
+    sessionsWindow.open();
+    return sessionsWindow;
 }
 
 /**
- * Fetch sessions from API
- * API returns {machines: [{id, sessions: [...]}]} - flatten to get all sessions
+ * Fetch local sessions from fast API endpoint
  * @returns {Promise<Array>} Array of session objects
  */
 async function fetchSessions() {
-    const response = await fetch('/api/sessions');
+    const response = await fetch('/api/sessions/local');
     const data = await response.json();
-
-    const sessions = [];
-    for (const machine of (data.machines || [])) {
-        for (const session of (machine.sessions || [])) {
-            sessions.push({
-                name: session.name,
-                active: session.status === 'active',
-                machine: machine.id !== 'local' ? machine.id : null
-            });
-        }
-    }
-    return sessions;
+    return (data.sessions || []).map(s => ({
+        name: s.name,
+        active: s.activity === 'active'
+    }));
 }
 
 /**
@@ -52,22 +54,16 @@ async function fetchSessions() {
  */
 function renderSessionItem(session) {
     const statusClass = session.active ? 'active' : 'idle';
-    const statusText = session.active ? '● Active' : '○ Idle';
-    const machineTag = session.machine
-        ? `<span class="session-machine">@${session.machine}</span>`
-        : '';
+    const statusDot = session.active ? '●' : '○';
 
     return `
-        <div class="list-item" data-session="${session.name}">
-            <div class="session-info">
-                <span class="session-name">${session.name}</span>
-                <span class="session-status ${statusClass}">${statusText}</span>
-                ${machineTag}
-            </div>
-            <div class="list-item-actions">
-                <button class="btn btn-monitor" data-action="monitor">Monitor</button>
-                <button class="btn btn-connect" data-action="connect">Connect</button>
-            </div>
+        <div class="session-info" data-session="${session.name}">
+            <span class="session-status ${statusClass}">${statusDot}</span>
+            <span class="session-name">${session.name}</span>
+        </div>
+        <div class="list-item-actions">
+            <button class="btn btn-small" data-action="monitor">Monitor</button>
+            <button class="btn btn-small btn-primary" data-action="connect">Connect</button>
         </div>
     `;
 }
@@ -75,14 +71,13 @@ function renderSessionItem(session) {
 /**
  * Handle action button clicks on session items
  * @param {string} action - The action type ('monitor' or 'connect')
- * @param {HTMLElement} item - The list item element
+ * @param {Object} item - The session data object
  */
 function handleSessionAction(action, item) {
-    const session = item.dataset.session;
     if (action === 'monitor') {
-        openSessionTerminal(session, 'monitor');
+        openSessionTerminal(item.name, 'monitor');
     } else if (action === 'connect') {
-        openSessionTerminal(session, 'terminal');
+        openSessionTerminal(item.name, 'terminal');
     }
 }
 

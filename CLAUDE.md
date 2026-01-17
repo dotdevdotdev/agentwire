@@ -18,9 +18,21 @@ agentwire rebuild
 
 ## CLI is the Single Source of Truth
 
-**Always use `agentwire` CLI for session management.** The CLI is the authoritative interface - the web portal is just a frontend that calls the same underlying commands.
+**Always use `agentwire` CLI for session management.** The CLI is the authoritative interface - the web portal wraps CLI commands via `run_agentwire_cmd()`.
 
-Never use raw tmux commands or create skills/commands that duplicate CLI functionality:
+### Architecture Principle
+
+All session/machine/template logic lives in CLI commands (`__main__.py`). The portal (`server.py`) is a thin wrapper that:
+1. Calls CLI via `run_agentwire_cmd(["command", "args"])`
+2. Parses JSON output (`--json` flag)
+3. Adds WebSocket/real-time features
+
+**When adding new functionality:**
+1. Implement in CLI first with `--json` output
+2. Portal calls CLI, doesn't duplicate logic
+3. Never bypass CLI with direct tmux/subprocess calls
+
+### CLI Commands
 
 ```bash
 agentwire new -s name           # not: tmux new-session
@@ -35,6 +47,17 @@ agentwire send --pane 1 "task"  # send to pane
 agentwire output --pane 1       # read pane output
 agentwire kill --pane 1         # kill pane
 agentwire jump --pane 1         # focus pane
+
+# Machine management
+agentwire machine list
+agentwire machine add <id> <host>
+agentwire machine remove <id>
+
+# Template management
+agentwire template list
+agentwire template show <name>
+agentwire template create <name>
+agentwire template delete <name>
 ```
 
 Session formats: `name`, `project/branch` (worktree), `name@machine` (remote)
@@ -69,6 +92,17 @@ Per-session config (type, roles, voice) lives in `.agentwire.yml` in each projec
 - **Pane 0** = orchestrator, **panes 1+** = workers
 - **Damage-control hooks** block dangerous ops (`rm -rf`, `git push --force`, etc.)
 - **Smart TTS routing** - audio goes to browser if connected, local speakers if not
+
+## Desktop UI Patterns
+
+### Session Window Modes
+
+| Mode | Element | Use Case |
+|------|---------|----------|
+| **Monitor** | `<pre>` with ANSI-to-HTML | Read-only output viewing, polls `tmux capture-pane` |
+| **Terminal** | xterm.js | Interactive terminal, attaches via `tmux attach` |
+
+**Important:** Monitor mode must use a simple `<pre>` element, NOT xterm.js. xterm.js requires precise container dimensions for its fit addon to work correctly. Since monitor mode just displays captured text output, a `<pre>` element with `white-space: pre-wrap` and ANSI-to-HTML conversion is simpler and more reliable.
 
 ## Docs
 

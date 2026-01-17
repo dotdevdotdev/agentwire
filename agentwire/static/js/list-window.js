@@ -14,7 +14,6 @@ export class ListWindow {
      * @param {Function} options.fetchData - Async function returning array of items
      * @param {Function} options.renderItem - Function(item) returning HTML string
      * @param {Function} [options.onItemAction] - Handler for item actions: function(action, item, event)
-     * @param {number} [options.refreshInterval=0] - Auto-refresh interval in ms (0 = disabled)
      * @param {string} [options.emptyMessage='No items'] - Message when list is empty
      * @param {HTMLElement} [options.root] - Root element for WinBox (defaults to document body)
      * @param {number} [options.width=400] - Window width
@@ -29,7 +28,6 @@ export class ListWindow {
         this.fetchData = options.fetchData;
         this.renderItem = options.renderItem;
         this.onItemAction = options.onItemAction || (() => {});
-        this.refreshInterval = options.refreshInterval || 0;
         this.emptyMessage = options.emptyMessage || 'No items';
         this.root = options.root || document.body;
         this.width = options.width || 400;
@@ -40,7 +38,6 @@ export class ListWindow {
         this.winbox = null;
         this.container = null;
         this.contentEl = null;
-        this.refreshTimer = null;
         this.isLoading = false;
     }
 
@@ -96,13 +93,8 @@ export class ListWindow {
             onclose: () => this._onClose(),
         });
 
-        // Initial data fetch
-        this.refresh();
-
-        // Start auto-refresh if configured
-        if (this.refreshInterval > 0) {
-            this.refreshTimer = setInterval(() => this.refresh(), this.refreshInterval);
-        }
+        // Initial data fetch (with loading indicator)
+        this.refresh(true);
 
         return this.winbox;
     }
@@ -118,12 +110,17 @@ export class ListWindow {
 
     /**
      * Refresh the list data
+     * @param {boolean} [showLoading=false] - Show loading state (only on initial load)
      */
-    async refresh() {
+    async refresh(showLoading = false) {
         if (this.isLoading || !this.contentEl) return;
 
         this.isLoading = true;
-        this._showLoading();
+
+        // Only show loading on initial load, not on subsequent refreshes
+        if (showLoading) {
+            this._showLoading();
+        }
 
         try {
             const items = await this.fetchData();
@@ -216,10 +213,9 @@ export class ListWindow {
      * Handle window close
      */
     _onClose() {
-        // Stop refresh timer
-        if (this.refreshTimer) {
-            clearInterval(this.refreshTimer);
-            this.refreshTimer = null;
+        // Call custom cleanup if provided
+        if (this._cleanup) {
+            this._cleanup();
         }
 
         // Clean up references

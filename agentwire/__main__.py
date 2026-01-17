@@ -1590,6 +1590,7 @@ def cmd_list(args) -> int:
     """
     json_mode = getattr(args, 'json', False)
     local_only = getattr(args, 'local', False)
+    remote_only = getattr(args, 'remote', False)
     show_sessions = getattr(args, 'sessions', False)
 
     # Check if we're inside a tmux session
@@ -1627,30 +1628,31 @@ def cmd_list(args) -> int:
     # Show sessions (original behavior)
     all_sessions = []
 
-    # Get local sessions
+    # Get local sessions (skip if remote_only)
     local_sessions = []
-    result = subprocess.run(
-        ["tmux", "list-sessions", "-F", "#{session_name}:#{session_windows}:#{pane_current_path}"],
-        capture_output=True,
-        text=True
-    )
+    if not remote_only:
+        result = subprocess.run(
+            ["tmux", "list-sessions", "-F", "#{session_name}:#{session_windows}:#{pane_current_path}"],
+            capture_output=True,
+            text=True
+        )
 
-    if result.returncode == 0:
-        for line in result.stdout.strip().split("\n"):
-            if line:
-                parts = line.split(":", 2)
-                if len(parts) >= 2:
-                    local_machine_id = socket.gethostname().split('.')[0]
-                    session_info = {
-                        "name": f"{parts[0]}@{local_machine_id}",
-                        "windows": int(parts[1]) if parts[1].isdigit() else 1,
-                        "path": parts[2] if len(parts) > 2 else "",
-                        "machine": local_machine_id,
-                    }
-                    local_sessions.append(session_info)
-                    all_sessions.append(session_info)
+        if result.returncode == 0:
+            for line in result.stdout.strip().split("\n"):
+                if line:
+                    parts = line.split(":", 2)
+                    if len(parts) >= 2:
+                        local_machine_id = socket.gethostname().split('.')[0]
+                        session_info = {
+                            "name": f"{parts[0]}@{local_machine_id}",
+                            "windows": int(parts[1]) if parts[1].isdigit() else 1,
+                            "path": parts[2] if len(parts) > 2 else "",
+                            "machine": local_machine_id,
+                        }
+                        local_sessions.append(session_info)
+                        all_sessions.append(session_info)
 
-    # Get remote sessions from all registered machines
+    # Get remote sessions from all registered machines (skip if local_only)
     remote_by_machine = {}
     if not local_only:
         machines = _get_all_machines()
@@ -2389,6 +2391,55 @@ def cmd_split(args) -> int:
 
     pane_count = 1 + count  # original + new
     print(f"Added {count} pane(s) - now {pane_count} even vertical panes")
+    return 0
+
+
+def cmd_detach(args) -> int:
+    """Move a pane to its own session and re-align remaining panes."""
+    pane_index = getattr(args, 'pane', None)
+    new_session = getattr(args, 'session', None)
+    source_session = getattr(args, 'source', None)
+
+    if pane_index is None or new_session is None:
+        print("Error: --pane and -s/--session are required")
+        return 1
+
+    # Get source session if not specified
+    if not source_session:
+        result = subprocess.run(
+            ["tmux", "display-message", "-p", "#{session_name}"],
+            capture_output=True, text=True
+        )
+        if result.returncode == 0:
+            source_session = result.stdout.strip()
+        else:
+            print("Error: Could not detect current session")
+            return 1
+
+    # Check if target session already exists
+    result = subprocess.run(
+        ["tmux", "has-session", "-t", new_session],
+        capture_output=True
+    )
+    session_exists = result.returncode == 0
+
+    # Move pane to new session
+    if session_exists:
+        # Move to existing session
+        subprocess.run([
+            "tmux", "move-pane", "-s", f"{source_session}:{pane_index}", "-t", f"{new_session}:"
+        ], capture_output=True)
+    else:
+        # Break pane into new session
+        subprocess.run([
+            "tmux", "break-pane", "-d", "-s", f"{source_session}:{pane_index}", "-t", f"{new_session}:"
+        ], capture_output=True)
+
+    # Re-align remaining panes in source session
+    subprocess.run(["tmux", "select-layout", "-t", source_session, "even-horizontal"], capture_output=True)
+    subprocess.run(["tmux", "select-pane", "-t", f"{source_session}:0.0"], capture_output=True)
+
+    print(f"Moved pane {pane_index} to session '{new_session}'")
     return 0
 
 
@@ -5126,6 +5177,7 @@ def main() -> int:
     list_parser = subparsers.add_parser("list", help="List panes (in tmux) or sessions")
     list_parser.add_argument("--json", action="store_true", help="Output as JSON")
     list_parser.add_argument("--local", action="store_true", help="Only show local sessions")
+    list_parser.add_argument("--remote", action="store_true", help="Only show remote sessions")
     list_parser.add_argument("--sessions", action="store_true", help="Show sessions instead of panes")
     list_parser.set_defaults(func=cmd_list)
 
@@ -5175,6 +5227,13 @@ def main() -> int:
     split_parser.add_argument("-s", "--session", help="Target session (default: auto-detect)")
     split_parser.add_argument("--cwd", help="Working directory (default: current)")
     split_parser.set_defaults(func=cmd_split)
+
+    # === detach command (top-level) ===
+    detach_parser = subparsers.add_parser("detach", help="Move a pane to its own session")
+    detach_parser.add_argument("--pane", type=int, required=True, help="Pane index to detach")
+    detach_parser.add_argument("-s", "--session", required=True, help="Target session name (created if doesn't exist)")
+    detach_parser.add_argument("--source", help="Source session (default: auto-detect)")
+    detach_parser.set_defaults(func=cmd_detach)
 
     # === jump command (top-level) ===
     jump_parser = subparsers.add_parser("jump", help="Jump to (focus) a specific pane")

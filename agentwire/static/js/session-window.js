@@ -28,6 +28,7 @@ export class SessionWindow {
 
         this.winbox = null;
         this.terminal = null;
+        this.outputEl = null;  // For monitor mode
         this.fitAddon = null;
         this.ws = null;
         this.resizeObserver = null;
@@ -45,8 +46,10 @@ export class SessionWindow {
         }
 
         const container = this._createContainer();
-        this._createTerminal(container);
+        // Create WinBox FIRST so container is in DOM with real dimensions
         this._createWinBox(container);
+        // Now create terminal - fit addon will have actual dimensions to work with
+        this._createTerminal(container);
         this._connectWebSocket();
         this._setupResizeObserver(container);
 
@@ -71,12 +74,12 @@ export class SessionWindow {
             this.ws = null;
         }
 
-        // Dispose terminal
+        // Dispose terminal (terminal mode) or output element (monitor mode)
         if (this.terminal) {
             this.terminal.dispose();
             this.terminal = null;
         }
-
+        this.outputEl = null;
         this.fitAddon = null;
 
         // Close WinBox (if not already closed)
@@ -141,22 +144,41 @@ export class SessionWindow {
     _createContainer() {
         const container = document.createElement('div');
         container.className = 'session-window-content';
-        container.innerHTML = `
-            <div class="session-terminal"></div>
-            <div class="session-status-bar">
-                <span class="status-indicator connecting"></span>
-                <span class="status-text">Connecting...</span>
-            </div>
-        `;
+
+        if (this.mode === 'monitor') {
+            // Monitor mode: simple pre element for text output
+            container.innerHTML = `
+                <pre class="session-output"></pre>
+                <div class="session-status-bar">
+                    <span class="status-indicator connecting"></span>
+                    <span class="status-text">Connecting...</span>
+                </div>
+            `;
+        } else {
+            // Terminal mode: xterm.js for interactive terminal
+            container.innerHTML = `
+                <div class="session-terminal"></div>
+                <div class="session-status-bar">
+                    <span class="status-indicator connecting"></span>
+                    <span class="status-text">Connecting...</span>
+                </div>
+            `;
+        }
         return container;
     }
 
     _createTerminal(container) {
+        if (this.mode === 'monitor') {
+            // Monitor mode: just store reference to pre element
+            this.outputEl = container.querySelector('.session-output');
+            return;
+        }
+
+        // Terminal mode: full xterm.js setup
         const terminalEl = container.querySelector('.session-terminal');
 
         this.terminal = new Terminal({
-            cursorBlink: this.mode === 'terminal',
-            disableStdin: this.mode === 'monitor',
+            cursorBlink: true,
             fontSize: 13,
             fontFamily: 'Menlo, Monaco, "Courier New", monospace',
             theme: {
@@ -182,8 +204,11 @@ export class SessionWindow {
 
         this.terminal.open(terminalEl);
 
-        // Fit after a brief delay to ensure DOM is ready
-        setTimeout(() => this._handleResize(), 50);
+        // Fit after layout is complete
+        requestAnimationFrame(() => {
+            this._handleResize();
+            setTimeout(() => this._handleResize(), 100);
+        });
     }
 
     _createWinBox(container) {
@@ -256,32 +281,32 @@ export class SessionWindow {
             console.log(`[SessionWindow] Connected: ${this.sessionId}`);
             this._updateStatus('connected', 'Connected');
 
-            if (this.mode === 'terminal') {
-                // Send initial terminal size
-                this._sendResize();
-            }
+            // Send initial terminal size (both modes need it for proper display)
+            this._sendResize();
         };
 
         this.ws.onmessage = (event) => {
-            if (!this.terminal) return;
-
             if (this.mode === 'terminal') {
-                // Terminal mode: binary data or string
+                // Terminal mode: binary data or string to xterm
+                if (!this.terminal) return;
                 if (event.data instanceof ArrayBuffer) {
                     this.terminal.write(new Uint8Array(event.data));
                 } else {
                     this.terminal.write(event.data);
                 }
             } else {
-                // Monitor mode: JSON messages from output endpoint
+                // Monitor mode: JSON messages to pre element
+                if (!this.outputEl) return;
                 try {
                     const msg = JSON.parse(event.data);
                     if (msg.type === 'output' && msg.data) {
-                        this.terminal.write(msg.data);
+                        // Convert ANSI to HTML and display
+                        this.outputEl.innerHTML = this._ansiToHtml(msg.data);
+                        this.outputEl.scrollTop = this.outputEl.scrollHeight;
                     }
                 } catch (e) {
-                    // Fallback: write as plain text
-                    this.terminal.write(event.data);
+                    // Fallback: display as plain text
+                    this.outputEl.textContent = event.data;
                 }
             }
         };
@@ -314,19 +339,20 @@ export class SessionWindow {
         const terminalEl = container.querySelector('.session-terminal');
         if (!terminalEl) return;
 
-        this.resizeObserver = new ResizeObserver(() => {
-            this._handleResize();
-        });
-        this.resizeObserver.observe(terminalEl);
+        // Only observe resize for terminal mode
+        if (terminalEl) {
+            this.resizeObserver = new ResizeObserver(() => {
+                this._handleResize();
+            });
+            this.resizeObserver.observe(terminalEl);
+        }
     }
 
     _handleResize() {
-        if (this.fitAddon && this.terminal) {
+        if (this.mode === 'terminal' && this.fitAddon && this.terminal) {
             try {
                 this.fitAddon.fit();
-                if (this.mode === 'terminal') {
-                    this._sendResize();
-                }
+                this._sendResize();
             } catch (e) {
                 // Terminal might not be fully initialized
             }
@@ -334,7 +360,8 @@ export class SessionWindow {
     }
 
     _sendResize() {
-        if (this.ws && this.ws.readyState === WebSocket.OPEN && this.terminal) {
+        // Only terminal mode sends resize (monitor doesn't need it)
+        if (this.mode === 'terminal' && this.ws && this.ws.readyState === WebSocket.OPEN && this.terminal) {
             this.ws.send(JSON.stringify({
                 type: 'resize',
                 cols: this.terminal.cols,
@@ -361,5 +388,63 @@ export class SessionWindow {
         if (text) {
             text.textContent = message;
         }
+    }
+
+    /**
+     * Convert ANSI escape codes to HTML for monitor mode display.
+     * @param {string} text - Text with ANSI codes
+     * @returns {string} HTML string
+     */
+    _ansiToHtml(text) {
+        // Escape HTML entities first
+        let html = text
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+
+        // ANSI color code mappings
+        const colors = {
+            '30': '#000', '31': '#e74c3c', '32': '#2ecc71', '33': '#f39c12',
+            '34': '#3498db', '35': '#9b59b6', '36': '#1abc9c', '37': '#ecf0f1',
+            '90': '#7f8c8d', '91': '#ff6b6b', '92': '#6ee7a0', '93': '#feca57',
+            '94': '#74b9ff', '95': '#a29bfe', '96': '#81ecec', '97': '#ffffff'
+        };
+
+        // Process ANSI sequences
+        let currentStyles = [];
+        html = html.replace(/\x1b\[([0-9;]*)m/g, (match, codes) => {
+            if (!codes || codes === '0') {
+                // Reset
+                const closeSpans = currentStyles.length > 0 ? '</span>'.repeat(currentStyles.length) : '';
+                currentStyles = [];
+                return closeSpans;
+            }
+
+            const parts = codes.split(';');
+            let result = '';
+
+            for (const code of parts) {
+                if (code === '1') {
+                    result += '<span style="font-weight:bold">';
+                    currentStyles.push('bold');
+                } else if (colors[code]) {
+                    result += `<span style="color:${colors[code]}">`;
+                    currentStyles.push('color');
+                } else if (code >= '40' && code <= '47') {
+                    const bgColor = colors[String(parseInt(code) - 10)];
+                    if (bgColor) {
+                        result += `<span style="background:${bgColor}">`;
+                        currentStyles.push('bg');
+                    }
+                }
+            }
+
+            return result;
+        });
+
+        // Close any remaining open spans
+        html += '</span>'.repeat(currentStyles.length);
+
+        return html;
     }
 }

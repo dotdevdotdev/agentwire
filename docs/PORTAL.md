@@ -1,6 +1,47 @@
-# AgentWire Portal Features
+# AgentWire Portal
 
 > Web portal documentation. For project overview, see [CLAUDE.md](../CLAUDE.md). For CLI commands, see [CLI-REFERENCE.md](./CLI-REFERENCE.md).
+
+## Architecture: CLI-First
+
+The portal is a thin wrapper around CLI commands. All business logic lives in `agentwire` CLI.
+
+### Design Principles
+
+1. **CLI is source of truth** - session/machine/template logic in `__main__.py`
+2. **Portal wraps CLI** - calls `run_agentwire_cmd()` instead of direct implementations
+3. **JSON mode** - CLI commands support `--json` for machine-readable output
+4. **WebSocket for real-time** - portal adds WebSocket layer for live updates
+
+### How Portal Calls CLI
+
+```python
+# server.py
+async def api_create_session(self, request):
+    args = ["new", "-s", session_name, "--json"]
+    success, result = await self.run_agentwire_cmd(args)
+    return web.json_response(result)
+```
+
+### API to CLI Mapping
+
+| API Endpoint | CLI Command |
+|--------------|-------------|
+| `POST /api/create` | `agentwire new -s {name}` |
+| `DELETE /api/sessions/{name}` | `agentwire kill -s {name}` |
+| `GET /api/sessions/local` | `agentwire list --local --sessions` |
+| `GET /api/sessions/remote` | `agentwire list --remote --sessions` |
+| `POST /send/{name}` | `agentwire send -s {name} {text}` |
+| `POST /api/session/{name}/recreate` | `agentwire recreate -s {name}` |
+| `POST /api/session/{name}/fork` | `agentwire fork -s {name}` |
+
+### Adding New Features
+
+1. Implement CLI command with `--json` output
+2. Add portal endpoint that calls CLI via `run_agentwire_cmd()`
+3. Never duplicate logic between CLI and portal
+
+---
 
 ## Portal Modes
 
