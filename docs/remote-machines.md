@@ -171,6 +171,15 @@ Host gpu-server
     IdentityFile ~/.ssh/id_ed25519
 ```
 
+**Tip:** Enable SSH ControlMaster for faster remote operations (reuses connections instead of opening new ones each time). Add to `~/.ssh/config`:
+
+```
+Host *
+    ControlMaster auto
+    ControlPath ~/.ssh/sockets/%r@%h-%p
+    ControlPersist 600
+```
+
 ---
 
 ## machines.json Schema
