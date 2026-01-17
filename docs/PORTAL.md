@@ -1,187 +1,90 @@
-# AgentWire Portal Features
+# AgentWire Portal
 
-> Web portal documentation. For project overview, see [CLAUDE.md](../CLAUDE.md). For CLI commands, see [CLI-REFERENCE.md](./CLI-REFERENCE.md).
+> Web portal documentation. For project overview, see [CLAUDE.md](../CLAUDE.md). For architecture details, see [architecture.md](./architecture.md).
 
-## Portal Modes
+## Architecture: CLI-First
 
-The portal provides three distinct modes for interacting with Claude Code sessions. All modes can work simultaneously - you can switch between them without disconnecting.
+The portal is a thin wrapper around CLI commands. All business logic lives in `agentwire` CLI.
 
-### Ambient Mode
+### Design Principles
 
-Voice-first, minimal UI focused on conversational interaction.
+1. **CLI is source of truth** - session/machine/template logic in `__main__.py`
+2. **Portal wraps CLI** - calls `run_agentwire_cmd()` instead of direct implementations
+3. **JSON mode** - CLI commands support `--json` for machine-readable output
+4. **WebSocket for real-time** - portal adds WebSocket layer for live updates
 
-**Features:**
-- Animated orb visualization showing session state
-- Push-to-talk voice input
-- TTS audio playback
-- AskUserQuestion popups
-- Permission modals (for normal/restricted sessions)
+### How Portal Calls CLI
 
-**Use for:**
-- Hands-free interaction
-- Casual queries and conversation
-- Voice-driven workflows
-- Monitoring session activity at a glance
+```python
+# server.py
+async def api_create_session(self, request):
+    args = ["new", "-s", session_name, "--json"]
+    success, result = await self.run_agentwire_cmd(args)
+    return web.json_response(result)
+```
 
-**State indicators:**
+### API to CLI Mapping
 
-| State | Color | Meaning |
-|-------|-------|---------|
-| Ready | Green | Idle, waiting for input |
-| Listening | Yellow | Recording voice input |
-| Processing | Purple | Transcribing or agent working |
-| Generating | Blue | TTS generating voice |
-| Speaking | Green | Playing audio response |
+| API Endpoint | CLI Command |
+|--------------|-------------|
+| `POST /api/create` | `agentwire new -s {name}` |
+| `DELETE /api/sessions/{name}` | `agentwire kill -s {name}` |
+| `GET /api/sessions/local` | `agentwire list --local --sessions` |
+| `GET /api/sessions/remote` | `agentwire list --remote --sessions` |
+| `POST /send/{name}` | `agentwire send -s {name} {text}` |
+| `POST /api/session/{name}/recreate` | `agentwire recreate -s {name}` |
+| `POST /api/session/{name}/fork` | `agentwire fork -s {name}` |
 
-### Monitor Mode
+### Adding New Features
 
-Read-only terminal output with text input for sending prompts.
+1. Implement CLI command with `--json` output
+2. Add portal endpoint that calls CLI via `run_agentwire_cmd()`
+3. Never duplicate logic between CLI and portal
 
-**Features:**
-- Live terminal output via `tmux capture-pane` polling
-- Text input area for sending prompts
-- AskUserQuestion popups
-- Permission modals with diff preview
-- Multiline input support (Enter to send, Shift+Enter for newline)
+---
 
-**Use for:**
-- Observing Claude work in real-time
-- Sending text prompts without voice
-- Guided interaction with popups and modals
-- Reading session output without full terminal features
+## Desktop UI
 
-**How it works:**
-- Polls `tmux capture-pane` every 500ms for output
-- Sends input via `tmux send-keys`
-- One-way display (read-only, not a real terminal)
-- Works even when Terminal mode is connected
+The portal provides an OS-like desktop interface using WinBox.js for window management. Clean desktop by default with sessions opened as draggable, resizable windows.
 
-### Terminal Mode
+### Menu Bar
 
-Full interactive terminal via xterm.js attached to tmux session.
+| Menu | Items |
+|------|-------|
+| **Sessions** | Dropdown listing all sessions with Monitor/Terminal buttons |
+| **Machines** | Dropdown listing configured machines with status |
+| **Config** | Opens config display window |
+| **Chat** | Voice input with orb visualization (future) |
 
-**Features:**
-- Real terminal emulation (xterm.js)
-- Connected via `tmux attach` over WebSocket
-- Full readline, vim, tab completion support
-- Bidirectional input/output
-- Hardware acceleration (WebGL when available)
-- Clickable URLs (via xterm-addon-web-links)
-- Auto-resize on browser window changes
-- Terminal size shown in status (e.g., "Connected (120x40)")
+### Session Windows
 
-**Use for:**
-- Real development work
-- Using vim, emacs, or other TUI editors
-- Interactive commands (Python REPL, database shells)
-- Full shell features (tab completion, command history)
-- When Monitor mode's read-only view isn't enough
+Sessions can be opened from the Sessions dropdown in two modes:
 
-**Activation:**
-1. Click Terminal tab
-2. Click "Activate Interactive Terminal" button
-3. Terminal connects via WebSocket to tmux session
-4. Terminal stays connected even when switching to other modes
+| Mode | Button | Description |
+|------|--------|-------------|
+| **Monitor** | 👁 | Read-only output view, polls `tmux capture-pane` every 500ms |
+| **Terminal** | ⌨ | Full interactive terminal via xterm.js, bidirectional |
 
-**Keyboard shortcuts** (only active when Terminal tab visible):
+**Window features:**
+- Drag to reposition
+- Resize by dragging edges/corners
+- Minimize to taskbar
+- Maximize / fullscreen
+- Multiple windows can be open simultaneously
+- Status bar shows connection state
 
-| Shortcut | Action |
-|----------|--------|
-| Cmd/Ctrl+K | Clear terminal (sends `clear` command) |
-| Cmd/Ctrl+D | Disconnect terminal |
+**Monitor mode** uses a `<pre>` element with ANSI-to-HTML conversion for colored output display. Ideal for observing Claude work without needing terminal interaction.
 
-**Copy/paste:**
-- Cmd/Ctrl+C, Cmd/Ctrl+V work natively
-- Middle-click paste on Linux supported
-- No UI hints shown (relies on standard browser behavior)
-
-**Theme:**
-- Automatically matches portal theme (dark/light)
-- Updates when portal theme changes
-
-**Desktop-only:**
-- Terminal mode disabled on mobile/tablet devices
-- Shows message: "Terminal mode requires desktop browser"
-
-**Connection states:**
-
-| State | Indicator | Meaning |
-|-------|-----------|---------|
-| Connected | Green | Active connection to tmux session |
-| Connecting | Yellow | WebSocket establishing connection |
-| Disconnected | Red | Connection lost or not started |
-| Error | Amber | Connection failed, reconnect available |
-
-**Error handling:**
-- Shows user-friendly error messages
-- Provides "Reconnect" button on failure
-- Gracefully handles session termination
-- Cleans up WebSocket on disconnect
+**Terminal mode** uses xterm.js with WebGL acceleration (falls back to canvas). Full terminal emulation with vim, tab completion, readline support.
 
 ### Simultaneous Operation
 
-**All three modes work together:**
+Multiple windows for the same session work together:
+- Monitor and Terminal windows both see the same session output
+- Local `tmux attach` works alongside portal windows
+- All use the same underlying tmux session
 
-1. **Monitor + Terminal** - Monitor polling continues while Terminal is connected. Both see the same session output.
-2. **Voice + Terminal** - Can use voice input in Ambient mode while Terminal mode shows the terminal.
-3. **Local tmux + Portal** - Your local `tmux attach` works alongside both Monitor and Terminal modes. All attachments see the same session.
-
-**Input from any mode appears in all modes:**
-- Type in Monitor text input -> appears in Terminal
-- Type in Terminal -> appears in Monitor output
-- Voice prompt in Ambient -> appears in both Monitor and Terminal
-
-**Why this works:**
-- Monitor uses `tmux capture-pane` (read-only, doesn't interfere)
-- Terminal uses `tmux attach` (one of many possible attachments)
-- tmux allows multiple simultaneous attachments
-- All modes read from the same tmux session
-
-## Session UI Controls
-
-The session page header provides device and voice controls:
-
-| Control | Purpose |
-|---------|---------|
-| Mode tabs | Switch between Ambient, Monitor, and Terminal modes |
-| Mic selector | Choose audio input device (saved to localStorage) |
-| Speaker selector | Choose audio output device (Chrome/Edge only) |
-| Voice selector | TTS voice for this session (saved to sessions.json) |
-
-**Mode persistence:** Last selected mode is remembered per session in localStorage. Reloading the page restores your previous mode.
-
-**Activity detection:** The portal auto-detects session activity - if any output appears (even from manual commands), the orb switches to Processing state. Returns to Ready after 10s of inactivity.
-
-## Image Attachments
-
-Attach images to messages for debugging, sharing screenshots, or reference:
-
-| Method | Description |
-|--------|-------------|
-| Paste (Ctrl/Cmd+V) | Paste image from clipboard |
-| Attach button | Click to select image file |
-
-Images are uploaded to the configured `uploads.dir` and referenced in messages using Claude Code's `@/path/to/file` syntax. Configure in `config.yaml`:
-
-```yaml
-uploads:
-  dir: "~/.agentwire/uploads"  # Should be accessible from all machines
-  max_size_mb: 10
-  cleanup_days: 7              # Auto-delete old uploads
-```
-
-## Multiline Text Input
-
-The text input area supports multiline messages with auto-resize:
-
-| Action | Result |
-|--------|--------|
-| Type text | Textarea auto-expands as content grows |
-| **Enter** | Submits the message |
-| **Shift+Enter** | Adds a newline (for multi-paragraph messages) |
-| Clear text | Textarea collapses back to single line |
-
-The textarea starts as a single line and dynamically expands up to 10 lines before scrolling. This provides a natural typing experience for both quick single-line messages and longer multi-paragraph prompts.
+---
 
 ## Voice Output
 
@@ -209,6 +112,8 @@ agentwire say "Message" -s session   # Specify session
 
 TTS audio includes 300ms silence padding to prevent first-syllable cutoff.
 
+---
+
 ## AskUserQuestion Popup
 
 When Claude Code uses the AskUserQuestion tool, the portal displays a modal with clickable options:
@@ -218,49 +123,46 @@ When Claude Code uses the AskUserQuestion tool, the portal displays a modal with
 - "Type something" options show a text input with Send button
 - Supports multi-line questions
 
-## Actions Menu (Terminal Mode)
+---
 
-In monitor mode, a menu button appears above the mic button. Hover over action buttons to see labels.
+## Session Actions
+
+Right-click or use the actions menu on session windows for additional operations:
 
 **For regular project sessions:**
 
-| Action | Icon | Description |
-|--------|------|-------------|
-| New Session | + | Creates a sibling session in a new worktree, opens in new tab (parallel work) |
-| Fork Session | Fork | Forks the Claude Code conversation context into a new session (preserves history) |
-| Recreate Session | Refresh | Destroys current session/worktree, pulls latest, creates fresh worktree and Claude Code session |
+| Action | Description |
+|--------|-------------|
+| New Session | Creates a sibling session in a new worktree (parallel work) |
+| Fork Session | Forks Claude Code conversation context into new session |
+| Recreate | Destroys session/worktree, pulls latest, creates fresh |
 
-**Fork Session** uses Claude Code's `--resume <id> --fork-session` to create a new session that inherits the conversation context. Creates sessions named `project-fork-1`, `project-fork-2`, etc. Useful when you want to try different approaches without losing the current session's progress.
+**Fork Session** uses Claude Code's `--resume <id> --fork-session` to create a new session that inherits the conversation context. Creates sessions named `project-fork-1`, `project-fork-2`, etc.
 
 **For system sessions** (`agentwire`, `agentwire-portal`, `agentwire-tts`):
 
-| Action | Icon | Description |
-|--------|------|-------------|
-| Restart Service | Refresh | Properly restarts the service (portal schedules delayed restart, TTS stops/starts, agentwire session restarts Claude) |
+| Action | Description |
+|--------|-------------|
+| Restart Service | Properly restarts the service |
 
-## Create Session Form
+---
 
-The dashboard's Create Session form supports machine selection, input validation, git detection, and worktree creation:
+## Create Session
+
+Create new sessions from the Sessions dropdown menu:
 
 | Field | Description |
 |-------|-------------|
 | Session Name | Project name (blocks `@ / \ : * ? " < > |` and spaces) |
-| Machine | Dropdown: Local or any configured remote machine |
-| Project Path | Auto-fills to `{projectsDir}/{sessionName}` (editable) |
+| Machine | Local or any configured remote machine |
+| Project Path | Auto-fills to `{projectsDir}/{sessionName}` |
 | Voice | TTS voice for the session |
-| Permission Mode | Bypass (recommended) or Normal (prompted) |
 
 **Git Repository Detection:**
-When the project path points to a git repo, additional options appear:
+When the project path points to a git repo:
 - Current branch indicator (e.g., "on main")
 - **Create worktree** checkbox (checked by default)
-- **Branch Name** input with auto-suggested unique name (e.g., `jan-3-2026--1`)
-
-**Smart Defaults:**
-- Session name auto-fills path: typing `api` -> `~/projects/api`
-- Machine selection updates path placeholder to remote's `projects_dir`
-- Branch names auto-increment to avoid conflicts
-- Last selected machine is remembered in localStorage
+- **Branch Name** input with auto-suggested unique name
 
 **Session Name Derivation:**
 
@@ -270,6 +172,28 @@ When the project path points to a git repo, additional options appear:
 | local | yes | `myapp/jan-3-2026--1` |
 | gpu-server | no | `myapp@gpu-server` |
 | gpu-server | yes | `myapp/jan-3-2026--1@gpu-server` |
+
+---
+
+## Image Attachments
+
+Attach images to messages for debugging, sharing screenshots, or reference:
+
+| Method | Description |
+|--------|-------------|
+| Paste (Ctrl/Cmd+V) | Paste image from clipboard |
+| Attach button | Click to select image file |
+
+Images are uploaded to the configured `uploads.dir` and referenced in messages using Claude Code's `@/path/to/file` syntax. Configure in `config.yaml`:
+
+```yaml
+uploads:
+  dir: "~/.agentwire/uploads"
+  max_size_mb: 10
+  cleanup_days: 7
+```
+
+---
 
 ## Portal API
 
@@ -281,7 +205,7 @@ When the project path points to a git repo, additional options appear:
 | `/api/sessions` | GET | List all tmux sessions |
 | `/api/sessions/{name}` | DELETE | Close/kill a session |
 | `/api/sessions/archive` | GET | List archived sessions |
-| `/api/create` | POST | Create new session (accepts machine, worktree, branch) |
+| `/api/create` | POST | Create new session |
 | `/api/check-path` | GET | Check if path exists and is git repo |
 | `/api/check-branches` | GET | Get existing branches matching prefix |
 
@@ -290,9 +214,9 @@ When the project path points to a git repo, additional options appear:
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
 | `/api/session/{name}/config` | POST | Update session config (voice, etc.) |
-| `/api/session/{name}/recreate` | POST | Destroy and recreate session with fresh worktree |
+| `/api/session/{name}/recreate` | POST | Destroy and recreate session |
 | `/api/session/{name}/spawn-sibling` | POST | Create parallel session in new worktree |
-| `/api/session/{name}/fork` | POST | Fork Claude Code session (preserves conversation) |
+| `/api/session/{name}/fork` | POST | Fork Claude Code session |
 | `/api/session/{name}/restart-service` | POST | Restart system service |
 | `/api/sessions/{name}/connections` | GET | Get connection count for session |
 
@@ -340,5 +264,5 @@ When the project path points to a git repo, additional options appear:
 
 | Endpoint | Purpose |
 |----------|---------|
-| `/ws/{name}` | Main session WebSocket (ambient/monitor modes) |
-| `/ws/terminal/{name}` | Terminal attach WebSocket (xterm.js) |
+| `/ws/{name}` | Session WebSocket for monitor mode (JSON messages with output) |
+| `/ws/terminal/{name}` | Terminal attach WebSocket (bidirectional binary data) |
