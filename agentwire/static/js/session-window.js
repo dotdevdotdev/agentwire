@@ -348,18 +348,50 @@ export class SessionWindow {
         this.ws.onmessage = (event) => {
             if (this.mode === 'terminal') {
                 // Terminal mode: binary data or string to xterm
+                // But first check for JSON messages (audio, tts_start, etc.)
+                const data = event.data;
+
+                // Check if this looks like a JSON message from the server
+                if (typeof data === 'string') {
+                    // Check for JSON audio/control messages
+                    if (data.includes('"type"')) {
+                        try {
+                            const msg = JSON.parse(data);
+                            console.log('[SessionWindow] JSON message received:', msg.type);
+
+                            if (msg.type === 'audio' && msg.data) {
+                                console.log('[SessionWindow] Playing audio, data length:', msg.data.length);
+                                this._playAudio(msg.data);
+                                return;
+                            } else if (msg.type === 'tts_start') {
+                                console.log('[SessionWindow] TTS starting:', msg.text);
+                                return;
+                            } else if (msg.type === 'session_unlocked' || msg.type === 'session_locked') {
+                                return; // Ignore lock messages
+                            }
+                            // Other JSON messages - don't write to terminal
+                            return;
+                        } catch (e) {
+                            console.warn('[SessionWindow] JSON parse failed:', e.message);
+                            // Fall through to terminal
+                        }
+                    }
+                }
+
                 if (!this.terminal) return;
-                if (event.data instanceof ArrayBuffer) {
-                    this.terminal.write(new Uint8Array(event.data));
+                if (data instanceof ArrayBuffer) {
+                    this.terminal.write(new Uint8Array(data));
                 } else {
-                    this.terminal.write(event.data);
+                    this.terminal.write(data);
                 }
             } else {
                 // Monitor mode: JSON messages to pre element
                 if (!this.outputEl) return;
                 try {
                     const msg = JSON.parse(event.data);
-                    if (msg.type === 'output' && msg.data) {
+                    if (msg.type === 'audio' && msg.data) {
+                        this._playAudio(msg.data);
+                    } else if (msg.type === 'output' && msg.data) {
                         // Convert ANSI to HTML and display
                         this.outputEl.innerHTML = this._ansiToHtml(msg.data);
                         this.outputEl.scrollTop = this.outputEl.scrollHeight;
@@ -862,6 +894,41 @@ export class SessionWindow {
                 break;
             default:
                 this.pttButton.querySelector('.ptt-icon').textContent = '🎤';
+        }
+    }
+
+    // Audio Playback
+
+    async _playAudio(base64Data) {
+        try {
+            // Decode base64 to binary
+            const binaryString = atob(base64Data);
+            const bytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+
+            // Create audio context if needed
+            if (!this._audioContext) {
+                this._audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+
+            // Resume context if suspended (browser autoplay policy)
+            if (this._audioContext.state === 'suspended') {
+                await this._audioContext.resume();
+            }
+
+            // Decode and play
+            const audioBuffer = await this._audioContext.decodeAudioData(bytes.buffer);
+            const source = this._audioContext.createBufferSource();
+            source.buffer = audioBuffer;
+            source.connect(this._audioContext.destination);
+            source.start(0);
+
+            console.log('[SessionWindow] Playing audio:', audioBuffer.duration.toFixed(2), 'seconds');
+
+        } catch (err) {
+            console.error('[SessionWindow] Audio playback failed:', err);
         }
     }
 }
