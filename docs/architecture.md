@@ -6,20 +6,20 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  Device (phone/tablet/laptop)                               │
-│  └── Browser → https://localhost:8765                       │
+│  Browser → https://localhost:8765                           │
+│  └── Desktop Control Center (WinBox windows)                │
 └─────────────────────────────────────────────────────────────┘
                               │
                          WebSocket
                               │
 ┌─────────────────────────────────────────────────────────────┐
 │  AgentWire Portal (agentwire-portal tmux session)           │
-│  ├── HTTP routes (dashboard, session pages)                 │
-│  ├── WebSocket /ws/{session} (ambient/monitor modes)           │
-│  ├── WebSocket /ws/terminal/{session} (terminal mode attach)   │
+│  ├── HTTP routes (desktop UI, static assets)                │
+│  ├── WebSocket /ws/{session} (monitor mode output)          │
+│  ├── WebSocket /ws/terminal/{session} (terminal attach)     │
 │  ├── /transcribe (STT)                                      │
-│  ├── /send/{session} (prompt forwarding)                       │
-│  └── /api/say/{session} (TTS broadcast)                        │
+│  ├── /send/{session} (prompt forwarding)                    │
+│  └── /api/say/{session} (TTS broadcast)                     │
 └─────────────────────────────────────────────────────────────┘
                               │
               ┌───────────────┴───────────────┐
@@ -31,34 +31,61 @@
 
 ---
 
-## Three-Mode Architecture
+## Desktop Control Center
 
-The portal provides three distinct modes for interacting with Claude Code sessions. All modes can work simultaneously.
+The portal provides an OS-like desktop interface using WinBox.js for window management. Sessions are opened as draggable, resizable windows.
 
-### Ambient Mode
+### Window Types
 
-Voice-first, minimal UI focused on conversational interaction.
+| Window | Purpose | Source |
+|--------|---------|--------|
+| Sessions | List all sessions with Monitor/Terminal buttons | Menu bar dropdown |
+| Machines | List configured machines with status | Menu bar dropdown |
+| Config | Display current configuration | Menu bar dropdown |
+| Session Window | Monitor or Terminal view of a session | Click from Sessions list |
+| Chat | Voice input with orb visualization | Menu bar (future) |
 
-- **Input:** Voice (push-to-talk) → STT → text → tmux send-keys
-- **Output:** WebSocket streaming → orb state updates
-- **Interaction:** Modals for AskUserQuestion, permissions
+### Session Window Modes
 
-### Monitor Mode
+Each session can be opened in one of two modes:
 
-Read-only terminal output with text input for sending prompts.
+| Mode | Element | Use Case |
+|------|---------|----------|
+| **Monitor** | `<pre>` with ANSI-to-HTML | Read-only output viewing, polls `tmux capture-pane` |
+| **Terminal** | xterm.js | Interactive terminal, attaches via `tmux attach` |
 
-- **Input:** Text area → `/send/{session}` HTTP → tmux send-keys
-- **Output:** Polling (`tmux capture-pane` every 500ms) → WebSocket → display
-- **Interaction:** Same modals as Ambient mode
+**Monitor mode** uses a simple `<pre>` element (not xterm.js) because it just displays captured text output. ANSI escape codes are converted to HTML for color support.
 
-### Terminal Mode
+**Terminal mode** uses xterm.js with the fit addon for proper terminal emulation. Requires precise container dimensions for the fit addon to calculate rows/columns correctly.
 
-Full interactive terminal via xterm.js attached to tmux session.
+### Multiple Windows
 
-- **Input:** xterm.js → WebSocket (`/ws/terminal/{session}`) → tmux attach stdin
-- **Output:** tmux attach stdout → WebSocket → xterm.js
-- **Bidirectional:** Full duplex communication over single WebSocket
-- **Resize:** Browser resize → WebSocket message → `tmux resize-window`
+- Multiple session windows can be open simultaneously
+- Each window has independent WebSocket connection
+- Windows can be minimized to taskbar, dragged, resized
+- Monitor and Terminal windows for the same session work together (both see same output)
+
+---
+
+## Terminal Resize Handling
+
+Terminal mode has sophisticated resize handling to ensure xterm.js fits correctly in all scenarios:
+
+| Event | Handler | Strategy |
+|-------|---------|----------|
+| WinBox drag resize | ResizeObserver + `onresize` | Direct `fit()` call |
+| WinBox maximize/restore | `_handleResizeAfterAnimation()` | Wait for CSS `transitionend` event, fallback timeout |
+| Browser fullscreen | `_handleFullscreenResize()` | Wait for `fullscreenchange` event, multiple delayed fits |
+
+**Why multiple strategies:**
+- WinBox animates maximize/restore with CSS transitions
+- Browser fullscreen has its own event lifecycle
+- The fit addon needs final container dimensions, not mid-animation values
+
+**Resize message flow:**
+```
+Browser resize → fit addon calculates cols/rows → WebSocket {type:'resize'} → tmux resize-window
+```
 
 ---
 
@@ -68,7 +95,7 @@ Full interactive terminal via xterm.js attached to tmux session.
 Browser (xterm.js)              Portal (server.py)              tmux session
 ─────────────────              ──────────────────              ────────────
 
-1. User clicks "Activate Terminal"
+1. User clicks "Terminal" button
    │
    ├─[WebSocket connect]──────>│
    │                            ├─[spawn subprocess]──────────>│
@@ -88,7 +115,7 @@ Browser (xterm.js)              Portal (server.py)              tmux session
    ├─[WS: {type:'resize'}]─────>│                               │
    │                            ├─[tmux resize-window]────────>│
    │                            │                               │
-5. Close terminal               │                               │
+5. Close window                 │                               │
    │                            │                               │
    ├─[WS disconnect]──────────>│                               │
    │                            ├─[kill subprocess]────────────>│
@@ -103,7 +130,7 @@ Browser (xterm.js)              Portal (server.py)              tmux session
    - `WebSocket → tmux stdin` (receives input, writes to tmux)
 3. **Graceful cleanup:** On WebSocket close, subprocess is terminated, tmux session detaches cleanly
 4. **No interference:** Monitor mode's `capture-pane` polling runs independently, doesn't affect Terminal WebSocket
-5. **Multiple attachments:** tmux allows simultaneous attachments - local terminal, Terminal mode, and Monitor mode all work together
+5. **Multiple attachments:** tmux allows simultaneous attachments - local terminal, Terminal window, and Monitor window all work together
 
 ---
 
@@ -111,26 +138,19 @@ Browser (xterm.js)              Portal (server.py)              tmux session
 
 ### Terminal Mode
 
-- **Desktop-only:** Terminal mode requires a desktop browser with keyboard input. Mobile/tablet devices show a message indicating desktop is required.
-- **WebGL fallback:** WebGL acceleration may not be available on older browsers or certain configurations. Terminal automatically falls back to canvas rendering.
-- **Copy/paste on mobile:** While Terminal is disabled on mobile, copy/paste behavior may vary across browsers even on desktop.
+- **Desktop-only:** Terminal mode requires a desktop browser with keyboard input.
+- **WebGL fallback:** WebGL acceleration may not be available on older browsers. Terminal automatically falls back to canvas rendering.
 - **Very rapid output:** Extremely rapid output (10,000+ lines/second) may cause temporary slowdown while xterm.js processes the data.
-- **Remote latency:** Remote sessions via SSH may experience higher latency in Terminal mode compared to local sessions.
+- **Remote latency:** Remote sessions via SSH may experience higher latency in Terminal mode.
 
 ### Monitor Mode
 
 - **Read-only:** Monitor mode displays output via polling (`tmux capture-pane`). It shows a snapshot updated every 500ms, not true real-time scrolling like Terminal mode.
 - **No terminal features:** Tab completion, readline editing, and TUI applications (like vim) won't work in Monitor mode. Use Terminal mode for these.
 
-### Ambient Mode
-
-- **Voice accuracy:** STT accuracy depends on the backend (WhisperKit, remote, etc.) and audio quality. Background noise may affect transcription.
-- **Browser audio:** Push-to-talk requires browser microphone permissions and may not work in all environments (e.g., WSL2 without audio passthrough).
-
 ### General
 
-- **Session state sync:** When switching modes, there may be a brief delay (< 1 second) before the new mode shows current output.
-- **Local tmux conflicts:** If you manually resize the tmux window via local `tmux attach`, it may temporarily conflict with Terminal mode's auto-resize. Refreshing the Terminal mode connection resolves this.
+- **Local tmux conflicts:** If you manually resize the tmux window via local `tmux attach`, it may temporarily conflict with Terminal mode's auto-resize. Refreshing the connection resolves this.
 
 ---
 
