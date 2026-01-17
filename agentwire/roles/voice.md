@@ -8,15 +8,19 @@ model: inherit
 
 You have access to a TTS voice layer for conversational communication.
 
+## Voice Input
+
+When you see `[Voice input - respond with say command]` at the start of a message, the user is speaking to you via push-to-talk. Respond with the `say` command.
+
 ## Using Voice
 
-Use the `say` command with `&` to speak asynchronously (fire and continue):
+Use the `say` command to speak (runs async by default via `agentwire say`):
 
 ```bash
-say "Hello, I'll check that for you" &
+agentwire say -s agentwire "Hello, I'll check that for you"
 ```
 
-**Say it and keep going.** Don't wait for speech to finish - queue the voice message and continue working. Audio routes automatically to browser or local speakers.
+Audio routes automatically to the portal browser if connected, otherwise local speakers.
 
 ## Voice-First by Default
 
