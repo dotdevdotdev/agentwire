@@ -752,14 +752,18 @@ class AgentWireServer:
             session_name = f"{project}/{branch}" if branch else project
 
             # Build tmux attach command
+            # Check if this is a remote machine (needs SSH)
+            is_remote = False
             if machine_id:
-                # Look up machine config to get actual host
                 machine_config = self._get_machine_config(machine_id)
                 if not machine_config:
                     logger.error(f"[Terminal] Machine not found: {machine_id}")
                     await ws.close()
                     return ws
+                # Only use SSH if machine is not marked as local
+                is_remote = not machine_config.get("local", False)
 
+            if is_remote:
                 ssh_host = machine_config.get("host", machine_id)
                 ssh_user = machine_config.get("user")
                 ssh_target = f"{ssh_user}@{ssh_host}" if ssh_user else ssh_host

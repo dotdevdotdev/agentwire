@@ -1642,12 +1642,11 @@ def cmd_list(args) -> int:
                 if line:
                     parts = line.split(":", 2)
                     if len(parts) >= 2:
-                        local_machine_id = socket.gethostname().split('.')[0]
                         session_info = {
-                            "name": f"{parts[0]}@{local_machine_id}",
+                            "name": parts[0],  # Local sessions don't have machine suffix
                             "windows": int(parts[1]) if parts[1].isdigit() else 1,
                             "path": parts[2] if len(parts) > 2 else "",
-                            "machine": local_machine_id,
+                            "machine": None,  # Local session
                         }
                         local_sessions.append(session_info)
                         all_sessions.append(session_info)
@@ -1712,8 +1711,9 @@ def cmd_list(args) -> int:
         return 0
 
     # Display all sessions grouped by machine
-    for machine_id, sessions in sorted(all_machines.items()):
-        print(f"{machine_id}:")
+    for machine_id, sessions in sorted(all_machines.items(), key=lambda x: (x[0] is not None, x[0])):
+        label = machine_id if machine_id else "local"
+        print(f"{label}:")
         if sessions:
             for s in sessions:
                 # Remove @machine suffix for display within machine group
