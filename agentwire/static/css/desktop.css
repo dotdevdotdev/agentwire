@@ -1406,8 +1406,9 @@ body {
         background-size: 12px;
     }
 
-    /* Hide fullscreen button - less useful on mobile */
-    .winbox .wb-full {
+    /* Hide fullscreen and maximize buttons - enforce single-window mode */
+    .winbox .wb-full,
+    .winbox .wb-max {
         display: none;
     }
 
