@@ -976,6 +976,7 @@ body {
     align-items: center;
     padding: 10px 12px;
     border-bottom: 1px solid var(--chrome-border);
+    gap: 12px;
 }
 
 .config-item:last-child {
@@ -985,6 +986,7 @@ body {
 .config-key {
     color: var(--text-muted);
     font-size: 13px;
+    flex-shrink: 0;
 }
 
 .config-value {
@@ -992,7 +994,28 @@ body {
     font-size: 13px;
     text-align: right;
     max-width: 60%;
-    word-break: break-all;
+    overflow-x: auto;
+    white-space: nowrap;
+    cursor: default;
+}
+
+/* Scrollbar styling for config values */
+.config-value::-webkit-scrollbar {
+    height: 4px;
+}
+
+.config-value::-webkit-scrollbar-track {
+    background: var(--chrome);
+    border-radius: 2px;
+}
+
+.config-value::-webkit-scrollbar-thumb {
+    background: var(--chrome-border);
+    border-radius: 2px;
+}
+
+.config-value::-webkit-scrollbar-thumb:hover {
+    background: var(--text-muted);
 }
 
 .config-null {
