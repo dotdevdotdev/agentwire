@@ -1166,6 +1166,28 @@ def _get_session_from_yml() -> str | None:
     return None
 
 
+def _get_session_type_from_path(path: str) -> str | None:
+    """Read session type from .agentwire.yml in the given path.
+
+    Returns:
+        Session type (e.g., 'bare', 'claude-bypass', 'claude-restricted') or None
+    """
+    import yaml
+
+    if not path:
+        return None
+
+    yml_path = Path(path) / ".agentwire.yml"
+    if yml_path.exists():
+        try:
+            with open(yml_path) as f:
+                config = yaml.safe_load(f) or {}
+                return config.get("type")
+        except Exception:
+            pass
+    return None
+
+
 def _infer_session_from_path() -> str | None:
     """Infer session name from current working directory.
 
@@ -1387,8 +1409,9 @@ def cmd_say(args) -> int:
     exaggeration = args.exaggeration if args.exaggeration is not None else tts_config.get("exaggeration", 0.5)
     cfg_weight = args.cfg if args.cfg is not None else tts_config.get("cfg_weight", 0.5)
 
-    # Determine session name (priority: flag > .agentwire.yml > path inference > tmux)
-    session = args.session or _get_session_from_yml() or _infer_session_from_path() or _get_current_tmux_session()
+    # Determine session name (priority: flag > tmux session > path inference)
+    # Tmux session is more accurate than path for forked/named sessions like "anna-fork-1"
+    session = args.session or _get_current_tmux_session() or _infer_session_from_path()
 
     # Try portal first if we have a session
     if session:
@@ -1680,11 +1703,13 @@ def cmd_list(args) -> int:
                 if line:
                     parts = line.split(":", 2)
                     if len(parts) >= 2:
+                        path = parts[2] if len(parts) > 2 else ""
                         session_info = {
                             "name": parts[0],  # Local sessions don't have machine suffix
                             "windows": int(parts[1]) if parts[1].isdigit() else 1,
-                            "path": parts[2] if len(parts) > 2 else "",
+                            "path": path,
                             "machine": None,  # Local session
+                            "type": _get_session_type_from_path(path),
                         }
                         local_sessions.append(session_info)
                         all_sessions.append(session_info)

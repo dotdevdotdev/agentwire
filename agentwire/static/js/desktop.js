@@ -12,7 +12,6 @@ import { SessionWindow } from './session-window.js';
 import { openSessionsWindow } from './windows/sessions-window.js';
 import { openMachinesWindow } from './windows/machines-window.js';
 import { openConfigWindow } from './windows/config-window.js';
-import { openChatWindow } from './windows/chat-window.js';
 import { openProjectsWindow } from './windows/projects-window.js';
 
 // State - track open SessionWindows
@@ -74,9 +73,6 @@ function setupMenuListeners() {
     });
     document.getElementById('sessionsMenu')?.addEventListener('click', () => {
         openSessionsWindow();
-    });
-    document.getElementById('chatMenu')?.addEventListener('click', () => {
-        openChatWindow();
     });
 
     // Right side settings dropdown items

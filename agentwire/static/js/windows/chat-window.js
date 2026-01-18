@@ -16,15 +16,20 @@ let chatWindowInstance = null;
 
 /**
  * Open the Chat window
+ * @param {string} [session] - Optional session to connect to immediately
  * @returns {ChatWindow} The chat window instance
  */
-export function openChatWindow() {
+export function openChatWindow(session = null) {
     if (chatWindowInstance?.winbox) {
         chatWindowInstance.winbox.focus();
+        // If session provided and different from current, switch to it
+        if (session && chatWindowInstance.selectedSession !== session) {
+            chatWindowInstance.selectSession(session);
+        }
         return chatWindowInstance;
     }
 
-    chatWindowInstance = new ChatWindow();
+    chatWindowInstance = new ChatWindow(session);
     chatWindowInstance.open();
     return chatWindowInstance;
 }
@@ -33,12 +38,13 @@ export function openChatWindow() {
  * ChatWindow class - encapsulates the chat window with orb visualization
  */
 class ChatWindow {
-    constructor() {
+    constructor(initialSession = null) {
         this.winbox = null;
         this.container = null;
 
         // State
         this.selectedSession = null;
+        this._initialSession = initialSession;
         this.orbState = 'idle';
         this.messages = [];
 
@@ -51,7 +57,7 @@ class ChatWindow {
         this.audioChunks = [];
 
         // Element references
-        this.sessionSelect = null;
+        this.sessionNameEl = null;
         this.pttButton = null;
         this.orbEl = null;
         this.orbRingEl = null;
@@ -76,7 +82,7 @@ class ChatWindow {
         this.container = this._createContainer();
         this._createWinBox();
         this._setupEventListeners();
-        this._loadSessions();
+        this._initSession();
     }
 
     /**
@@ -120,9 +126,7 @@ class ChatWindow {
         container.className = 'chat-window-content';
         container.innerHTML = `
             <div class="chat-header">
-                <select class="chat-session-select">
-                    <option value="">Select session...</option>
-                </select>
+                <span class="chat-session-name"></span>
                 <button class="chat-ptt" title="Hold to record (Ctrl+Space)">
                     <span class="ptt-icon">🎤</span>
                 </button>
@@ -143,7 +147,7 @@ class ChatWindow {
         `;
 
         // Store element references
-        this.sessionSelect = container.querySelector('.chat-session-select');
+        this.sessionNameEl = container.querySelector('.chat-session-name');
         this.pttButton = container.querySelector('.chat-ptt');
         this.orbEl = container.querySelector('.orb');
         this.orbRingEl = container.querySelector('.orb-ring');
@@ -191,14 +195,6 @@ class ChatWindow {
      * Set up event listeners
      */
     _setupEventListeners() {
-        // Session selection
-        this.sessionSelect.addEventListener('change', (e) => {
-            console.log('[ChatWindow] Session selected:', e.target.value);
-            this.selectedSession = e.target.value || null;
-            this._connectSessionWs();
-            this._updateStatus();
-        });
-
         // PTT button - mouse events
         this.pttButton.addEventListener('mousedown', (e) => {
             e.preventDefault();
@@ -222,12 +218,6 @@ class ChatWindow {
                 this._cancelRecording();
             }
         });
-
-        // Subscribe to desktop events
-        const unsubSessions = desktop.on('sessions', (sessions) => {
-            this._populateSessions(sessions);
-        });
-        this._unsubscribers.push(unsubSessions);
 
         // Listen for TTS events to update orb state
         const unsubTtsStart = desktop.on('tts_start', (data) => {
@@ -291,50 +281,14 @@ class ChatWindow {
     }
 
     /**
-     * Load sessions from desktop manager
+     * Initialize with the initial session if provided
      */
-    async _loadSessions() {
-        const sessions = desktop.getSessions();
-        if (sessions.length > 0) {
-            this._populateSessions(sessions);
+    _initSession() {
+        if (this._initialSession) {
+            this.selectSession(this._initialSession);
         } else {
-            await desktop.fetchSessions();
+            this._updateStatus();
         }
-
-        // Auto-connect if a session is already selected
-        if (this.selectedSession) {
-            this._connectSessionWs();
-        }
-    }
-
-    /**
-     * Populate the session dropdown
-     */
-    _populateSessions(sessions) {
-        const currentValue = this.sessionSelect.value;
-
-        // Clear existing options except placeholder
-        while (this.sessionSelect.options.length > 1) {
-            this.sessionSelect.remove(1);
-        }
-
-        // Add session options
-        sessions.forEach(session => {
-            const option = document.createElement('option');
-            option.value = session.name;
-            option.textContent = session.name;
-            this.sessionSelect.appendChild(option);
-        });
-
-        // Restore selection if still valid
-        if (currentValue && sessions.some(s => s.name === currentValue)) {
-            this.sessionSelect.value = currentValue;
-            this.selectedSession = currentValue;
-            // Connect WebSocket if selection was restored
-            this._connectSessionWs();
-        }
-
-        this._updateStatus();
     }
 
     /**
@@ -350,6 +304,21 @@ class ChatWindow {
             this.statusIndicator.classList.add('disconnected');
             this.statusText.textContent = 'No session selected';
         }
+    }
+
+    /**
+     * Programmatically select a session
+     * @param {string} session - Session name to select
+     */
+    selectSession(session) {
+        if (!session) return;
+
+        this.selectedSession = session;
+        if (this.sessionNameEl) {
+            this.sessionNameEl.textContent = session;
+        }
+        this._connectSessionWs();
+        this._updateStatus();
     }
 
     /**
@@ -378,16 +347,24 @@ class ChatWindow {
             try {
                 const msg = JSON.parse(event.data);
 
-                // Handle audio messages (TTS from say command detection)
-                if (msg.type === 'audio' && msg.data) {
-                    console.log('[ChatWindow] Audio from session WS');
-                    // Audio is already played by desktop-manager, we just update state
+                // Handle tts_start - set orb to speaking and add message
+                if (msg.type === 'tts_start') {
+                    console.log('[ChatWindow] TTS start from session WS:', msg.text);
+                    this._setOrbState('speaking');
+                    if (msg.text) {
+                        this._addMessage('assistant', msg.text);
+                    }
                 }
 
-                // Handle output to detect say commands for chat bubble
-                // The server sends tts_start to dashboard, but we can also detect here
+                // Handle audio messages - play via desktop manager
+                if (msg.type === 'audio' && msg.data) {
+                    console.log('[ChatWindow] Audio received, playing via desktop manager');
+                    desktop._playAudio(msg.data, this.selectedSession);
+                }
+
+                // Handle output messages (terminal output from session)
                 if (msg.type === 'output') {
-                    // Output polling is working - say detection will trigger tts_start
+                    // Output is handled by terminal/monitor windows
                 }
             } catch (e) {
                 // Not JSON, ignore

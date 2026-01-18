@@ -2975,32 +2975,37 @@ projects:
             logger.error(f"History resume API failed: {e}")
             return web.json_response({"error": str(e)}, status=500)
 
-    async def speak(self, session_name: str, text: str):
-        """Generate TTS audio and send to portal dashboard clients.
+    async def speak(self, session_name: str, text: str) -> bool:
+        """Generate TTS audio and send to session clients.
 
-        Audio is broadcast to all dashboard clients (anyone viewing the portal).
-        This is simpler than per-session routing and matches the mental model:
-        if the request came from the portal, audio goes to the portal.
+        Audio is broadcast only to clients connected to this specific session
+        (terminal, monitor, or chat windows viewing that session).
+
+        Returns:
+            True if audio was sent to clients, False if no clients connected.
         """
-        # Check if any dashboard clients are connected
-        if not self.dashboard_clients:
-            logger.warning(f"[{session_name}] speak: no dashboard clients connected")
-            return
+        # Get or create session
+        if session_name not in self.active_sessions:
+            self.active_sessions[session_name] = Session(
+                name=session_name, config=self._get_session_config(session_name)
+            )
 
-        logger.info(f"[{session_name}] speak: {len(self.dashboard_clients)} dashboard client(s)")
+        session = self.active_sessions[session_name]
 
-        # Get voice settings from session if it exists
-        voice = self.config.tts.default_voice
-        exaggeration = 0.5
-        cfg_weight = 0.5
-        if session_name in self.active_sessions:
-            session = self.active_sessions[session_name]
-            voice = session.config.voice
-            exaggeration = session.config.exaggeration
-            cfg_weight = session.config.cfg_weight
+        # Check if any clients are connected to this session
+        if not session.clients:
+            logger.warning(f"[{session_name}] speak: no session clients connected")
+            return False
+
+        logger.info(f"[{session_name}] speak: {len(session.clients)} session client(s)")
+
+        # Get voice settings
+        voice = session.config.voice or self.config.tts.default_voice
+        exaggeration = session.config.exaggeration
+        cfg_weight = session.config.cfg_weight
 
         # Notify clients TTS is starting
-        await self.broadcast_dashboard("tts_start", {"text": text, "session": session_name})
+        await self._broadcast(session, {"type": "tts_start", "text": text})
 
         try:
             # Generate audio
@@ -3015,15 +3020,18 @@ projects:
             if audio_data:
                 # Prepend silence to prevent first syllable cutoff
                 audio_data = self._prepend_silence(audio_data, ms=300)
-                # Send base64 encoded audio to all dashboard clients
+                # Send base64 encoded audio to session clients only
                 audio_b64 = base64.b64encode(audio_data).decode()
-                logger.info(f"[{session_name}] Broadcasting audio to dashboard ({len(audio_b64)} bytes b64)")
-                await self.broadcast_dashboard("audio", {"data": audio_b64, "session": session_name})
+                logger.info(f"[{session_name}] Broadcasting audio to session ({len(audio_b64)} bytes b64)")
+                await self._broadcast(session, {"type": "audio", "data": audio_b64})
+                return True
             else:
                 logger.warning(f"[{session_name}] TTS returned no audio data")
+                return False
 
         except Exception as e:
             logger.error(f"TTS failed for {session_name}: {e}")
+            return False
 
 
 async def run_server(config: Config):

@@ -56,7 +56,10 @@ async function fetchSessions() {
     const data = await response.json();
     return (data.sessions || []).map(s => ({
         name: s.name,
-        active: s.activity === 'active'
+        active: s.activity === 'active',
+        type: s.type || null,
+        // Chat button shown for Claude session types (not bare)
+        hasVoice: s.type && s.type.startsWith('claude-')
     }));
 }
 
@@ -68,6 +71,9 @@ async function fetchSessions() {
 function renderSessionItem(session) {
     const statusClass = session.active ? 'active' : 'idle';
     const statusDot = session.active ? '●' : '○';
+    const chatButton = session.hasVoice
+        ? '<button class="btn btn-small" data-action="chat">Chat</button>'
+        : '';
 
     return `
         <div class="session-info" data-session="${session.name}">
@@ -76,6 +82,7 @@ function renderSessionItem(session) {
         </div>
         <div class="list-item-actions">
             <button class="btn btn-small" data-action="monitor">Monitor</button>
+            ${chatButton}
             <button class="btn btn-small btn-primary" data-action="connect">Connect</button>
         </div>
     `;
@@ -83,7 +90,7 @@ function renderSessionItem(session) {
 
 /**
  * Handle action button clicks on session items
- * @param {string} action - The action type ('monitor' or 'connect')
+ * @param {string} action - The action type ('monitor', 'connect', or 'chat')
  * @param {Object} item - The session data object
  */
 function handleSessionAction(action, item) {
@@ -91,6 +98,8 @@ function handleSessionAction(action, item) {
         openSessionTerminal(item.name, 'monitor');
     } else if (action === 'connect') {
         openSessionTerminal(item.name, 'terminal');
+    } else if (action === 'chat') {
+        openSessionChat(item.name);
     }
 }
 
@@ -103,5 +112,15 @@ function handleSessionAction(action, item) {
 function openSessionTerminal(session, mode) {
     import('../desktop.js').then(({ openSessionTerminal: openTerminal }) => {
         openTerminal(session, mode);
+    });
+}
+
+/**
+ * Open a chat window connected to a session
+ * @param {string} session - Session name
+ */
+function openSessionChat(session) {
+    import('./chat-window.js').then(({ openChatWindow }) => {
+        openChatWindow(session);
     });
 }
