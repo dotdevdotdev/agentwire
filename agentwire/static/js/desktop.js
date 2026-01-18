@@ -14,6 +14,11 @@ import { openMachinesWindow } from './windows/machines-window.js';
 import { openConfigWindow } from './windows/config-window.js';
 import { openChatWindow } from './windows/chat-window.js';
 
+// Stub for Projects window - will be implemented in another task
+function openProjectsWindow() {
+    console.log('[Desktop] openProjectsWindow() - stub, to be implemented');
+}
+
 // State - track open SessionWindows
 const sessionWindows = new Map();  // sessionId -> SessionWindow instance
 let windowCounter = 0;  // For cascading positions
@@ -67,18 +72,45 @@ function setupPageUnload() {
 
 // Menu listeners - open windows when menu items clicked
 function setupMenuListeners() {
+    // Left side menu items
+    document.getElementById('projectsMenu')?.addEventListener('click', () => {
+        openProjectsWindow();
+    });
     document.getElementById('sessionsMenu')?.addEventListener('click', () => {
         openSessionsWindow();
-    });
-    document.getElementById('machinesMenu')?.addEventListener('click', () => {
-        openMachinesWindow();
-    });
-    document.getElementById('configMenu')?.addEventListener('click', () => {
-        openConfigWindow();
     });
     document.getElementById('chatMenu')?.addEventListener('click', () => {
         openChatWindow();
     });
+
+    // Right side settings dropdown items
+    document.getElementById('machinesMenuItem')?.addEventListener('click', () => {
+        openMachinesWindow();
+        closeSettingsDropdown();
+    });
+    document.getElementById('configMenuItem')?.addEventListener('click', () => {
+        openConfigWindow();
+        closeSettingsDropdown();
+    });
+
+    // Settings dropdown toggle (click to open/close)
+    const settingsMenu = document.getElementById('settingsMenu');
+    settingsMenu?.addEventListener('click', (e) => {
+        // Don't toggle if clicking on dropdown items
+        if (e.target.closest('.dropdown-item')) return;
+        settingsMenu.classList.toggle('active');
+    });
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('#settingsMenu')) {
+            closeSettingsDropdown();
+        }
+    });
+}
+
+function closeSettingsDropdown() {
+    document.getElementById('settingsMenu')?.classList.remove('active');
 }
 
 // Clock
