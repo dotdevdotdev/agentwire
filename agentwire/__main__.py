@@ -1132,18 +1132,12 @@ def _get_current_tmux_session() -> str | None:
 
 
 def _get_session_from_yml() -> str | None:
-    """Get session name from .agentwire.yml in current directory."""
-    yml_path = Path.cwd() / ".agentwire.yml"
-    if not yml_path.exists():
-        return None
+    """Legacy function - session no longer stored in .agentwire.yml.
 
-    try:
-        import yaml
-        with open(yml_path) as f:
-            config = yaml.safe_load(f)
-        return config.get("session") if config else None
-    except Exception:
-        return None
+    Session is now runtime context from environment, not project config.
+    This function exists for fallback compatibility but always returns None.
+    """
+    return None
 
 
 def _infer_session_from_path() -> str | None:
@@ -2056,11 +2050,11 @@ def cmd_new(args) -> int:
         )
 
     # Update project config (.agentwire.yml) - preserve existing settings
+    # Note: session name is NOT stored in config - it's runtime context
     existing_config = load_project_config(session_path)
     if existing_config:
         # Preserve existing voice and roles if not overridden by CLI/template
         project_config = ProjectConfig(
-            session=session_name,
             type=session_type,
             roles=role_names if role_names else existing_config.roles,
             voice=template.voice if template and template.voice else existing_config.voice,
@@ -2068,7 +2062,6 @@ def cmd_new(args) -> int:
     else:
         # Create new config
         project_config = ProjectConfig(
-            session=session_name,
             type=session_type,
             roles=role_names if role_names else [],
             voice=template.voice if template and template.voice else None,

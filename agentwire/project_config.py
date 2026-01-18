@@ -43,12 +43,12 @@ class SessionType(str, Enum):
 
 @dataclass
 class ProjectConfig:
-    """Project-level session configuration.
+    """Project-level configuration for a project directory.
 
     Lives in .agentwire.yml in the project root.
-    This is the source of truth for session config.
+    Shared by all sessions running in this project folder.
+    Session name is NOT stored here - it's runtime context from environment.
     """
-    session: str  # tmux session name (required)
     type: SessionType = SessionType.CLAUDE_BYPASS
     roles: list[str] = field(default_factory=list)  # Composable roles
     voice: Optional[str] = None  # TTS voice
@@ -56,7 +56,6 @@ class ProjectConfig:
     def to_dict(self) -> dict:
         """Convert to dictionary for YAML serialization."""
         d = {
-            "session": self.session,
             "type": self.type.value,
         }
         if self.roles:
@@ -68,13 +67,11 @@ class ProjectConfig:
     @classmethod
     def from_dict(cls, data: dict) -> "ProjectConfig":
         """Create ProjectConfig from dictionary."""
-        session = data.get("session", "")
         type_value = data.get("type", "claude-bypass")
         roles = data.get("roles", [])
         voice = data.get("voice")
 
         return cls(
-            session=session,
             type=SessionType.from_str(type_value) if isinstance(type_value, str) else type_value,
             roles=roles if isinstance(roles, list) else [roles] if roles else [],
             voice=voice,
@@ -157,21 +154,6 @@ def save_project_config(config: ProjectConfig, project_dir: Path) -> bool:
         return True
     except Exception:
         return False
-
-
-def get_session_name_from_config(project_path: Optional[Path] = None) -> Optional[str]:
-    """Get session name from project config.
-
-    Convenience function for commands that need session context.
-
-    Args:
-        project_path: Path to search from. Defaults to cwd.
-
-    Returns:
-        Session name if config found, None otherwise.
-    """
-    config = load_project_config(project_path)
-    return config.session if config else None
 
 
 def get_voice_from_config(project_path: Optional[Path] = None) -> Optional[str]:
