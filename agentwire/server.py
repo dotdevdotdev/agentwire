@@ -191,6 +191,10 @@ class AgentWireServer:
         # Note: respond route must come first as aiohttp matches in order
         self.app.router.add_post("/api/permission/{name:.+}/respond", self.api_permission_respond)
         self.app.router.add_post("/api/permission/{name:.+}", self.api_permission_request)
+        # History endpoints
+        self.app.router.add_get("/api/history", self.api_history_list)
+        self.app.router.add_get("/api/history/{session_id}", self.api_history_detail)
+        self.app.router.add_post("/api/history/{session_id}/resume", self.api_history_resume)
         self.app.router.add_static("/static", Path(__file__).parent / "static")
 
     async def init_backends(self):
@@ -2839,6 +2843,127 @@ projects:
 
         except Exception as e:
             logger.error(f"Restart service API failed: {e}")
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def api_history_list(self, request: web.Request) -> web.Response:
+        """GET /api/history - List session history.
+
+        Query params:
+            project: Project path (required)
+            machine: Machine ID (default "local")
+            limit: Max number of entries (default 20)
+
+        Response:
+            {history: [{sessionId, firstMessage, lastSummary, timestamp, messageCount}, ...]}
+        """
+        try:
+            project = request.query.get("project")
+            if not project:
+                return web.json_response(
+                    {"error": "project parameter is required"},
+                    status=400
+                )
+
+            machine = request.query.get("machine", "local")
+            limit = request.query.get("limit", "20")
+
+            args = [
+                "history", "list",
+                "--project", project,
+                "--machine", machine,
+                "--limit", str(limit)
+            ]
+
+            success, result = await self.run_agentwire_cmd(args)
+            if not success:
+                error_msg = result.get("error", "Failed to list history")
+                return web.json_response({"error": error_msg}, status=500)
+
+            return web.json_response({"history": result.get("history", [])})
+
+        except Exception as e:
+            logger.error(f"History list API failed: {e}")
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def api_history_detail(self, request: web.Request) -> web.Response:
+        """GET /api/history/{session_id} - Get session history details.
+
+        URL params:
+            session_id: The session ID to get details for
+
+        Query params:
+            machine: Machine ID (default "local")
+
+        Response:
+            {sessionId, summaries: [], firstMessage, timestamps: {start, end}, gitBranch, messageCount}
+        """
+        try:
+            session_id = request.match_info["session_id"]
+            machine = request.query.get("machine", "local")
+
+            args = [
+                "history", "show",
+                session_id,
+                "--machine", machine
+            ]
+
+            success, result = await self.run_agentwire_cmd(args)
+            if not success:
+                error_msg = result.get("error", "Failed to get history detail")
+                return web.json_response({"error": error_msg}, status=500)
+
+            return web.json_response(result)
+
+        except Exception as e:
+            logger.error(f"History detail API failed: {e}")
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def api_history_resume(self, request: web.Request) -> web.Response:
+        """POST /api/history/{session_id}/resume - Resume a session from history.
+
+        URL params:
+            session_id: The session ID to resume
+
+        Request body:
+            name: Optional custom session name
+            projectPath: Project path (required)
+            machine: Machine ID (required)
+
+        Response:
+            {session: "<new-tmux-session-name>"}
+        """
+        try:
+            session_id = request.match_info["session_id"]
+            data = await request.json()
+
+            project_path = data.get("projectPath")
+            if not project_path:
+                return web.json_response(
+                    {"error": "projectPath is required"},
+                    status=400
+                )
+
+            machine = data.get("machine", "local")
+            name = data.get("name")
+
+            args = [
+                "history", "resume",
+                session_id,
+                "--project", project_path,
+                "--machine", machine
+            ]
+            if name:
+                args.extend(["--name", name])
+
+            success, result = await self.run_agentwire_cmd(args)
+            if not success:
+                error_msg = result.get("error", "Failed to resume session")
+                return web.json_response({"error": error_msg}, status=500)
+
+            return web.json_response({"session": result.get("session")})
+
+        except Exception as e:
+            logger.error(f"History resume API failed: {e}")
             return web.json_response({"error": str(e)}, status=500)
 
     async def speak(self, session_name: str, text: str):
