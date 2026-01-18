@@ -126,13 +126,13 @@ ssh workstation "tmux send-keys -t project-resumed 'claude --resume abc123 --for
 
 ## Completion Criteria
 
-- [ ] `agentwire history list` shows conversations for current project (local and remote)
-- [ ] `agentwire history show <id>` displays full conversation metadata
-- [ ] `agentwire history resume <id>` spawns forked session on appropriate machine
-- [ ] Portal project detail has History section showing conversations
-- [ ] Portal can resume conversations into new sessions
-- [ ] Original conversations preserved after resume (fork behavior)
-- [ ] Remote machine history accessible via SSH
+- [x] `agentwire history list` shows conversations for current project (local and remote)
+- [x] `agentwire history show <id>` displays full conversation metadata
+- [x] `agentwire history resume <id>` spawns forked session on appropriate machine
+- [x] Portal project detail has History section showing conversations
+- [x] Portal can resume conversations into new sessions
+- [x] Original conversations preserved after resume (fork behavior)
+- [x] Remote machine history accessible via SSH
 
 ## References
 
