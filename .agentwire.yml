@@ -1,4 +1,3 @@
-session: agentwire
-type: claude-bypass
+type: bare
 roles:
 - agentwire

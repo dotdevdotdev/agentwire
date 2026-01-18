@@ -3,9 +3,13 @@
  */
 
 import { ListWindow } from '../list-window.js';
+import { desktop } from '../desktop-manager.js';
 
 /** @type {ListWindow|null} */
 let sessionsWindow = null;
+
+/** @type {Function|null} */
+let unsubscribe = null;
 
 /**
  * Open the Sessions window
@@ -27,8 +31,17 @@ export function openSessionsWindow() {
     });
 
     sessionsWindow._cleanup = () => {
+        if (unsubscribe) {
+            unsubscribe();
+            unsubscribe = null;
+        }
         sessionsWindow = null;
     };
+
+    // Auto-refresh when sessions change via WebSocket
+    unsubscribe = desktop.on('sessions', () => {
+        sessionsWindow?.refresh();
+    });
 
     sessionsWindow.open();
     return sessionsWindow;

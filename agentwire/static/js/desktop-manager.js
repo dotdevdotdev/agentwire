@@ -233,6 +233,30 @@ class DesktopManager {
     }
 
     /**
+     * Safely call a WinBox method, handling invalid states.
+     * @param {WinBox} winbox - WinBox instance
+     * @param {string} method - Method name ('minimize', 'maximize', 'focus')
+     * @param {string} [windowId] - Window ID for logging/cleanup
+     * @returns {boolean} True if successful, false if failed
+     * @private
+     */
+    _safeWinBoxOp(winbox, method, windowId = null) {
+        if (!winbox || !winbox.body || typeof winbox[method] !== 'function') {
+            return false;
+        }
+        try {
+            winbox[method]();
+            return true;
+        } catch (e) {
+            console.warn(`[DesktopManager] Failed to ${method}${windowId ? ` ${windowId}` : ''}, removing from registry:`, e);
+            if (windowId) {
+                this.windows.delete(windowId);
+            }
+            return false;
+        }
+    }
+
+    /**
      * Register a window with the manager.
      * On narrow viewports (< 600px), auto-minimizes other windows and maximizes the new one.
      * @param {string} id - Window identifier
@@ -244,8 +268,8 @@ class DesktopManager {
         // On narrow viewports, use single-window mode: minimize others, maximize this one
         if (this.isNarrowViewport()) {
             this.minimizeAllExcept(id);
-            if (winbox && typeof winbox.maximize === 'function' && !winbox.max) {
-                winbox.maximize();
+            if (winbox && !winbox.max) {
+                this._safeWinBoxOp(winbox, 'maximize', id);
             }
         }
 
@@ -258,11 +282,8 @@ class DesktopManager {
      */
     minimizeAllExcept(exceptId = null) {
         for (const [windowId, winbox] of this.windows) {
-            if (windowId !== exceptId && winbox && typeof winbox.minimize === 'function') {
-                // Only minimize if not already minimized
-                if (!winbox.min) {
-                    winbox.minimize();
-                }
+            if (windowId !== exceptId && winbox && !winbox.min) {
+                this._safeWinBoxOp(winbox, 'minimize', windowId);
             }
         }
     }
@@ -318,8 +339,8 @@ class DesktopManager {
             const winbox = this.windows.get(id);
             if (winbox) {
                 this.minimizeAllExcept(id);
-                if (typeof winbox.maximize === 'function' && !winbox.max) {
-                    winbox.maximize();
+                if (!winbox.max) {
+                    this._safeWinBoxOp(winbox, 'maximize', id);
                 }
             }
         }
