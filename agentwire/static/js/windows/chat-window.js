@@ -133,6 +133,7 @@ class ChatWindow {
                 <span class="status-indicator"></span>
                 <span class="status-text">No session selected</span>
             </div>
+            <button class="fullscreen-exit-btn" title="Exit fullscreen (Escape)">✕</button>
         `;
 
         // Store element references
@@ -144,6 +145,7 @@ class ChatWindow {
         this.messagesEl = container.querySelector('.chat-messages');
         this.statusIndicator = container.querySelector('.status-indicator');
         this.statusText = container.querySelector('.status-text');
+        this.fullscreenExitBtn = container.querySelector('.fullscreen-exit-btn');
 
         return container;
     }
@@ -170,6 +172,9 @@ class ChatWindow {
             },
             onfocus: () => {
                 desktop.setActiveWindow('chat');
+            },
+            onfullscreen: (isFullscreen) => {
+                this._handleFullscreenChange(isFullscreen);
             }
         });
 

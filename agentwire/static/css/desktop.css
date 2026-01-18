@@ -1325,3 +1325,35 @@ body {
 .chat-status-bar .status-indicator.disconnected {
     background: var(--error);
 }
+
+/* ============================================
+   Responsive Styles
+   ============================================ */
+
+/* Narrow viewport adjustments for WinBox window controls */
+@media (max-width: 600px) {
+    /* Reduce window control button size for better fit */
+    .winbox .wb-close,
+    .winbox .wb-min,
+    .winbox .wb-max,
+    .winbox .wb-full {
+        width: 28px;
+        height: 28px;
+        background-size: 12px;
+    }
+
+    /* Hide fullscreen button - less useful on mobile */
+    .winbox .wb-full {
+        display: none;
+    }
+
+    /* Reduce header padding */
+    .winbox .wb-header {
+        padding-right: 4px !important;
+    }
+
+    /* Smaller title font */
+    .winbox .wb-title {
+        font-size: 12px;
+    }
+}
