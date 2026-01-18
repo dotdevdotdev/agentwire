@@ -1,2 +1,4 @@
 session: agentwire
 type: claude-bypass
+roles:
+- agentwire

@@ -156,6 +156,7 @@ class AgentWireServer:
         self.app.router.add_get("/api/sessions", self.api_sessions)
         self.app.router.add_get("/api/sessions/local", self.api_sessions_local)
         self.app.router.add_get("/api/sessions/remote", self.api_sessions_remote)
+        self.app.router.add_get("/api/projects", self.api_projects)
         self.app.router.add_get("/api/machine/{machine_id}/status", self.api_machine_status)
         self.app.router.add_get("/api/check-path", self.api_check_path)
         self.app.router.add_get("/api/check-branches", self.api_check_branches)
@@ -1305,6 +1306,32 @@ class AgentWireServer:
         except Exception as e:
             logger.error(f"Failed to list remote sessions: {e}")
             return web.json_response({"machines": []})
+
+    async def api_projects(self, request: web.Request) -> web.Response:
+        """List discovered projects.
+
+        Query params:
+            machine: Optional machine ID to filter by (e.g., 'local', 'mac-studio')
+
+        Response:
+            {"projects": [{name, path, type, roles, machine}, ...]}
+        """
+        try:
+            args = ["projects", "list", "--json"]
+
+            # Add machine filter if provided
+            machine = request.query.get("machine")
+            if machine:
+                args.extend(["--machine", machine])
+
+            success, result = await self.run_agentwire_cmd(args)
+            if not success:
+                return web.json_response({"projects": []})
+
+            return web.json_response({"projects": result.get("projects", [])})
+        except Exception as e:
+            logger.error(f"Failed to list projects: {e}")
+            return web.json_response({"projects": []})
 
     async def api_machine_status(self, request: web.Request) -> web.Response:
         """Get status for a specific machine.

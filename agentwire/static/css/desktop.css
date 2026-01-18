@@ -86,14 +86,8 @@ body {
     color: var(--accent);
 }
 
-.menu-item.logo {
-    padding: 2px var(--spacing-base);
-}
-
-.menu-item.logo img {
-    height: 18px;
-    width: 18px;
-    border-radius: 4px;
+.settings-icon {
+    font-size: 16px;
 }
 
 /* Dropdowns */
@@ -109,6 +103,11 @@ body {
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
     padding: 4px 0;
     z-index: 1001;
+}
+
+.dropdown-content.dropdown-right {
+    left: auto;
+    right: 0;
 }
 
 .dropdown:hover .dropdown-content,

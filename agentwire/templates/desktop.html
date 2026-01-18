@@ -11,12 +11,8 @@
     <!-- Menu Bar -->
     <div class="menu-bar">
         <div class="menu-left">
-            <div class="menu-item logo">
-                <img src="/static/favicon-green.jpeg" alt="AgentWire">
-            </div>
+            <div class="menu-item" id="projectsMenu">Projects</div>
             <div class="menu-item" id="sessionsMenu">Sessions</div>
-            <div class="menu-item" id="machinesMenu">Machines</div>
-            <div class="menu-item" id="configMenu">Config</div>
             <div class="menu-item" id="chatMenu">Chat</div>
         </div>
         <div class="menu-right">
@@ -28,6 +24,19 @@
                 <span class="count">0</span> sessions
             </div>
             <div class="menu-time" id="menuTime"></div>
+            <div class="menu-item dropdown" id="settingsMenu">
+                <span class="settings-icon">&#9881;</span>
+                <div class="dropdown-content dropdown-right">
+                    <div class="dropdown-item" id="machinesMenuItem">
+                        <span class="icon">&#128421;</span>
+                        <span>Machines</span>
+                    </div>
+                    <div class="dropdown-item" id="configMenuItem">
+                        <span class="icon">&#9881;</span>
+                        <span>Config</span>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
