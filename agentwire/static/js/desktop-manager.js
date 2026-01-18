@@ -259,9 +259,15 @@ class DesktopManager {
     minimizeAllExcept(exceptId = null) {
         for (const [windowId, winbox] of this.windows) {
             if (windowId !== exceptId && winbox && typeof winbox.minimize === 'function') {
-                // Only minimize if not already minimized
-                if (!winbox.min) {
-                    winbox.minimize();
+                // Only minimize if not already minimized and winbox is still valid
+                if (!winbox.min && winbox.body) {
+                    try {
+                        winbox.minimize();
+                    } catch (e) {
+                        // WinBox may be in invalid state, remove from registry
+                        console.warn(`[DesktopManager] Failed to minimize ${windowId}, removing from registry:`, e);
+                        this.windows.delete(windowId);
+                    }
                 }
             }
         }
