@@ -4,6 +4,8 @@
 
 **Branch:** `mission/conversation-history` (created on execution)
 
+**Depends on:** `projects-model` (must be completed first)
+
 ## Context
 
 Claude Code persists all conversations with rich metadata. Two key data sources:
@@ -17,7 +19,11 @@ Claude CLI supports:
 - `--continue` - Continue most recent in current directory
 - `--fork-session` - Fork instead of continue when resuming
 
-We'll expose this through CLI commands and Portal UI for both developers and chatbot users.
+**Key design decisions:**
+- CLI subcommand is `history` (not `conversations`) to distinguish from tmux sessions
+- "Resume" always forks under the hood (preserves original, avoids conflicts)
+- History is always scoped to a project (from projects-model mission)
+- No delete command - users manage ~/.claude directly if needed
 
 ## Wave 1: Human Actions (RUNTIME DEPENDENCY)
 
@@ -27,32 +33,31 @@ None required.
 
 | Task | Description | Files |
 |------|-------------|-------|
-| 2.1 | **Conversations utility module** - Create utility to read conversation data. Primary source: `~/.claude/history.jsonl` (indexed user messages with sessionId, project, timestamp). Secondary: scan session files for summaries. Group by sessionId, extract first/last message, message count, project path. | `agentwire/conversations.py` |
-| 2.2 | **CLI list command** - Add `agentwire conversations list`. Options: `--project <path>` filter, `--limit N` (default 20), `--json`. Display: short session ID, last summary (from session file), relative timestamp, project name, message count. | `agentwire/__main__.py` |
-| 2.3 | **CLI show command** - Add `agentwire conversations show <session-id>`. Display: full session ID, all summaries (timeline), first user message preview, start/end timestamps, project path, git branch, total messages. | `agentwire/__main__.py` |
+| 2.1 | **History utility module** - Create utility to read conversation data. Filter by project path. Supports local and remote machines (SSH for remote `~/.claude/`). Primary source: `~/.claude/history.jsonl` (indexed user messages with sessionId, project, timestamp). Secondary: scan session files for summaries. Group by sessionId, extract first/last message, message count. | `agentwire/history.py` |
+| 2.2 | **CLI list command** - Add `agentwire history list`. Requires being in a tracked project dir (has `.agentwire.yml`) OR `--project <path>`. Options: `--machine <id>` (default local), `--limit N` (default 20), `--json`. Display: short session ID, last summary, relative timestamp, message count. | `agentwire/__main__.py` |
+| 2.3 | **CLI show command** - Add `agentwire history show <session-id>`. Display: full session ID, all summaries (timeline), first user message preview, start/end timestamps, git branch if available, total messages. | `agentwire/__main__.py` |
 
 ## Wave 3: CLI Resume Integration
 
 | Task | Description | Files |
 |------|-------------|-------|
-| 3.1 | **Resume command** - Add `agentwire conversations resume <session-id>`. Spawns tmux session with `claude --resume <uuid>`. Options: `--name <tmux-name>` for session name, `--fork` to use `--fork-session` flag. Respects project's `.agentwire.yml` for type/roles. | `agentwire/__main__.py` |
-| 3.2 | **Delete command** - Add `agentwire conversations delete <session-id>`. Removes from history.jsonl and deletes session .jsonl file. Requires `--force` or interactive confirm. | `agentwire/__main__.py` |
+| 3.1 | **Resume command** - Add `agentwire history resume <session-id>`. **Always forks** using `claude --resume <uuid> --fork-session`. Spawns new tmux session on appropriate machine. Options: `--name <tmux-name>` for session name, `--machine <id>` (required for remote projects). Respects project's `.agentwire.yml` for type/roles. | `agentwire/__main__.py` |
 
 ## Wave 4: Portal API
 
 | Task | Description | Files |
 |------|-------------|-------|
-| 4.1 | **List conversations endpoint** - `GET /api/conversations`. Query: `project`, `limit` (default 20). Returns array of `{sessionId, project, firstMessage, lastSummary, timestamp, messageCount}`. Uses conversations utility. | `agentwire/server.py` |
-| 4.2 | **Get conversation endpoint** - `GET /api/conversations/<session-id>`. Returns full metadata: all summaries, message previews, timestamps, project, git branch. | `agentwire/server.py` |
-| 4.3 | **Resume endpoint** - `POST /api/conversations/<session-id>/resume`. Body: `{name?: string, fork?: boolean}`. Calls CLI `conversations resume` internally. Returns new tmux session name. | `agentwire/server.py` |
+| 4.1 | **List history endpoint** - `GET /api/projects/<path>/history`. Query: `machine` (required), `limit` (default 20). Returns array of `{sessionId, firstMessage, lastSummary, timestamp, messageCount}`. Uses history utility via CLI. Project path URL-encoded. | `agentwire/server.py` |
+| 4.2 | **Get history detail endpoint** - `GET /api/history/<session-id>`. Query: `machine` (required). Returns full metadata: all summaries, message previews, timestamps, git branch. | `agentwire/server.py` |
+| 4.3 | **Resume endpoint** - `POST /api/history/<session-id>/resume`. Body: `{name?: string, projectPath: string, machine: string}`. Calls CLI `history resume` internally. Returns new tmux session name. | `agentwire/server.py` |
 
 ## Wave 5: Portal UI
 
 | Task | Description | Files |
 |------|-------------|-------|
-| 5.1 | **Conversations window** - New ListWindow for conversations. Columns: ID (short), Summary, Time (relative), Project. Click row for details. Refresh button. | `agentwire/static/js/windows/conversations-window.js` |
-| 5.2 | **Detail panel** - When conversation selected, show: full ID, all summaries as timeline, first message preview, timestamps. "Resume" and "Resume (Fork)" buttons. | `agentwire/static/js/windows/conversations-window.js` |
-| 5.3 | **Menu integration** - Add "History" menu item (between Config and Chat). Opens conversations window. Update session count area to show conversation count on hover/click. | `agentwire/templates/desktop.html`, `agentwire/static/js/desktop.js` |
+| 5.1 | **History tab in project detail** - Add "History" tab to project detail panel (from projects-model mission). Shows conversation list for that project. Columns: ID (short), Summary, Time (relative), Messages. | `agentwire/static/js/windows/projects-window.js` |
+| 5.2 | **History detail modal** - When conversation selected, show modal with: full ID, all summaries as timeline, first message preview, timestamps. "Resume" button that creates new forked session. | `agentwire/static/js/windows/projects-window.js` |
+| 5.3 | **Resume flow** - "Resume" button spawns session, then opens/focuses the new session in Sessions window. Shows toast notification on success. | `agentwire/static/js/windows/projects-window.js` |
 
 ## Technical Notes
 
@@ -78,33 +83,57 @@ None required.
 ### Path Encoding
 Project path `/Users/dotdev/projects/anna` → directory name `-Users-dotdev-projects-anna`
 
-### Efficient Implementation
-1. Read `history.jsonl` line-by-line, group by sessionId
-2. For summaries, grep session files for `"type":"summary"` lines only
-3. Cache results with file mtime for invalidation
+### Remote Machine Support
+History lives in `~/.claude/` on the machine where Claude Code runs:
+- **Local**: Read files directly from `~/.claude/`
+- **Remote**: SSH to machine, read `~/.claude/history.jsonl` and session files
 
-### Resume Flow
+```python
+def get_history(project_path: str, machine: str = 'local') -> list[dict]:
+    if machine == 'local':
+        return read_local_history(project_path)
+    else:
+        # SSH to remote, read ~/.claude/history.jsonl
+        # Filter by project_path, return results
+        return read_remote_history(machine, project_path)
+```
+
+This is a key differentiator - AgentWire lets you browse conversation history across all your machines from one Portal.
+
+### Efficient Implementation
+1. Read `history.jsonl` line-by-line, filter by project path
+2. Group by sessionId, get first/last message, count
+3. For summaries, grep session files for `"type":"summary"` lines only
+4. Cache results with file mtime for invalidation
+
+### Resume Flow (Always Forks)
 ```bash
-# User clicks "Resume" in portal
-POST /api/conversations/abc123/resume {name: "anna-resumed"}
+# User clicks "Resume" in portal for session abc123 on remote machine "workstation"
+POST /api/history/abc123/resume {name: "project-resumed", projectPath: "/path/to/project", machine: "workstation"}
 
 # Server calls CLI
-agentwire conversations resume abc123 --name anna-resumed
+agentwire history resume abc123 --name project-resumed --project /path/to/project --machine workstation
 
-# CLI spawns tmux
-tmux new-session -d -s anna-resumed -c /path/to/project
-tmux send-keys "claude --resume abc123" Enter
+# CLI spawns tmux on remote machine with forked session
+ssh workstation "tmux new-session -d -s project-resumed -c /path/to/project"
+ssh workstation "tmux send-keys -t project-resumed 'claude --resume abc123 --fork-session' Enter"
 ```
+
+### Why Always Fork?
+1. **Preserves original** - Can resume from same point multiple times
+2. **Avoids conflicts** - No issues if another device has the session open
+3. **Simpler UX** - "Resume" just works, no edge cases
+4. **Audit trail** - Original conversations remain as immutable references
 
 ## Completion Criteria
 
-- [ ] `agentwire conversations list` shows recent sessions with summaries
-- [ ] `agentwire conversations show <id>` displays full session metadata
-- [ ] `agentwire conversations resume <id>` spawns tmux with resumed session
-- [ ] `agentwire conversations delete <id>` removes conversation data
-- [ ] Portal "History" window shows browsable conversation list
-- [ ] Portal can resume/fork conversations into new sessions
-- [ ] Works for both agentwire project sessions and chatbot sessions
+- [ ] `agentwire history list` shows conversations for current project (local and remote)
+- [ ] `agentwire history show <id>` displays full conversation metadata
+- [ ] `agentwire history resume <id>` spawns forked session on appropriate machine
+- [ ] Portal project detail has History tab showing conversations from that machine
+- [ ] Portal can resume conversations into new sessions
+- [ ] Original conversations preserved after resume (fork behavior)
+- [ ] Remote machine history accessible via SSH
 
 ## References
 
