@@ -4492,6 +4492,40 @@ def cmd_roles_list(args) -> int:
     return 0
 
 
+def cmd_projects_list(args) -> int:
+    """List discovered projects."""
+    from .projects import get_projects
+
+    json_mode = getattr(args, 'json', False)
+    machine_filter = getattr(args, 'machine', None)
+
+    projects = get_projects(machine=machine_filter)
+
+    if json_mode:
+        _output_json({"projects": projects})
+        return 0
+
+    if not projects:
+        print("No projects found.")
+        print("Projects need a .agentwire.yml file in their directory.")
+        return 0
+
+    # Print table
+    print(f"Discovered Projects ({len(projects)}):\n")
+    print(f"{'Name':<25} {'Type':<15} {'Path':<40}")
+    print("-" * 80)
+    for p in projects:
+        # Truncate long paths
+        path = p["path"]
+        if len(path) > 40:
+            path = "..." + path[-37:]
+        machine_suffix = f" @{p['machine']}" if p['machine'] != 'local' else ""
+        print(f"{p['name']:<25} {p['type']:<15} {path:<40}{machine_suffix}")
+
+    print()
+    return 0
+
+
 def cmd_roles_show(args) -> int:
     """Show details for a specific role."""
     from .roles import discover_role, parse_role_file
@@ -5586,6 +5620,18 @@ def main() -> int:
     roles_show.add_argument("--json", action="store_true", help="Output as JSON")
     roles_show.set_defaults(func=cmd_roles_show)
 
+    # === projects command group ===
+    projects_parser = subparsers.add_parser(
+        "projects", help="Discover and list projects"
+    )
+    projects_subparsers = projects_parser.add_subparsers(dest="projects_command")
+
+    # projects list
+    projects_list = projects_subparsers.add_parser("list", help="List discovered projects")
+    projects_list.add_argument("--machine", help="Filter by machine ID (e.g., 'local', 'mac-studio')")
+    projects_list.add_argument("--json", action="store_true", help="Output as JSON")
+    projects_list.set_defaults(func=cmd_projects_list)
+
     # === skills command group ===
     skills_parser = subparsers.add_parser(
         "skills", help="Manage Claude Code skills integration"
@@ -5734,6 +5780,10 @@ def main() -> int:
 
     if args.command == "skills" and getattr(args, "skills_command", None) is None:
         skills_parser.print_help()
+        return 0
+
+    if args.command == "projects" and getattr(args, "projects_command", None) is None:
+        projects_parser.print_help()
         return 0
 
     if args.command == "safety" and getattr(args, "safety_command", None) is None:
