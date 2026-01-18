@@ -1468,4 +1468,10 @@ body {
     .session-output {
         font-size: 12px;
     }
+
+    /* Compact status bar items - icon/number only */
+    #connectionStatus .status-text,
+    #sessionCount .count-label {
+        display: none;
+    }
 }
