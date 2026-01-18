@@ -124,5 +124,4 @@ Per-session config (type, roles, voice) lives in `.agentwire.yml` in each projec
 | CLI | `agentwire --help`, `agentwire <cmd> --help` |
 | Portal modes/API | `docs/PORTAL.md` |
 | Architecture | `docs/architecture.md` |
-| Installation | `docs/installation.md` |
 | Security hooks | `docs/security/damage-control.md` |

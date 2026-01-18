@@ -708,7 +708,55 @@ body {
 .list-item-actions {
     display: flex;
     gap: 6px;
-    margin-top: var(--spacing-base);
+    flex-shrink: 0;
+}
+
+/* Session list two-row layout */
+.session-row-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+}
+
+.session-info {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+.session-name {
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.session-status {
+    flex-shrink: 0;
+    font-size: 10px;
+    color: var(--text-muted);
+}
+
+.session-status.active {
+    color: var(--accent);
+}
+
+.session-summary {
+    margin-top: 6px;
+    font-size: 11px;
+    color: var(--text-muted);
+    line-height: 1.4;
+    word-break: break-word;
+}
+
+.session-type {
+    color: var(--accent);
+}
+
+.session-path {
+    opacity: 0.8;
 }
 
 .list-item-actions button {

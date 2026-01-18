@@ -57,7 +57,8 @@ async function fetchSessions() {
     return (data.sessions || []).map(s => ({
         name: s.name,
         active: s.activity === 'active',
-        type: s.type || null,
+        type: s.type || 'bare',
+        path: s.path || null,
         // Chat button shown for Claude session types (not bare)
         hasVoice: s.type && s.type.startsWith('claude-')
     }));
@@ -75,17 +76,51 @@ function renderSessionItem(session) {
         ? '<button class="btn btn-small" data-action="chat">Chat</button>'
         : '';
 
+    // Format path for display (show last 2 segments or full if short)
+    const pathDisplay = formatPath(session.path);
+
+    // Build summary parts
+    const summaryParts = [];
+    if (session.type && session.type !== 'bare') {
+        summaryParts.push(`<span class="session-type">${session.type}</span>`);
+    }
+    if (pathDisplay) {
+        summaryParts.push(`<span class="session-path">${pathDisplay}</span>`);
+    }
+    const summary = summaryParts.length > 0
+        ? `<div class="session-summary">${summaryParts.join(' · ')}</div>`
+        : '';
+
     return `
-        <div class="session-info" data-session="${session.name}">
-            <span class="session-status ${statusClass}">${statusDot}</span>
-            <span class="session-name">${session.name}</span>
+        <div class="session-row-top">
+            <div class="session-info" data-session="${session.name}">
+                <span class="session-status ${statusClass}">${statusDot}</span>
+                <span class="session-name">${session.name}</span>
+            </div>
+            <div class="list-item-actions">
+                <button class="btn btn-small" data-action="monitor">Monitor</button>
+                ${chatButton}
+                <button class="btn btn-small btn-primary" data-action="connect">Connect</button>
+                <button class="btn btn-small danger" data-action="close" title="Close session">✕</button>
+            </div>
         </div>
-        <div class="list-item-actions">
-            <button class="btn btn-small" data-action="monitor">Monitor</button>
-            ${chatButton}
-            <button class="btn btn-small btn-primary" data-action="connect">Connect</button>
-        </div>
+        ${summary}
     `;
+}
+
+/**
+ * Format path for display - show abbreviated version
+ * @param {string|null} path - Full path
+ * @returns {string} Formatted path
+ */
+function formatPath(path) {
+    if (!path) return '';
+
+    // Replace home directory with ~
+    const home = '/Users/dotdev';
+    let display = path.startsWith(home) ? '~' + path.slice(home.length) : path;
+
+    return display;
 }
 
 /**
@@ -100,6 +135,8 @@ function handleSessionAction(action, item) {
         openSessionTerminal(item.name, 'terminal');
     } else if (action === 'chat') {
         openSessionChat(item.name);
+    } else if (action === 'close') {
+        closeSession(item.name);
     }
 }
 
@@ -123,4 +160,30 @@ function openSessionChat(session) {
     import('./chat-window.js').then(({ openChatWindow }) => {
         openChatWindow(session);
     });
+}
+
+/**
+ * Close/kill a session
+ * @param {string} session - Session name
+ */
+async function closeSession(session) {
+    if (!confirm(`Close session "${session}"?`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/sessions/${encodeURIComponent(session)}`, {
+            method: 'DELETE'
+        });
+        const data = await response.json();
+
+        if (data.error) {
+            console.error('[SessionsWindow] Failed to close session:', data.error);
+            alert(`Failed to close session: ${data.error}`);
+        }
+        // Session list will auto-refresh via WebSocket event
+    } catch (err) {
+        console.error('[SessionsWindow] Failed to close session:', err);
+        alert(`Failed to close session: ${err.message}`);
+    }
 }

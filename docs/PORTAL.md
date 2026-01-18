@@ -52,9 +52,10 @@ The portal provides an OS-like desktop interface using WinBox.js for window mana
 | Menu | Items |
 |------|-------|
 | **Projects** | Window listing discovered projects (folders with `.agentwire.yml`) |
-| **Sessions** | Dropdown listing all sessions with Monitor/Terminal buttons |
+| **Sessions** | Window listing all sessions with Monitor/Connect/Chat buttons |
 | **⚙ (Cog)** | Dropdown with Machines and Config options |
-| **Chat** | Voice input with orb visualization |
+
+**Chat button** appears in the Sessions window for voice-enabled sessions (`claude-*` types). Opens a voice chat window with orb visualization.
 
 ### Projects Window
 

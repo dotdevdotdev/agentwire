@@ -54,13 +54,13 @@ Text is for technical details the user needs to read/copy. Everything else shoul
 ## Paralinguistic Tags
 
 ```bash
-say "[laugh] That's a creative solution" &
-say "[sigh] Alright, let me dig into that" &
-say "[chuckle] Well, that didn't work" &
+agentwire say "[laugh] That's a creative solution"
+agentwire say "[sigh] Alright, let me dig into that"
+agentwire say "[chuckle] Well, that didn't work"
 ```
 
 ## Key Points
 
-- **Always use `&`** to run async (non-blocking)
 - Keep spoken messages concise (1-2 sentences)
 - Voice is the default - text only for technical details
+- Audio routes automatically to browser if connected, otherwise local speakers
