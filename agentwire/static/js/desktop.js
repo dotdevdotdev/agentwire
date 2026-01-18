@@ -104,7 +104,7 @@ function updateConnectionStatus(connected) {
 // Session count
 function updateSessionCount(sessions) {
     const count = sessions?.length || 0;
-    elements.sessionCount.innerHTML = `<span class="count">${count}</span> session${count !== 1 ? 's' : ''}`;
+    elements.sessionCount.innerHTML = `<span class="count">${count}</span><span class="count-label"> session${count !== 1 ? 's' : ''}</span>`;
 }
 
 /**
@@ -139,6 +139,7 @@ export function openSessionTerminal(session, mode, machine = null) {
         },
         onFocus: (win) => {
             updateTaskbarActive(id);
+            desktop.setActiveWindow(id);
         }
     });
 

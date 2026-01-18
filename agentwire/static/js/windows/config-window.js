@@ -39,12 +39,46 @@ async function fetchConfig() {
  * @returns {string} HTML string for the config item
  */
 function renderConfigItem(item) {
+    const rawValue = getRawValue(item.value);
+    const formattedValue = formatValue(item.value);
     return `
         <div class="config-item">
             <span class="config-key">${item.key}</span>
-            <span class="config-value">${formatValue(item.value)}</span>
+            <span class="config-value" title="${escapeAttr(rawValue)}">${formattedValue}</span>
         </div>
     `;
+}
+
+/**
+ * Get raw string value for tooltip
+ * @param {any} value - The config value
+ * @returns {string} Raw string representation
+ */
+function getRawValue(value) {
+    if (value === null || value === undefined) {
+        return 'not set';
+    }
+    if (typeof value === 'boolean') {
+        return value ? 'enabled' : 'disabled';
+    }
+    if (typeof value === 'object') {
+        return JSON.stringify(value);
+    }
+    return String(value);
+}
+
+/**
+ * Escape string for use in HTML attribute
+ * @param {string} str - The string to escape
+ * @returns {string} Escaped string
+ */
+function escapeAttr(str) {
+    return str
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
 }
 
 /**

@@ -271,6 +271,12 @@ body {
     font-variant-numeric: tabular-nums;
 }
 
+@media (max-width: 600px) {
+    .menu-time {
+        display: none;
+    }
+}
+
 /* Desktop Area */
 .desktop-area {
     flex: 1;
@@ -615,6 +621,12 @@ body {
     background-color: var(--hover) !important;
 }
 
+/* Maximized windows must account for menu bar and taskbar */
+.winbox.max {
+    top: var(--menu-height) !important;
+    height: calc(100% - var(--menu-height) - var(--taskbar-height)) !important;
+}
+
 /* ListWindow component */
 .list-window {
     display: flex;
@@ -792,11 +804,13 @@ body {
     flex-direction: column;
     width: 100%;
     height: 100%;
+    min-width: 0;
 }
 
 .session-terminal {
     flex: 1;
     min-height: 0;
+    min-width: 0;
     overflow: hidden;
     position: relative;
 }
@@ -825,7 +839,9 @@ body {
 .session-output {
     flex: 1;
     min-height: 0;
-    overflow: auto;
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: auto;
     margin: 0;
     padding: 8px 12px;
     background: #000;
@@ -833,8 +849,7 @@ body {
     font-family: "FiraMono Nerd Font Mono", Menlo, Monaco, "Courier New", monospace;
     font-size: 14px;
     line-height: 1.4;
-    white-space: pre-wrap;
-    word-wrap: break-word;
+    white-space: pre;
 }
 
 /* PTT (Push-to-talk) button */
@@ -961,6 +976,7 @@ body {
     align-items: center;
     padding: 10px 12px;
     border-bottom: 1px solid var(--chrome-border);
+    gap: 12px;
 }
 
 .config-item:last-child {
@@ -970,6 +986,7 @@ body {
 .config-key {
     color: var(--text-muted);
     font-size: 13px;
+    flex-shrink: 0;
 }
 
 .config-value {
@@ -977,7 +994,28 @@ body {
     font-size: 13px;
     text-align: right;
     max-width: 60%;
-    word-break: break-all;
+    overflow-x: auto;
+    white-space: nowrap;
+    cursor: default;
+}
+
+/* Scrollbar styling for config values */
+.config-value::-webkit-scrollbar {
+    height: 4px;
+}
+
+.config-value::-webkit-scrollbar-track {
+    background: var(--chrome);
+    border-radius: 2px;
+}
+
+.config-value::-webkit-scrollbar-thumb {
+    background: var(--chrome-border);
+    border-radius: 2px;
+}
+
+.config-value::-webkit-scrollbar-thumb:hover {
+    background: var(--text-muted);
 }
 
 .config-null {
@@ -1318,4 +1356,123 @@ body {
 
 .chat-status-bar .status-indicator.disconnected {
     background: var(--error);
+}
+
+/* Fullscreen exit button - hidden by default, shown in fullscreen mode */
+.chat-window-content .fullscreen-exit-btn {
+    display: none;
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    border: 2px solid var(--chrome-border);
+    background: rgba(26, 26, 26, 0.9);
+    color: var(--text);
+    font-size: 18px;
+    cursor: pointer;
+    z-index: 100;
+    transition: all 0.15s ease;
+    backdrop-filter: blur(4px);
+}
+
+.chat-window-content .fullscreen-exit-btn:hover {
+    border-color: var(--error);
+    background: rgba(248, 81, 73, 0.2);
+    color: var(--error);
+    transform: scale(1.1);
+}
+
+.chat-window-content.is-fullscreen .fullscreen-exit-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* ============================================
+   Responsive Styles
+   ============================================ */
+
+/* Narrow viewport adjustments for WinBox window controls */
+@media (max-width: 600px) {
+    /* Reduce window control button size for better fit */
+    .winbox .wb-close,
+    .winbox .wb-min,
+    .winbox .wb-max,
+    .winbox .wb-full {
+        width: 28px;
+        height: 28px;
+        background-size: 12px;
+    }
+
+    /* Hide fullscreen and maximize buttons - enforce single-window mode */
+    .winbox .wb-full,
+    .winbox .wb-max {
+        display: none;
+    }
+
+    /* Reduce header padding */
+    .winbox .wb-header {
+        padding-right: 4px !important;
+    }
+
+    /* Smaller title font */
+    .winbox .wb-title {
+        font-size: 12px;
+    }
+
+    /* Taskbar responsiveness - tighter spacing for narrow viewports */
+    .taskbar-btn {
+        max-width: 120px;
+        padding: 4px 8px;
+        font-size: 11px;
+    }
+
+    .taskbar-windows {
+        gap: 2px;
+    }
+
+    /* Ensure smooth horizontal scrolling */
+    .taskbar-windows::-webkit-scrollbar {
+        height: 4px;
+    }
+
+    .taskbar-windows::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    .taskbar-windows::-webkit-scrollbar-thumb {
+        background: var(--chrome-border);
+        border-radius: 2px;
+    }
+
+    /* Config modal responsive: stack label/value vertically */
+    .config-item {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 4px;
+    }
+
+    .config-value {
+        text-align: left;
+        max-width: 100%;
+        width: 100%;
+    }
+
+    /* Terminal/Monitor font size reduction for better fit */
+    .session-terminal .xterm,
+    .session-terminal .xterm-rows {
+        font-size: 12px !important;
+    }
+
+    .session-output {
+        font-size: 12px;
+    }
+
+    /* Compact status bar items - icon/number only */
+    #connectionStatus .status-text,
+    #sessionCount .count-label {
+        display: none;
+    }
 }

@@ -221,14 +221,50 @@ class DesktopManager {
     // Window Management
     // ============================================
 
+    /** @type {number} Viewport width threshold for narrow mode */
+    static NARROW_VIEWPORT_WIDTH = 600;
+
+    /**
+     * Check if we're on a narrow viewport (mobile/tablet).
+     * @returns {boolean}
+     */
+    isNarrowViewport() {
+        return window.innerWidth < DesktopManager.NARROW_VIEWPORT_WIDTH;
+    }
+
     /**
      * Register a window with the manager.
+     * On narrow viewports (< 600px), auto-minimizes other windows and maximizes the new one.
      * @param {string} id - Window identifier
      * @param {WinBox} winbox - WinBox instance
      */
     registerWindow(id, winbox) {
         this.windows.set(id, winbox);
+
+        // On narrow viewports, use single-window mode: minimize others, maximize this one
+        if (this.isNarrowViewport()) {
+            this.minimizeAllExcept(id);
+            if (winbox && typeof winbox.maximize === 'function' && !winbox.max) {
+                winbox.maximize();
+            }
+        }
+
         this.emit('window_registered', { id, winbox });
+    }
+
+    /**
+     * Minimize all windows except the specified one.
+     * @param {string} exceptId - Window ID to keep open (optional)
+     */
+    minimizeAllExcept(exceptId = null) {
+        for (const [windowId, winbox] of this.windows) {
+            if (windowId !== exceptId && winbox && typeof winbox.minimize === 'function') {
+                // Only minimize if not already minimized
+                if (!winbox.min) {
+                    winbox.minimize();
+                }
+            }
+        }
     }
 
     /**
@@ -271,10 +307,23 @@ class DesktopManager {
 
     /**
      * Set the active window.
+     * On narrow viewports, also maximizes the window and minimizes others.
      * @param {string|null} id - Window identifier
      */
     setActiveWindow(id) {
         this.activeWindow = id;
+
+        // On narrow viewports, enforce single-window mode when a window gains focus
+        if (id && this.isNarrowViewport()) {
+            const winbox = this.windows.get(id);
+            if (winbox) {
+                this.minimizeAllExcept(id);
+                if (typeof winbox.maximize === 'function' && !winbox.max) {
+                    winbox.maximize();
+                }
+            }
+        }
+
         this.emit('active_window_changed', { id });
     }
 

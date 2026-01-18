@@ -4,23 +4,34 @@
 
 import { ListWindow } from '../list-window.js';
 
+/** @type {ListWindow|null} */
+let machinesWindow = null;
+
 /**
  * Open the Machines window
  * @returns {ListWindow} The machines window instance
  */
 export function openMachinesWindow() {
-    const win = new ListWindow({
+    if (machinesWindow?.winbox) {
+        machinesWindow.winbox.focus();
+        return machinesWindow;
+    }
+
+    machinesWindow = new ListWindow({
         id: 'machines',
         title: 'Machines',
         fetchData: fetchMachines,
         renderItem: renderMachineItem,
         onItemAction: null,  // Display only for now
-        refreshInterval: 10000,
         emptyMessage: 'No machines configured'
     });
 
-    win.open();
-    return win;
+    machinesWindow._cleanup = () => {
+        machinesWindow = null;
+    };
+
+    machinesWindow.open();
+    return machinesWindow;
 }
 
 /**

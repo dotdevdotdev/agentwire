@@ -5,6 +5,8 @@
  * action handlers, and optional auto-refresh.
  */
 
+import { desktop } from './desktop-manager.js';
+
 export class ListWindow {
     /**
      * @param {Object} options
@@ -91,7 +93,13 @@ export class ListWindow {
             minheight: 200,
             class: ['list-window-box'],
             onclose: () => this._onClose(),
+            onfocus: () => {
+                desktop.setActiveWindow(this.id);
+            }
         });
+
+        // Register with desktop manager (triggers auto-minimize on narrow viewports)
+        desktop.registerWindow(this.id, this.winbox);
 
         // Initial data fetch (with loading indicator)
         this.refresh(true);
@@ -217,6 +225,9 @@ export class ListWindow {
         if (this._cleanup) {
             this._cleanup();
         }
+
+        // Unregister from desktop manager
+        desktop.unregisterWindow(this.id);
 
         // Clean up references
         this.winbox = null;

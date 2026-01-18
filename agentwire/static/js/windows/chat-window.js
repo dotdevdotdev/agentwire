@@ -59,9 +59,14 @@ class ChatWindow {
         this.messagesEl = null;
         this.statusIndicator = null;
         this.statusText = null;
+        this.fullscreenExitBtn = null;
+
+        // Fullscreen state
+        this.isFullscreen = false;
 
         // Event listeners cleanup
         this._unsubscribers = [];
+        this._escapeHandler = null;
     }
 
     /**
@@ -81,6 +86,12 @@ class ChatWindow {
         // Unsubscribe from desktop events
         this._unsubscribers.forEach(unsub => unsub());
         this._unsubscribers = [];
+
+        // Remove escape key listener
+        if (this._escapeHandler) {
+            document.removeEventListener('keydown', this._escapeHandler);
+            this._escapeHandler = null;
+        }
 
         // Cancel any active recording
         if (this.mediaRecorder && this.pttState === 'recording') {
@@ -128,6 +139,7 @@ class ChatWindow {
                 <span class="status-indicator"></span>
                 <span class="status-text">No session selected</span>
             </div>
+            <button class="fullscreen-exit-btn" title="Exit fullscreen (Escape)">✕</button>
         `;
 
         // Store element references
@@ -139,6 +151,7 @@ class ChatWindow {
         this.messagesEl = container.querySelector('.chat-messages');
         this.statusIndicator = container.querySelector('.status-indicator');
         this.statusText = container.querySelector('.status-text');
+        this.fullscreenExitBtn = container.querySelector('.fullscreen-exit-btn');
 
         return container;
     }
@@ -165,6 +178,9 @@ class ChatWindow {
             },
             onfocus: () => {
                 desktop.setActiveWindow('chat');
+            },
+            onfullscreen: (isFullscreen) => {
+                this._handleFullscreenChange(isFullscreen);
             }
         });
 
@@ -237,6 +253,41 @@ class ChatWindow {
             }
         });
         this._unsubscribers.push(unsubAudioEnded);
+
+        // Fullscreen exit button
+        this.fullscreenExitBtn.addEventListener('click', () => {
+            this._exitFullscreen();
+        });
+
+        // Escape key to exit fullscreen
+        this._escapeHandler = (e) => {
+            if (e.key === 'Escape' && this.isFullscreen) {
+                e.preventDefault();
+                this._exitFullscreen();
+            }
+        };
+        document.addEventListener('keydown', this._escapeHandler);
+    }
+
+    /**
+     * Handle fullscreen state change
+     */
+    _handleFullscreenChange(isFullscreen) {
+        this.isFullscreen = isFullscreen;
+        if (isFullscreen) {
+            this.container.classList.add('is-fullscreen');
+        } else {
+            this.container.classList.remove('is-fullscreen');
+        }
+    }
+
+    /**
+     * Exit fullscreen mode
+     */
+    _exitFullscreen() {
+        if (this.winbox && this.isFullscreen) {
+            this.winbox.fullscreen(false);
+        }
     }
 
     /**
