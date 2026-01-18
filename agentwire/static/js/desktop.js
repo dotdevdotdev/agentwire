@@ -139,6 +139,7 @@ export function openSessionTerminal(session, mode, machine = null) {
         },
         onFocus: (win) => {
             updateTaskbarActive(id);
+            desktop.setActiveWindow(id);
         }
     });
 

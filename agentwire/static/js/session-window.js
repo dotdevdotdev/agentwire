@@ -6,6 +6,8 @@
  * Supports two modes: Monitor (read-only) and Terminal (interactive).
  */
 
+import { desktop } from './desktop-manager.js';
+
 export class SessionWindow {
     /**
      * @param {Object} options
@@ -111,6 +113,9 @@ export class SessionWindow {
             this.winbox = null;
             wb.close();
         }
+
+        // Unregister from desktop manager
+        desktop.unregisterWindow(this.sessionId);
 
         this.isOpen = false;
 
@@ -313,6 +318,9 @@ export class SessionWindow {
                 }
             },
         });
+
+        // Register with desktop manager for window management (auto-maximize on mobile, etc.)
+        desktop.registerWindow(this.sessionId, this.winbox);
     }
 
     _connectWebSocket() {

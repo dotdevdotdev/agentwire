@@ -225,18 +225,30 @@ class DesktopManager {
     static NARROW_VIEWPORT_WIDTH = 600;
 
     /**
+     * Check if we're on a narrow viewport (mobile/tablet).
+     * @returns {boolean}
+     */
+    isNarrowViewport() {
+        return window.innerWidth < DesktopManager.NARROW_VIEWPORT_WIDTH;
+    }
+
+    /**
      * Register a window with the manager.
-     * On narrow viewports (< 600px), auto-minimizes other windows to prevent overlap.
+     * On narrow viewports (< 600px), auto-minimizes other windows and maximizes the new one.
      * @param {string} id - Window identifier
      * @param {WinBox} winbox - WinBox instance
      */
     registerWindow(id, winbox) {
-        // On narrow viewports, minimize all other windows when opening a new one
-        if (window.innerWidth < DesktopManager.NARROW_VIEWPORT_WIDTH) {
+        this.windows.set(id, winbox);
+
+        // On narrow viewports, use single-window mode: minimize others, maximize this one
+        if (this.isNarrowViewport()) {
             this.minimizeAllExcept(id);
+            if (winbox && typeof winbox.maximize === 'function' && !winbox.max) {
+                winbox.maximize();
+            }
         }
 
-        this.windows.set(id, winbox);
         this.emit('window_registered', { id, winbox });
     }
 
@@ -295,10 +307,23 @@ class DesktopManager {
 
     /**
      * Set the active window.
+     * On narrow viewports, also maximizes the window and minimizes others.
      * @param {string|null} id - Window identifier
      */
     setActiveWindow(id) {
         this.activeWindow = id;
+
+        // On narrow viewports, enforce single-window mode when a window gains focus
+        if (id && this.isNarrowViewport()) {
+            const winbox = this.windows.get(id);
+            if (winbox) {
+                this.minimizeAllExcept(id);
+                if (typeof winbox.maximize === 'function' && !winbox.max) {
+                    winbox.maximize();
+                }
+            }
+        }
+
         this.emit('active_window_changed', { id });
     }
 
