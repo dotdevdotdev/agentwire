@@ -92,11 +92,11 @@ Projects are discovered, not registered. Benefits:
 
 ## Completion Criteria
 
-- [ ] `agentwire projects list` shows discovered projects
-- [ ] Portal has Projects window accessible from menu bar
-- [ ] Menu bar reorganized: owl removed, Projects + Sessions (left) | cog menu (right)
-- [ ] Clicking project shows details with "New Session" button
-- [ ] Project detail has placeholder for History (enabled by next mission)
+- [x] `agentwire projects list` shows discovered projects
+- [x] Portal has Projects window accessible from menu bar
+- [x] Menu bar reorganized: owl removed, Projects + Sessions (left) | cog menu (right)
+- [x] Clicking project shows details with "New Session" button
+- [x] Project detail has placeholder for History (enabled by next mission)
 
 ## Dependencies
 
