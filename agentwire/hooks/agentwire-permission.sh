@@ -29,14 +29,6 @@ find_agentwire_config() {
     return 1
 }
 
-# Extract session name from .agentwire.yml
-get_session_from_config() {
-    local config_file="$1"
-    if [ -f "$config_file" ]; then
-        grep -E "^session:" "$config_file" 2>/dev/null | sed 's/^session:[[:space:]]*//' | tr -d '"'"'" || true
-    fi
-}
-
 # Infer session from directory path
 infer_session_from_path() {
     local cwd="$PWD"
@@ -58,24 +50,15 @@ infer_session_from_path() {
 
 # Get session name
 get_session() {
-    # 1. .agentwire.yml config file
-    local config_file=$(find_agentwire_config)
-    if [ -n "$config_file" ]; then
-        local session=$(get_session_from_config "$config_file")
-        if [ -n "$session" ]; then
-            echo "$session"
-            return
-        fi
+    # 1. tmux session name (most reliable - actual runtime context)
+    if [ -n "$TMUX" ]; then
+        tmux display-message -p '#S' 2>/dev/null
+        return
     fi
-    # 2. Infer from directory path
+    # 2. Infer from directory path (fallback when not in tmux)
     local inferred=$(infer_session_from_path)
     if [ -n "$inferred" ]; then
         echo "$inferred"
-        return
-    fi
-    # 3. tmux session name (fallback)
-    if [ -n "$TMUX" ]; then
-        tmux display-message -p '#S' 2>/dev/null
         return
     fi
     echo ""
@@ -83,7 +66,7 @@ get_session() {
 
 session=$(get_session)
 if [ -z "$session" ]; then
-    echo '{"decision": "deny", "message": "Could not determine session (no .agentwire.yml, not in project dir, not in tmux)"}' >&2
+    echo '{"decision": "deny", "message": "Could not determine session (not in tmux, not in project dir)"}' >&2
     exit 1
 fi
 
