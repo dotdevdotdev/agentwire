@@ -30,7 +30,7 @@ Push-to-talk voice input from any device to tmux sessions running Claude Code or
 - **Remote Machines** - Orchestrate agents on remote servers
 - **Session Templates** - Pre-configured session setups with initial prompts, voice, and permission modes
 - **Safety Hooks** - Damage control system blocks dangerous operations (rm -rf, secret exposure, etc.)
-- **Claude Code Skills** - Session orchestration via `/sessions`, `/send`, `/spawn`, etc.
+- **Permission Hooks** - Claude Code integration for permission dialogs in portal
 
 ## Recent Updates
 
@@ -109,9 +109,6 @@ agentwire init
 
 # Generate SSL certs (required for browser mic access)
 agentwire generate-certs
-
-# Install Claude Code skills and damage control hooks
-agentwire skills install
 
 # Start the portal
 agentwire portal start
@@ -214,29 +211,6 @@ tts:
 agent:
   command: "claude --dangerously-skip-permissions"
 ```
-
-## Claude Code Skills
-
-AgentWire includes skills for session orchestration from within Claude Code:
-
-```bash
-# Install skills
-agentwire skills install
-```
-
-Then use in Claude Code:
-
-| Command | Purpose |
-|---------|---------|
-| `/sessions` | List all tmux sessions |
-| `/send <session> <prompt>` | Send prompt to session |
-| `/output <session>` | Read session output |
-| `/spawn <name>` | Smart session creation |
-| `/new <name> [path]` | Create new session |
-| `/kill <session>` | Destroy session |
-| `/status` | Check all machines |
-| `/machine-setup` | Interactive guide for adding remote machines |
-| `/machine-remove` | Interactive guide for removing machines |
 
 ## Session Types
 
@@ -341,18 +315,15 @@ All decisions are logged to `~/.agentwire/logs/damage-control/` for audit trails
 
 ## Voice Integration
 
-AgentWire provides TTS via the `say` command with automatic audio routing:
+AgentWire provides TTS via the `agentwire say` command with automatic audio routing:
 
 ```bash
-# One-time setup
-agentwire skills install  # Installs say command + Claude Code skills
-
 # In sessions, Claude (or users) can trigger TTS:
-say "Hello world"  # Automatically routes to browser or local speakers
+agentwire say "Hello world"  # Automatically routes to browser or local speakers
 ```
 
 **How it works:**
-- `say` automatically detects if a browser is connected to the session
+- `agentwire say` automatically detects if a browser is connected to the session
 - If connected: streams audio to browser (tablet/phone/laptop)
 - If not connected: plays audio locally (Mac speakers)
 - Session detection uses `AGENTWIRE_SESSION` env var (set automatically when session is created)

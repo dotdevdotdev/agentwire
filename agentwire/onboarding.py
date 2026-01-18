@@ -339,7 +339,7 @@ def setup_remote_machine(
 
     try:
         result = subprocess.run(
-            ["ssh", ssh_target, f"{agentwire_cmd} skills install"],
+            ["ssh", ssh_target, f"{agentwire_cmd} hooks install"],
             capture_output=True,
             text=True,
             timeout=60,

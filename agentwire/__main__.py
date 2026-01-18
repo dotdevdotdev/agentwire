@@ -3846,7 +3846,16 @@ def cmd_network_status(args) -> int:
     print("\nServices")
     print("-" * 60)
 
+    # Check TTS backend - if using RunPod, skip local health check
+    tts_config = load_config().get("tts", {})
+    tts_backend = tts_config.get("backend", "chatterbox")
+
     for service_name in ["portal", "tts"]:
+        # Skip TTS local check if using RunPod backend
+        if service_name == "tts" and tts_backend == "runpod":
+            print(f"  {'Tts':<16}{'RunPod API':<18}[ok] cloud backend")
+            continue
+
         service_config = getattr(ctx.config.services, service_name, None)
         if service_config is None:
             continue
@@ -4050,33 +4059,10 @@ def cmd_doctor(args) -> int:
     print("\nChecking AgentWire scripts...")
 
     say_path = shutil.which("say")
-
-    scripts_missing = False
     if say_path:
         print(f"  [ok] say: {say_path}")
     else:
-        print("  [!!] say: not found")
-        scripts_missing = True
-        issues_found += 1
-
-    # Offer to fix missing scripts
-    if scripts_missing and not dry_run:
-        if auto_confirm or _confirm("     Install say script?"):
-            print("     -> Installing scripts...", end=" ", flush=True)
-
-            # Create a minimal args object for cmd_skills_install
-            class SkillsArgs:
-                force = False
-                copy = False
-
-            skills_args = SkillsArgs()
-            result = cmd_skills_install(skills_args)
-
-            if result == 0:
-                print("[ok] installed")
-                issues_fixed += 1
-            else:
-                print("[!!] failed")
+        print("  [..] say: not found (optional, use 'agentwire say' directly)")
 
     # 4. Check Claude Code hooks
     print("\nChecking Claude Code hooks...")
@@ -4085,17 +4071,8 @@ def cmd_doctor(args) -> int:
     if permission_hook.exists():
         print(f"  [ok] Permission hook: {permission_hook}")
     else:
-        print(f"  [!!] Permission hook: not found")
-        print("     Run: agentwire skills install")
-        issues_found += 1
-
-    skills_dir = CLAUDE_SKILLS_DIR / "agentwire"
-    if skills_dir.exists():
-        print(f"  [ok] Skills linked: {skills_dir}")
-    else:
-        print(f"  [!!] Skills not linked")
-        print("     Run: agentwire skills install")
-        issues_found += 1
+        print(f"  [..] Permission hook: not found (optional for prompted sessions)")
+        print("     Run: agentwire hooks install")
 
     # 5. Validate config
     print("\nChecking configuration...")
@@ -4175,7 +4152,16 @@ def cmd_doctor(args) -> int:
     # 8. Check services
     print("\nChecking services...")
 
+    # Check TTS backend - if using RunPod, skip local health check
+    tts_config = load_config().get("tts", {})
+    tts_backend = tts_config.get("backend", "chatterbox")
+
     for service_name in ["portal", "tts"]:
+        # Skip TTS local check if using RunPod backend
+        if service_name == "tts" and tts_backend == "runpod":
+            print(f"  [ok] Tts: using RunPod backend (no local service needed)")
+            continue
+
         service_config = getattr(ctx.config.services, service_name, None)
         if service_config is None:
             continue
@@ -4300,26 +4286,7 @@ def cmd_doctor(args) -> int:
                 print(f"         Fix: ssh {target} 'echo \"https://localhost:8765\" > ~/.agentwire/portal_url'")
                 issues_found += 1
 
-            # Check if skills are installed
-            try:
-                result = subprocess.run(
-                    ["ssh", "-o", "ConnectTimeout=5", "-o", "BatchMode=yes", target, "test -d ~/.claude/skills/agentwire && echo ok"],
-                    capture_output=True,
-                    text=True,
-                    timeout=7,
-                )
-                if result.returncode == 0 and result.stdout.strip() == "ok":
-                    print(f"    [ok] Skills installed")
-                else:
-                    print(f"    [!!] Skills not installed")
-                    print(f"         Fix: ssh {target} 'agentwire skills install'")
-                    issues_found += 1
-            except (subprocess.TimeoutExpired, subprocess.CalledProcessError):
-                print(f"    [!!] Skills not installed")
-                print(f"         Fix: ssh {target} 'agentwire skills install'")
-                issues_found += 1
-
-            # Test say command
+            # Test say command (optional)
             try:
                 result = subprocess.run(
                     ["ssh", "-o", "ConnectTimeout=5", "-o", "BatchMode=yes", target, "which say"],
@@ -4330,13 +4297,9 @@ def cmd_doctor(args) -> int:
                 if result.returncode == 0:
                     print(f"    [ok] say command available")
                 else:
-                    print(f"    [!!] say command not found")
-                    print(f"         Fix: ssh {target} 'agentwire skills install'")
-                    issues_found += 1
+                    print(f"    [..] say: not found (optional, use 'agentwire say' directly)")
             except (subprocess.TimeoutExpired, subprocess.CalledProcessError):
-                print(f"    [!!] say command not found")
-                print(f"         Fix: ssh {target} 'agentwire skills install'")
-                issues_found += 1
+                print(f"    [..] say: not found (optional, use 'agentwire say' directly)")
 
     # Summary
     print()
@@ -4485,29 +4448,9 @@ def cmd_uninstall(args) -> int:
     return 0
 
 
-# === Skills Commands ===
+# === Hooks Commands ===
 
-CLAUDE_SKILLS_DIR = Path.home() / ".claude" / "skills"
 CLAUDE_HOOKS_DIR = Path.home() / ".claude" / "hooks"
-
-
-def get_skills_source() -> Path:
-    """Get the path to the skills directory in the installed package."""
-    # First try: skills directory inside the agentwire package
-    package_dir = Path(__file__).parent
-    skills_dir = package_dir / "skills"
-    if skills_dir.exists():
-        return skills_dir
-
-    # Fallback: try importlib.resources (for installed packages)
-    try:
-        with importlib.resources.files("agentwire").joinpath("skills") as p:
-            if p.exists():
-                return Path(p)
-    except (TypeError, FileNotFoundError):
-        pass
-
-    raise FileNotFoundError("Could not find skills directory in package")
 
 
 # =============================================================================
@@ -5087,61 +5030,14 @@ def install_permission_hook(force: bool = False, copy: bool = False) -> bool:
     return file_updated or settings_updated
 
 
-def cmd_skills_install(args) -> int:
-    """Install Claude Code skills for AgentWire integration."""
-    target_dir = CLAUDE_SKILLS_DIR / "agentwire"
-
-    try:
-        source_dir = get_skills_source()
-    except FileNotFoundError as e:
-        print(f"Error: {e}", file=sys.stderr)
-        return 1
-
-    # Create ~/.claude/skills if it doesn't exist
-    CLAUDE_SKILLS_DIR.mkdir(parents=True, exist_ok=True)
-
-    # Check if already installed
-    skills_already_installed = False
-    if target_dir.exists():
-        if target_dir.is_symlink():
-            current_target = target_dir.resolve()
-            if current_target == source_dir.resolve():
-                print(f"Skills already installed (symlink to {source_dir})")
-                skills_already_installed = True
-            else:
-                print(f"Existing symlink points to {current_target}")
-        else:
-            print(f"Skills directory already exists at {target_dir}")
-
-        if not skills_already_installed:
-            if not args.force:
-                print("Use --force to overwrite")
-                return 1
-
-            # Remove existing
-            if target_dir.is_symlink():
-                target_dir.unlink()
-            else:
-                shutil.rmtree(target_dir)
-
-    # Create symlink (preferred) or copy - unless already installed
-    if not skills_already_installed:
-        if args.copy:
-            shutil.copytree(source_dir, target_dir)
-            print(f"Copied skills to {target_dir}")
-        else:
-            target_dir.symlink_to(source_dir)
-            print(f"Linked skills: {target_dir} -> {source_dir}")
-
-    # Install permission hook
+def cmd_hooks_install(args) -> int:
+    """Install Claude Code permission hook for AgentWire integration."""
     hook_installed = install_permission_hook(force=args.force, copy=args.copy)
     if hook_installed:
         print(f"Installed permission hook to {CLAUDE_HOOKS_DIR / 'agentwire-permission.sh'}")
-
-    print("\nClaude Code skills installed. Available commands:")
-    print("  /sessions, /send, /output, /spawn, /new, /kill, /status, /jump")
-    if hook_installed:
-        print("\nPermission hook installed for normal session support.")
+        print("\nPermission hook enables prompted sessions to show permission dialogs in the portal.")
+    else:
+        print("Permission hook already installed.")
     return 0
 
 
@@ -5217,22 +5113,10 @@ def is_hook_registered() -> bool:
     return False
 
 
-def cmd_skills_uninstall(args) -> int:
-    """Uninstall Claude Code skills."""
-    target_dir = CLAUDE_SKILLS_DIR / "agentwire"
+def cmd_hooks_uninstall(args) -> int:
+    """Uninstall Claude Code permission hook."""
     hook_file = CLAUDE_HOOKS_DIR / "agentwire-permission.sh"
-
-    skills_removed = False
     hook_removed = False
-
-    if target_dir.exists():
-        if target_dir.is_symlink():
-            target_dir.unlink()
-            print(f"Removed symlink: {target_dir}")
-        else:
-            shutil.rmtree(target_dir)
-            print(f"Removed directory: {target_dir}")
-        skills_removed = True
 
     if hook_file.exists():
         hook_file.unlink()
@@ -5243,40 +5127,18 @@ def cmd_skills_uninstall(args) -> int:
     if unregister_hook_from_settings():
         print("Unregistered hook from Claude settings.json")
 
-    if not skills_removed and not hook_removed:
-        print("Skills and hooks not installed")
+    if not hook_removed:
+        print("Hook not installed")
 
     return 0
 
 
-def cmd_skills_status(args) -> int:
-    """Check Claude Code skills installation status."""
-    target_dir = CLAUDE_SKILLS_DIR / "agentwire"
+def cmd_hooks_status(args) -> int:
+    """Check Claude Code permission hook installation status."""
     hook_file = CLAUDE_HOOKS_DIR / "agentwire-permission.sh"
-
-    skills_installed = target_dir.exists()
     hook_installed = hook_file.exists()
-
-    if not skills_installed:
-        print("Skills: not installed")
-        print(f"  Run 'agentwire skills install' to set up Claude Code integration")
-    else:
-        if target_dir.is_symlink():
-            source = target_dir.resolve()
-            print(f"Skills: installed (symlink)")
-            print(f"  Location: {target_dir} -> {source}")
-        else:
-            print(f"Skills: installed (copy)")
-            print(f"  Location: {target_dir}")
-
-        # List available skills
-        skill_files = list(target_dir.glob("*.md"))
-        skill_files = [f for f in skill_files if f.name != "SKILL.md"]
-        if skill_files:
-            print(f"  Commands: {', '.join('/' + f.stem for f in sorted(skill_files))}")
-
-    print()
     hook_registered = is_hook_registered()
+
     if hook_installed:
         if hook_file.is_symlink():
             source = hook_file.resolve()
@@ -5288,12 +5150,12 @@ def cmd_skills_status(args) -> int:
         if hook_registered:
             print(f"  Registered: yes (in ~/.claude/settings.json)")
         else:
-            print(f"  Registered: NO - run 'agentwire skills install --force' to fix")
+            print(f"  Registered: NO - run 'agentwire hooks install --force' to fix")
     else:
         print("Permission hook: not installed")
-        print("  (Required for normal session permission prompts)")
+        print("  Run 'agentwire hooks install' to enable permission dialogs in portal")
 
-    return 0 if skills_installed else 1
+    return 0 if hook_installed else 1
 
 
 # === Tunnel Commands ===
@@ -6024,35 +5886,35 @@ def main() -> int:
     projects_list.add_argument("--json", action="store_true", help="Output as JSON")
     projects_list.set_defaults(func=cmd_projects_list)
 
-    # === skills command group ===
-    skills_parser = subparsers.add_parser(
-        "skills", help="Manage Claude Code skills integration"
+    # === hooks command group ===
+    hooks_parser = subparsers.add_parser(
+        "hooks", help="Manage Claude Code permission hook"
     )
-    skills_subparsers = skills_parser.add_subparsers(dest="skills_command")
+    hooks_subparsers = hooks_parser.add_subparsers(dest="hooks_command")
 
-    # skills install
-    skills_install = skills_subparsers.add_parser(
-        "install", help="Install Claude Code skills for AgentWire"
+    # hooks install
+    hooks_install = hooks_subparsers.add_parser(
+        "install", help="Install Claude Code permission hook"
     )
-    skills_install.add_argument(
+    hooks_install.add_argument(
         "--force", "-f", action="store_true", help="Overwrite existing installation"
     )
-    skills_install.add_argument(
+    hooks_install.add_argument(
         "--copy", action="store_true", help="Copy files instead of symlinking"
     )
-    skills_install.set_defaults(func=cmd_skills_install)
+    hooks_install.set_defaults(func=cmd_hooks_install)
 
-    # skills uninstall
-    skills_uninstall = skills_subparsers.add_parser(
-        "uninstall", help="Remove Claude Code skills"
+    # hooks uninstall
+    hooks_uninstall = hooks_subparsers.add_parser(
+        "uninstall", help="Remove Claude Code permission hook"
     )
-    skills_uninstall.set_defaults(func=cmd_skills_uninstall)
+    hooks_uninstall.set_defaults(func=cmd_hooks_uninstall)
 
-    # skills status
-    skills_status = skills_subparsers.add_parser(
-        "status", help="Check skills installation status"
+    # hooks status
+    hooks_status = hooks_subparsers.add_parser(
+        "status", help="Check hook installation status"
     )
-    skills_status.set_defaults(func=cmd_skills_status)
+    hooks_status.set_defaults(func=cmd_hooks_status)
 
     # === network command group ===
     network_parser = subparsers.add_parser(
@@ -6174,8 +6036,8 @@ def main() -> int:
         history_parser.print_help()
         return 0
 
-    if args.command == "skills" and getattr(args, "skills_command", None) is None:
-        skills_parser.print_help()
+    if args.command == "hooks" and getattr(args, "hooks_command", None) is None:
+        hooks_parser.print_help()
         return 0
 
     if args.command == "projects" and getattr(args, "projects_command", None) is None:
