@@ -1,5 +1,5 @@
 /**
- * Projects Window - displays discovered projects with detail panel
+ * Projects Window - displays discovered projects with drill-down detail view
  */
 
 import { ListWindow } from '../list-window.js';
@@ -9,6 +9,9 @@ let projectsWindow = null;
 
 /** @type {Object|null} */
 let selectedProject = null;
+
+/** @type {Array|null} */
+let cachedProjects = null;
 
 /**
  * Open the Projects window
@@ -23,8 +26,6 @@ export function openProjectsWindow() {
     projectsWindow = new ListWindow({
         id: 'projects',
         title: 'Projects',
-        width: 700,
-        height: 500,
         fetchData: fetchProjects,
         renderItem: renderProjectItem,
         onItemAction: handleProjectAction,
@@ -34,44 +35,11 @@ export function openProjectsWindow() {
     projectsWindow._cleanup = () => {
         projectsWindow = null;
         selectedProject = null;
+        cachedProjects = null;
     };
 
-    // Override the container creation to add detail panel
-    const originalOpen = projectsWindow.open.bind(projectsWindow);
-    projectsWindow.open = function() {
-        const winbox = originalOpen();
-
-        // Restructure: wrap list-content in a two-column layout
-        const container = this.container;
-        const listContent = container.querySelector('.list-content');
-
-        // Create wrapper for split view
-        const splitView = document.createElement('div');
-        splitView.className = 'projects-split-view';
-
-        // Wrap list in left panel
-        const leftPanel = document.createElement('div');
-        leftPanel.className = 'projects-list-panel';
-        listContent.parentNode.insertBefore(splitView, listContent);
-        leftPanel.appendChild(listContent);
-
-        // Create detail panel
-        const detailPanel = document.createElement('div');
-        detailPanel.className = 'projects-detail-panel';
-        detailPanel.innerHTML = `
-            <div class="detail-empty">
-                Select a project to view details
-            </div>
-        `;
-
-        splitView.appendChild(leftPanel);
-        splitView.appendChild(detailPanel);
-
-        // Add styles for split view
-        addProjectsStyles();
-
-        return winbox;
-    };
+    // Add styles
+    addProjectsStyles();
 
     projectsWindow.open();
     return projectsWindow;
@@ -86,6 +54,9 @@ async function fetchProjects() {
     const response = await fetch('/api/projects');
     const data = await response.json();
     const projects = data.projects || [];
+
+    // Cache for detail view
+    cachedProjects = projects;
 
     // Check if there are multiple machines
     const machines = new Set(projects.map(p => p.machine || 'local'));
@@ -130,19 +101,15 @@ function renderProjectItem(project) {
         `;
     }
 
-    const machineLabel = project.machine === 'local' ? '' : `<span class="project-machine">${project.machine}</span>`;
     const typeClass = `type-${project.type || 'claude-bypass'}`;
 
     return `
         <div class="project-info" data-path="${project.path}" data-machine="${project.machine}">
-            <div class="project-header">
+            <div class="project-row">
                 <span class="project-name">${project.name}</span>
-                ${machineLabel}
-            </div>
-            <div class="project-meta">
                 <span class="project-type ${typeClass}">${project.type || 'claude-bypass'}</span>
-                <span class="project-path">${project.path}</span>
             </div>
+            <div class="project-path">${project.path}</div>
         </div>
     `;
 }
@@ -158,73 +125,95 @@ function handleProjectAction(action, item) {
 
     if (action === 'select') {
         selectedProject = item;
-        updateDetailPanel(item);
-
-        // Highlight selected row
-        const container = projectsWindow.container;
-        container.querySelectorAll('.list-item').forEach(el => {
-            el.classList.remove('selected');
-        });
-        const selected = container.querySelector(`[data-path="${item.path}"][data-machine="${item.machine}"]`);
-        if (selected) {
-            selected.closest('.list-item').classList.add('selected');
-        }
+        showDetailView(item);
     }
 }
 
 /**
- * Update the detail panel with project info
+ * Show the detail view for a project
  * @param {Object} project - Project data
  */
-function updateDetailPanel(project) {
+function showDetailView(project) {
     const container = projectsWindow?.container;
     if (!container) return;
 
-    const detailPanel = container.querySelector('.projects-detail-panel');
-    if (!detailPanel) return;
-
     const rolesBadges = (project.roles || [])
         .map(role => `<span class="role-badge">${role}</span>`)
-        .join('') || '<span class="no-roles">No roles</span>';
+        .join('') || '<span class="no-roles">No roles assigned</span>';
 
-    detailPanel.innerHTML = `
-        <div class="detail-content">
+    const typeClass = `type-${project.type || 'claude-bypass'}`;
+
+    container.innerHTML = `
+        <div class="project-detail-view">
             <div class="detail-header">
-                <h3 class="detail-name">${project.name}</h3>
+                <button class="back-btn">← Back</button>
                 <span class="detail-machine">${project.machine}</span>
             </div>
 
-            <div class="detail-section">
-                <label>Path</label>
-                <div class="detail-path">${project.path}</div>
-            </div>
+            <div class="detail-body">
+                <div class="detail-title-row">
+                    <h2 class="detail-name">${project.name}</h2>
+                    <span class="project-type ${typeClass}">${project.type || 'claude-bypass'}</span>
+                </div>
 
-            <div class="detail-section">
-                <label>Type</label>
-                <div class="detail-type">${project.type || 'claude-bypass'}</div>
-            </div>
+                <div class="detail-section">
+                    <label>Path</label>
+                    <div class="detail-path">${project.path}</div>
+                </div>
 
-            <div class="detail-section">
-                <label>Roles</label>
-                <div class="detail-roles">${rolesBadges}</div>
-            </div>
+                <div class="detail-section">
+                    <label>Roles</label>
+                    <div class="detail-roles">${rolesBadges}</div>
+                </div>
 
-            <div class="detail-actions">
-                <button class="btn primary new-session-btn">New Session</button>
-            </div>
+                <div class="detail-actions">
+                    <button class="btn primary new-session-btn">New Session</button>
+                </div>
 
-            <div class="detail-section history-section">
-                <label>History</label>
-                <div class="history-placeholder">
-                    History available in future update
+                <div class="detail-section history-section">
+                    <label>History</label>
+                    <div class="history-placeholder">
+                        Coming soon
+                    </div>
                 </div>
             </div>
         </div>
     `;
 
-    // Attach new session handler
-    const newSessionBtn = detailPanel.querySelector('.new-session-btn');
-    newSessionBtn?.addEventListener('click', () => openNewSessionForProject(project));
+    // Attach handlers
+    container.querySelector('.back-btn')?.addEventListener('click', showListView);
+    container.querySelector('.new-session-btn')?.addEventListener('click', () => openNewSessionForProject(project));
+}
+
+/**
+ * Return to the list view
+ */
+function showListView() {
+    if (!projectsWindow) return;
+
+    const container = projectsWindow.container;
+    if (!container) return;
+
+    // Rebuild the list structure that was replaced by detail view
+    container.innerHTML = `
+        <div class="list-header">
+            <span class="list-title">Projects</span>
+            <button class="list-refresh-btn" title="Refresh">↻</button>
+        </div>
+        <div class="list-content">
+            <div class="list-loading">Loading...</div>
+        </div>
+    `;
+
+    // Re-attach contentEl reference
+    projectsWindow.contentEl = container.querySelector('.list-content');
+
+    // Re-attach refresh button handler
+    const refreshBtn = container.querySelector('.list-refresh-btn');
+    refreshBtn.addEventListener('click', () => projectsWindow.refresh());
+
+    // Fetch and render data
+    projectsWindow.refresh();
 }
 
 /**
@@ -282,45 +271,18 @@ function addProjectsStyles() {
     const style = document.createElement('style');
     style.id = 'projects-window-styles';
     style.textContent = `
-        /* Split view layout */
-        .projects-split-view {
-            display: flex;
-            flex: 1;
-            min-height: 0;
-            overflow: hidden;
-        }
-
-        .projects-list-panel {
-            flex: 1;
-            min-width: 250px;
-            border-right: 1px solid var(--chrome-border);
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-        }
-
-        .projects-list-panel .list-content {
-            flex: 1;
-            overflow-y: auto;
-        }
-
-        .projects-detail-panel {
-            width: 280px;
-            flex-shrink: 0;
-            overflow-y: auto;
-            background: var(--chrome);
-        }
-
         /* Project list item */
         .project-info {
             display: flex;
             flex-direction: column;
             gap: 4px;
+            width: 100%;
         }
 
-        .project-header {
+        .project-row {
             display: flex;
             align-items: center;
+            justify-content: space-between;
             gap: 8px;
         }
 
@@ -329,26 +291,12 @@ function addProjectsStyles() {
             color: var(--text);
         }
 
-        .project-machine {
-            font-size: 10px;
-            padding: 2px 6px;
-            background: var(--chrome);
-            border-radius: 3px;
-            color: var(--text-muted);
-        }
-
-        .project-meta {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 11px;
-        }
-
         .project-type {
             padding: 2px 6px;
             border-radius: 3px;
             font-size: 10px;
             text-transform: uppercase;
+            flex-shrink: 0;
         }
 
         .project-type.type-claude-bypass {
@@ -367,10 +315,9 @@ function addProjectsStyles() {
         }
 
         .project-path {
+            font-size: 11px;
             color: var(--text-muted);
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
+            word-break: break-all;
         }
 
         /* Group headers */
@@ -400,38 +347,34 @@ function addProjectsStyles() {
             background: var(--chrome);
         }
 
-        /* Selected state */
-        .list-item.selected {
-            background: var(--hover);
-            border-left: 2px solid var(--accent);
-        }
-
-        /* Detail panel */
-        .detail-empty {
-            padding: 24px;
-            text-align: center;
-            color: var(--text-muted);
-            font-size: 13px;
-        }
-
-        .detail-content {
-            padding: 16px;
+        /* Detail view */
+        .project-detail-view {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
         }
 
         .detail-header {
             display: flex;
             justify-content: space-between;
-            align-items: flex-start;
-            margin-bottom: 16px;
-            padding-bottom: 12px;
+            align-items: center;
+            padding: 8px 12px;
             border-bottom: 1px solid var(--chrome-border);
+            background: var(--chrome);
         }
 
-        .detail-name {
-            margin: 0;
-            font-size: 16px;
-            font-weight: 600;
-            color: var(--text);
+        .back-btn {
+            background: none;
+            border: none;
+            color: var(--accent);
+            cursor: pointer;
+            font-size: 13px;
+            padding: 4px 8px;
+            border-radius: 4px;
+        }
+
+        .back-btn:hover {
+            background: var(--hover);
         }
 
         .detail-machine {
@@ -442,8 +385,31 @@ function addProjectsStyles() {
             color: var(--text-muted);
         }
 
+        .detail-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+        }
+
+        .detail-title-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--chrome-border);
+        }
+
+        .detail-name {
+            margin: 0;
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--text);
+        }
+
         .detail-section {
-            margin-bottom: 14px;
+            margin-bottom: 16px;
         }
 
         .detail-section label {
@@ -453,7 +419,7 @@ function addProjectsStyles() {
             color: var(--text-muted);
             text-transform: uppercase;
             letter-spacing: 0.5px;
-            margin-bottom: 4px;
+            margin-bottom: 6px;
         }
 
         .detail-path {
@@ -462,27 +428,22 @@ function addProjectsStyles() {
             word-break: break-all;
             font-family: 'Menlo', 'Monaco', monospace;
             background: var(--background);
-            padding: 6px 8px;
+            padding: 8px 10px;
             border-radius: 4px;
-        }
-
-        .detail-type {
-            font-size: 12px;
-            color: var(--text);
         }
 
         .detail-roles {
             display: flex;
             flex-wrap: wrap;
-            gap: 4px;
+            gap: 6px;
         }
 
         .role-badge {
             font-size: 11px;
-            padding: 3px 8px;
+            padding: 4px 10px;
             background: rgba(74, 222, 128, 0.15);
             color: var(--accent);
-            border-radius: 3px;
+            border-radius: 4px;
         }
 
         .no-roles {
@@ -515,23 +476,6 @@ function addProjectsStyles() {
             background: var(--background);
             border-radius: 4px;
             text-align: center;
-        }
-
-        /* Responsive: stack on narrow */
-        @media (max-width: 600px) {
-            .projects-split-view {
-                flex-direction: column;
-            }
-
-            .projects-list-panel {
-                border-right: none;
-                border-bottom: 1px solid var(--chrome-border);
-                min-height: 200px;
-            }
-
-            .projects-detail-panel {
-                width: 100%;
-            }
         }
     `;
     document.head.appendChild(style);
