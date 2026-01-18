@@ -621,6 +621,12 @@ body {
     background-color: var(--hover) !important;
 }
 
+/* Maximized windows must account for menu bar and taskbar */
+.winbox.max {
+    top: var(--menu-height) !important;
+    height: calc(100% - var(--menu-height) - var(--taskbar-height)) !important;
+}
+
 /* ListWindow component */
 .list-window {
     display: flex;
@@ -1355,5 +1361,30 @@ body {
     /* Smaller title font */
     .winbox .wb-title {
         font-size: 12px;
+    }
+
+    /* Taskbar responsiveness - tighter spacing for narrow viewports */
+    .taskbar-btn {
+        max-width: 120px;
+        padding: 4px 8px;
+        font-size: 11px;
+    }
+
+    .taskbar-windows {
+        gap: 2px;
+    }
+
+    /* Ensure smooth horizontal scrolling */
+    .taskbar-windows::-webkit-scrollbar {
+        height: 4px;
+    }
+
+    .taskbar-windows::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    .taskbar-windows::-webkit-scrollbar-thumb {
+        background: var(--chrome-border);
+        border-radius: 2px;
     }
 }

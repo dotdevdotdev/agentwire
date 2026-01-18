@@ -87,6 +87,12 @@ class ChatWindow {
         this._unsubscribers.forEach(unsub => unsub());
         this._unsubscribers = [];
 
+        // Remove escape key listener
+        if (this._escapeHandler) {
+            document.removeEventListener('keydown', this._escapeHandler);
+            this._escapeHandler = null;
+        }
+
         // Cancel any active recording
         if (this.mediaRecorder && this.pttState === 'recording') {
             this._cancelRecording();
@@ -247,6 +253,41 @@ class ChatWindow {
             }
         });
         this._unsubscribers.push(unsubAudioEnded);
+
+        // Fullscreen exit button
+        this.fullscreenExitBtn.addEventListener('click', () => {
+            this._exitFullscreen();
+        });
+
+        // Escape key to exit fullscreen
+        this._escapeHandler = (e) => {
+            if (e.key === 'Escape' && this.isFullscreen) {
+                e.preventDefault();
+                this._exitFullscreen();
+            }
+        };
+        document.addEventListener('keydown', this._escapeHandler);
+    }
+
+    /**
+     * Handle fullscreen state change
+     */
+    _handleFullscreenChange(isFullscreen) {
+        this.isFullscreen = isFullscreen;
+        if (isFullscreen) {
+            this.container.classList.add('is-fullscreen');
+        } else {
+            this.container.classList.remove('is-fullscreen');
+        }
+    }
+
+    /**
+     * Exit fullscreen mode
+     */
+    _exitFullscreen() {
+        if (this.winbox && this.isFullscreen) {
+            this.winbox.fullscreen(false);
+        }
     }
 
     /**

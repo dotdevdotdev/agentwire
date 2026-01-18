@@ -221,14 +221,38 @@ class DesktopManager {
     // Window Management
     // ============================================
 
+    /** @type {number} Viewport width threshold for narrow mode */
+    static NARROW_VIEWPORT_WIDTH = 600;
+
     /**
      * Register a window with the manager.
+     * On narrow viewports (< 600px), auto-minimizes other windows to prevent overlap.
      * @param {string} id - Window identifier
      * @param {WinBox} winbox - WinBox instance
      */
     registerWindow(id, winbox) {
+        // On narrow viewports, minimize all other windows when opening a new one
+        if (window.innerWidth < DesktopManager.NARROW_VIEWPORT_WIDTH) {
+            this.minimizeAllExcept(id);
+        }
+
         this.windows.set(id, winbox);
         this.emit('window_registered', { id, winbox });
+    }
+
+    /**
+     * Minimize all windows except the specified one.
+     * @param {string} exceptId - Window ID to keep open (optional)
+     */
+    minimizeAllExcept(exceptId = null) {
+        for (const [windowId, winbox] of this.windows) {
+            if (windowId !== exceptId && winbox && typeof winbox.minimize === 'function') {
+                // Only minimize if not already minimized
+                if (!winbox.min) {
+                    winbox.minimize();
+                }
+            }
+        }
     }
 
     /**

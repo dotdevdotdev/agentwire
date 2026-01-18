@@ -5,6 +5,8 @@
  * action handlers, and optional auto-refresh.
  */
 
+import { desktop } from './desktop-manager.js';
+
 export class ListWindow {
     /**
      * @param {Object} options
