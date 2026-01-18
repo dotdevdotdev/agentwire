@@ -60,12 +60,12 @@ Verify `base.html` has proper viewport meta tag for mobile scaling.
 
 ## Completion Criteria
 
-- [ ] Chat window has working exit from fullscreen (button + Escape key)
-- [ ] Terminal output readable without horizontal truncation
-- [ ] Config values fully visible (scroll, tooltip, or stacked layout)
-- [ ] Maximized windows show title bar below menu bar (not hidden under it)
-- [ ] Only one modal visible at a time on narrow viewports (or clear z-index hierarchy)
-- [ ] Machines window has same controls as Sessions window
-- [ ] Time display doesn't wrap on narrow screens
+- [x] Chat window has working exit from fullscreen (button + Escape key)
+- [x] Terminal output readable without horizontal truncation
+- [x] Config values fully visible (scroll, tooltip, or stacked layout)
+- [x] Maximized windows show title bar below menu bar (not hidden under it)
+- [x] Only one modal visible at a time on narrow viewports (or clear z-index hierarchy)
+- [x] Machines window has same controls as Sessions window
+- [x] Time display doesn't wrap on narrow screens
 - [ ] All changes tested at 500px viewport width
 - [ ] No regressions on desktop (1200px+) viewport
