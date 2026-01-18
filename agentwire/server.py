@@ -2876,10 +2876,12 @@ projects:
 
             success, result = await self.run_agentwire_cmd(args)
             if not success:
-                error_msg = result.get("error", "Failed to list history")
+                error_msg = result.get("error", "Failed to list history") if isinstance(result, dict) else "Failed to list history"
                 return web.json_response({"error": error_msg}, status=500)
 
-            return web.json_response({"history": result.get("history", [])})
+            # CLI returns list directly, wrap it
+            history = result if isinstance(result, list) else result.get("history", [])
+            return web.json_response({"history": history})
 
         except Exception as e:
             logger.error(f"History list API failed: {e}")
@@ -2909,7 +2911,7 @@ projects:
 
             success, result = await self.run_agentwire_cmd(args)
             if not success:
-                error_msg = result.get("error", "Failed to get history detail")
+                error_msg = result.get("error", "Failed to get history detail") if isinstance(result, dict) else "Failed to get history detail"
                 return web.json_response({"error": error_msg}, status=500)
 
             return web.json_response(result)
@@ -2957,10 +2959,11 @@ projects:
 
             success, result = await self.run_agentwire_cmd(args)
             if not success:
-                error_msg = result.get("error", "Failed to resume session")
+                error_msg = result.get("error", "Failed to resume session") if isinstance(result, dict) else "Failed to resume session"
                 return web.json_response({"error": error_msg}, status=500)
 
-            return web.json_response({"session": result.get("session")})
+            session_name = result.get("session") if isinstance(result, dict) else None
+            return web.json_response({"session": session_name})
 
         except Exception as e:
             logger.error(f"History resume API failed: {e}")
