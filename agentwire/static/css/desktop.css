@@ -837,7 +837,9 @@ body {
 .session-output {
     flex: 1;
     min-height: 0;
-    overflow: auto;
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: auto;
     margin: 0;
     padding: 8px 12px;
     background: #000;
@@ -845,8 +847,7 @@ body {
     font-family: "FiraMono Nerd Font Mono", Menlo, Monaco, "Courier New", monospace;
     font-size: 14px;
     line-height: 1.4;
-    white-space: pre-wrap;
-    word-wrap: break-word;
+    white-space: pre;
 }
 
 /* PTT (Push-to-talk) button */
