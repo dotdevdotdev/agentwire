@@ -342,6 +342,32 @@ def _output_result(success: bool, json_mode: bool, message: str = "", **kwargs) 
     return 0 if success else 1
 
 
+def _notify_portal_sessions_changed():
+    """Notify portal that sessions have changed so it can broadcast to clients.
+
+    This is fire-and-forget - failures are silently ignored since the portal
+    may not be running.
+    """
+    import urllib.request
+    import ssl
+
+    try:
+        # Create SSL context that doesn't verify (localhost self-signed cert)
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+
+        req = urllib.request.Request(
+            "https://localhost:8765/api/sessions/refresh",
+            method="POST",
+            data=b"",
+        )
+        urllib.request.urlopen(req, timeout=2, context=ctx)
+    except Exception:
+        # Portal may not be running - that's fine
+        pass
+
+
 # === Portal Commands ===
 
 
@@ -1938,6 +1964,7 @@ def cmd_new(args) -> int:
                 print(f"Applied template: {template_name}")
             print(f"Attach via portal or: ssh {machine.get('host', machine_id)} -t tmux attach -t {session_name}")
 
+        _notify_portal_sessions_changed()
         return 0
 
     # Local session
@@ -2103,6 +2130,7 @@ def cmd_new(args) -> int:
             print(f"Applied template: {template_name}")
         print(f"Attach with: tmux attach -t {session_name}")
 
+    _notify_portal_sessions_changed()
     return 0
 
 
@@ -2364,6 +2392,8 @@ def cmd_kill(args) -> int:
         if not json_mode:
             print(f"Killed session '{session_full}'")
 
+        _notify_portal_sessions_changed()
+
         if json_mode:
             _output_json({"success": True, "session": session_full})
         return 0
@@ -2386,6 +2416,8 @@ def cmd_kill(args) -> int:
     subprocess.run(["tmux", "kill-session", "-t", session])
     if not json_mode:
         print(f"Killed session '{session}'")
+
+    _notify_portal_sessions_changed()
 
     if json_mode:
         _output_json({"success": True, "session": session_full})
@@ -3396,6 +3428,7 @@ def cmd_history_resume(args) -> int:
             print(f"Resumed session '{name}' on {machine_id} (forked from {session_id})")
             print(f"Attach via portal or: ssh {host} -t tmux attach -t {name}")
 
+        _notify_portal_sessions_changed()
         return 0
 
     # Local session
@@ -3443,6 +3476,7 @@ def cmd_history_resume(args) -> int:
         print(f"Project: {project_path}")
         print(f"Attach with: tmux attach -t {name}")
 
+    _notify_portal_sessions_changed()
     return 0
 
 

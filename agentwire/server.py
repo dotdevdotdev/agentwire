@@ -1909,14 +1909,20 @@ projects:
             return web.json_response({"error": str(e)})
 
     async def api_refresh_sessions(self, request: web.Request) -> web.Response:
-        """Refresh sessions endpoint (now a no-op since sessions are fetched dynamically)."""
-        # Sessions are now fetched dynamically from tmux + .agentwire.yml
-        # No cache to rebuild, but keep endpoint for backward compatibility
-        sessions = self.agent.list_sessions() if self.agent else []
-        return web.json_response({
-            "success": True,
-            "sessions": len(sessions),
-        })
+        """Refresh sessions and broadcast update to all dashboard clients.
+
+        Called by CLI commands (like `agentwire kill`) to notify portal of changes.
+        """
+        try:
+            sessions_data = await self._get_sessions_data()
+            await self.broadcast_dashboard("sessions_update", {"sessions": sessions_data})
+            return web.json_response({
+                "success": True,
+                "sessions": len(sessions_data),
+            })
+        except Exception as e:
+            logger.error(f"Failed to refresh sessions: {e}")
+            return web.json_response({"error": str(e)}, status=500)
 
     async def api_list_templates(self, request: web.Request) -> web.Response:
         """List available session templates."""
