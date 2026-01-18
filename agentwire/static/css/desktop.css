@@ -271,6 +271,12 @@ body {
     font-variant-numeric: tabular-nums;
 }
 
+@media (max-width: 600px) {
+    .menu-time {
+        display: none;
+    }
+}
+
 /* Desktop Area */
 .desktop-area {
     flex: 1;

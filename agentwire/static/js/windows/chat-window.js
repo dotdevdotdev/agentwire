@@ -59,9 +59,14 @@ class ChatWindow {
         this.messagesEl = null;
         this.statusIndicator = null;
         this.statusText = null;
+        this.fullscreenExitBtn = null;
+
+        // Fullscreen state
+        this.isFullscreen = false;
 
         // Event listeners cleanup
         this._unsubscribers = [];
+        this._escapeHandler = null;
     }
 
     /**
