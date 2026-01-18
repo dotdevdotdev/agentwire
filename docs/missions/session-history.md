@@ -22,6 +22,7 @@ Claude CLI supports:
 - "Resume" always forks under the hood (preserves original, avoids conflicts)
 - History is always scoped to a project (from projects-model mission)
 - No delete command - users manage ~/.claude directly if needed
+- **Only applies to Claude session types** (`claude-bypass`, `claude-prompted`, `claude-restricted`) - `bare` sessions don't run Claude Code, so there's no history to show
 
 ## Wave 1: Human Actions (RUNTIME DEPENDENCY)
 
