@@ -476,8 +476,8 @@ async function resumeSession(sessionId, project) {
         showToast(`Session resumed: ${data.session}`, 'success');
 
         // Refresh sessions list to show new session
-        import('../desktop.js').then(desktop => {
-            desktop.desktop?.fetchSessions?.();
+        import('../desktop-manager.js').then(module => {
+            module.desktop?.fetchSessions?.();
         });
 
     } catch (err) {
@@ -554,7 +554,9 @@ function openNewSessionForProject(project) {
                     alert(`Failed to create session: ${result.error}`);
                 } else {
                     // Refresh sessions list
-                    desktop.desktop?.fetchSessions?.();
+                    import('../desktop-manager.js').then(module => {
+                        module.desktop?.fetchSessions?.();
+                    });
                 }
             } catch (err) {
                 alert(`Failed to create session: ${err.message}`);
