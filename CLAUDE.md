@@ -67,6 +67,10 @@ agentwire template list
 agentwire template show <name>
 agentwire template create <name>
 agentwire template delete <name>
+
+# Project discovery
+agentwire projects list          # discover projects from projects_dir
+agentwire projects list --json   # JSON output for scripting
 ```
 
 Session formats: `name`, `project/branch` (worktree), `name@machine` (remote)

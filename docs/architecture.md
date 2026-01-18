@@ -39,11 +39,12 @@ The portal provides an OS-like desktop interface using WinBox.js for window mana
 
 | Window | Purpose | Source |
 |--------|---------|--------|
+| Projects | List discovered projects, click to see details/create session | Menu bar |
 | Sessions | List all sessions with Monitor/Terminal buttons | Menu bar dropdown |
-| Machines | List configured machines with status | Menu bar dropdown |
-| Config | Display current configuration | Menu bar dropdown |
+| Machines | List configured machines with status | Cog menu dropdown |
+| Config | Display current configuration | Cog menu dropdown |
 | Session Window | Monitor or Terminal view of a session | Click from Sessions list |
-| Chat | Voice input with orb visualization | Menu bar (future) |
+| Chat | Voice input with orb visualization | Menu bar |
 
 ### Session Window Modes
 

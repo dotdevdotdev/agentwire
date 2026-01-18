@@ -51,10 +51,23 @@ The portal provides an OS-like desktop interface using WinBox.js for window mana
 
 | Menu | Items |
 |------|-------|
+| **Projects** | Window listing discovered projects (folders with `.agentwire.yml`) |
 | **Sessions** | Dropdown listing all sessions with Monitor/Terminal buttons |
-| **Machines** | Dropdown listing configured machines with status |
-| **Config** | Opens config display window |
-| **Chat** | Voice input with orb visualization (future) |
+| **⚙ (Cog)** | Dropdown with Machines and Config options |
+| **Chat** | Voice input with orb visualization |
+
+### Projects Window
+
+Projects are folders with `.agentwire.yml` files, discovered from `projects.dir` config. Click a project to see details and create new sessions.
+
+| Field | Description |
+|-------|-------------|
+| Name | Folder name |
+| Type | Session type (`claude-bypass`, `claude-prompted`, `claude-restricted`) |
+| Path | Full path to project folder |
+| Roles | Configured roles from `.agentwire.yml` |
+
+**Drill-down navigation:** Click a project to see details. "New Session" button opens the create session modal pre-filled with project info. Back button returns to list.
 
 ### Session Windows
 
@@ -208,6 +221,7 @@ uploads:
 | `/api/create` | POST | Create new session |
 | `/api/check-path` | GET | Check if path exists and is git repo |
 | `/api/check-branches` | GET | Get existing branches matching prefix |
+| `/api/projects` | GET | List discovered projects (folders with `.agentwire.yml`) |
 
 ### Session Management
 
