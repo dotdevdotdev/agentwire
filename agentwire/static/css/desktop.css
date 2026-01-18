@@ -1458,4 +1458,14 @@ body {
         max-width: 100%;
         width: 100%;
     }
+
+    /* Terminal/Monitor font size reduction for better fit */
+    .session-terminal .xterm,
+    .session-terminal .xterm-rows {
+        font-size: 12px !important;
+    }
+
+    .session-output {
+        font-size: 12px;
+    }
 }
