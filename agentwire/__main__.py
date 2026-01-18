@@ -3318,7 +3318,20 @@ def cmd_history_resume(args) -> int:
 
     # Generate session name if not provided
     if not name:
-        name = project_path.name.replace(".", "_")
+        base_name = project_path.name.replace(".", "_")
+        # Find unique name with -fork-N suffix
+        name = f"{base_name}-fork-1"
+        counter = 1
+        while True:
+            # Check if session exists locally
+            check_result = subprocess.run(
+                ["tmux", "has-session", "-t", f"={name}"],
+                capture_output=True
+            )
+            if check_result.returncode != 0:
+                break  # Session doesn't exist, use this name
+            counter += 1
+            name = f"{base_name}-fork-{counter}"
 
     # Build claude command with --resume --fork-session and session type flags
     claude_parts = ["claude", "--resume", session_id, "--fork-session"]
