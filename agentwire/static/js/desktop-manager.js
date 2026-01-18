@@ -208,7 +208,8 @@ class DesktopManager {
 
             case 'audio':
                 console.log('[DesktopManager] Audio received for session:', msg.session, 'length:', msg.data?.length);
-                this._playAudio(msg.data);
+                this._playAudio(msg.data, msg.session);
+                this.emit('audio', { session: msg.session });
                 break;
 
             default:
@@ -484,8 +485,9 @@ class DesktopManager {
     /**
      * Play base64-encoded audio data.
      * @param {string} base64Data - Base64 encoded audio (WAV format)
+     * @param {string} session - Session name for event emission
      */
-    async _playAudio(base64Data) {
+    async _playAudio(base64Data, session) {
         if (!base64Data) {
             console.warn('[DesktopManager] No audio data to play');
             return;
@@ -512,9 +514,16 @@ class DesktopManager {
             const source = this._audioContext.createBufferSource();
             source.buffer = audioBuffer;
             source.connect(this._audioContext.destination);
+
+            // Emit audio_ended when playback finishes
+            source.onended = () => {
+                console.log('[DesktopManager] Audio playback ended for session:', session);
+                this.emit('audio_ended', { session });
+            };
+
             source.start(0);
 
-            console.log('[DesktopManager] Audio playback started');
+            console.log('[DesktopManager] Audio playback started, duration:', audioBuffer.duration.toFixed(2), 's');
         } catch (err) {
             console.error('[DesktopManager] Audio playback failed:', err);
         }

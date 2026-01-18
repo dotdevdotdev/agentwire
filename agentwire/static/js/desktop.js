@@ -12,6 +12,7 @@ import { SessionWindow } from './session-window.js';
 import { openSessionsWindow } from './windows/sessions-window.js';
 import { openMachinesWindow } from './windows/machines-window.js';
 import { openConfigWindow } from './windows/config-window.js';
+import { openChatWindow } from './windows/chat-window.js';
 
 // State - track open SessionWindows
 const sessionWindows = new Map();  // sessionId -> SessionWindow instance
@@ -74,6 +75,9 @@ function setupMenuListeners() {
     });
     document.getElementById('configMenu')?.addEventListener('click', () => {
         openConfigWindow();
+    });
+    document.getElementById('chatMenu')?.addEventListener('click', () => {
+        openChatWindow();
     });
 }
 

@@ -14,10 +14,10 @@ When you see `[Voice input - respond with say command]` at the start of a messag
 
 ## Using Voice
 
-Use the `say` command to speak (runs async by default via `agentwire say`):
+Use the `say` command to speak:
 
 ```bash
-agentwire say -s agentwire "Hello, I'll check that for you"
+agentwire say "Hello, I'll check that for you"
 ```
 
 Audio routes automatically to the portal browser if connected, otherwise local speakers.

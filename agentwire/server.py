@@ -61,13 +61,16 @@ def _is_allowed_in_restricted_mode(tool_name: str, tool_input: dict) -> bool:
     if '\n' in command:
         return False
 
-    # Match: say followed by quoted string and nothing else
+    # Match: say or agentwire say followed by quoted string (optional & for background)
     # Allows: say "hello world"
     #         say 'hello world'
+    #         agentwire say "hello world"
+    #         agentwire say "hello world" &
+    #         agentwire say -s session "hello world"
     # Rejects: say "hi" && rm -rf /
     #          say "hi" > /tmp/log
     #          say $(cat /etc/passwd)
-    pattern = r'^say\s+(["\']).*\1\s*$'
+    pattern = r'^(?:agentwire\s+)?say\s+(?:-[sv]\s+\S+\s+)*(["\']).*\1\s*&?\s*$'
 
     return bool(re.match(pattern, command))
 
@@ -1061,7 +1064,8 @@ class AgentWireServer:
             # For proper display, use terminal mode (Connect) instead of monitor mode.
 
     # Patterns for say command detection
-    SAY_PATTERN = re.compile(r'say\s+(?:"([^"]+)"|\'([^\']+)\')', re.IGNORECASE)
+    # Matches: say "text", agentwire say "text", agentwire say -s session "text"
+    SAY_PATTERN = re.compile(r'(?:agentwire\s+)?say\s+(?:-s\s+\S+\s+)?(?:"([^"]+)"|\'([^\']+)\')', re.IGNORECASE)
     ANSI_PATTERN = re.compile(r'\x1b\[[0-9;]*m|\x1b\].*?\x07')
 
     # Pattern to detect AskUserQuestion UI blocks
@@ -1139,40 +1143,7 @@ class AgentWireServer:
                             "active": True
                         })
 
-                    # Detect say commands in NEW content only
-                    # If output doesn't start with old_output (terminal scrolled),
-                    # skip say detection to avoid re-playing old commands
-                    if old_output and output.startswith(old_output):
-                        new_content = output[len(old_output):]
-                    elif not old_output:
-                        # First poll - don't play historical say commands
-                        new_content = ""
-                    else:
-                        # Terminal scrolled/changed - skip to avoid duplicates
-                        new_content = ""
-
-                    for match in self.SAY_PATTERN.finditer(new_content):
-                        say_text = match.group(1) or match.group(2)
-                        if not say_text:
-                            continue
-                        # Strip ANSI codes
-                        say_text = self.ANSI_PATTERN.sub('', say_text).strip()
-
-                        # Skip if empty or already played
-                        if not say_text or say_text in session.played_says:
-                            continue
-
-                        session.played_says.add(say_text)
-
-                        # Keep played_says from growing indefinitely (as list for order)
-                        if len(session.played_says) > 100:
-                            # Convert to list, keep last 50, convert back
-                            session.played_says = set(list(session.played_says)[-50:])
-
-                        logger.info(f"[{session.name}] TTS: {say_text[:50]}...")
-
-                        # Generate and broadcast TTS
-                        await self._say_to_room(session.name, say_text)
+                    # Note: TTS detection removed - agentwire say CLI calls /api/say directly
 
                 # Detect AskUserQuestion blocks (check full output - questions persist)
                 clean_output = self.ANSI_PATTERN.sub('', output)
@@ -2430,9 +2401,10 @@ projects:
                     if tool_name == "Bash":
                         try:
                             # Use CLI for consistent behavior (handles local and remote)
+                            # Send "1" to select "Yes" option in permission prompt
                             session_target = f"{tmux_session}@{machine}" if machine else tmux_session
                             subprocess.run(
-                                ["agentwire", "send-keys", "-s", session_target, "2"],
+                                ["agentwire", "send-keys", "-s", session_target, "1"],
                                 check=True, capture_output=True
                             )
                         except Exception as e:

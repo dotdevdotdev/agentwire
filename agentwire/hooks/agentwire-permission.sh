@@ -88,20 +88,26 @@ if [ -z "$session" ]; then
 fi
 
 # Get portal URL from global config
-# Priority: 1. ~/.agentwire/config.yaml server.url, 2. ~/.agentwire/portal_url file, 3. localhost
+# Priority: 1. ~/.agentwire/portal_url file, 2. config.yaml server section, 3. default
 get_portal_url() {
-    # Try config.yaml first
-    if [ -f "$HOME/.agentwire/config.yaml" ]; then
-        local url=$(grep -E "^\s*url:" "$HOME/.agentwire/config.yaml" 2>/dev/null | head -1 | sed 's/.*url:[[:space:]]*//' | tr -d '"'"'" || true)
-        if [ -n "$url" ]; then
-            echo "$url"
-            return
-        fi
-    fi
-    # Fallback to portal_url file
+    # Explicit portal_url file takes priority
     if [ -f "$HOME/.agentwire/portal_url" ]; then
         cat "$HOME/.agentwire/portal_url" | tr -d '\n'
         return
+    fi
+    # Try to read server.port from config.yaml
+    if [ -f "$HOME/.agentwire/config.yaml" ]; then
+        # Check if SSL is configured (look for cert under ssl section)
+        local has_ssl=$(grep -A2 "^\s*ssl:" "$HOME/.agentwire/config.yaml" 2>/dev/null | grep -E "cert:" || true)
+        local port=$(grep -E "^\s*port:" "$HOME/.agentwire/config.yaml" 2>/dev/null | head -1 | sed 's/.*port:[[:space:]]*//' | tr -d '"'"'" || true)
+        if [ -n "$port" ]; then
+            if [ -n "$has_ssl" ]; then
+                echo "https://localhost:$port"
+            else
+                echo "http://localhost:$port"
+            fi
+            return
+        fi
     fi
     # Default
     echo "https://localhost:8765"

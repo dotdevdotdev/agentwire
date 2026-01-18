@@ -37,7 +37,7 @@ class SessionType(str, Enum):
         elif self == SessionType.CLAUDE_PROMPTED:
             return []  # Uses permission hooks, no bypass
         elif self == SessionType.CLAUDE_RESTRICTED:
-            return ["--allowedTools", "Bash"]  # Only bash for say command
+            return ["--tools", "Bash"]  # ONLY bash tool (for say command)
         return []
 
 
