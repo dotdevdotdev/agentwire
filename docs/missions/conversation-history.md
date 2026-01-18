@@ -6,14 +6,18 @@
 
 ## Context
 
-Claude Code already persists sessions as `.jsonl` files in `~/.claude/projects/{encoded-path}/`. Each session contains timestamps, summaries, and full conversation history. This data is currently only accessible through Claude's interactive `--resume` picker.
+Claude Code persists all conversations with rich metadata. Two key data sources:
 
-We can expose this data through:
-1. CLI commands for listing/managing conversations
-2. Portal API for fetching conversation metadata
-3. Portal UI for browsing and resuming past conversations
+1. **`~/.claude/history.jsonl`** - Index of ALL user messages across all projects/sessions
+2. **`~/.claude/projects/{encoded-path}/*.jsonl`** - Full conversation files with summaries
 
-This benefits both developers (CLI power users) and chatbot users (Portal).
+Claude CLI supports:
+- `--resume <uuid>` - Resume existing conversation
+- `--session-id <uuid>` - Start with specific session ID
+- `--continue` - Continue most recent in current directory
+- `--fork-session` - Fork instead of continue when resuming
+
+We'll expose this through CLI commands and Portal UI for both developers and chatbot users.
 
 ## Wave 1: Human Actions (RUNTIME DEPENDENCY)
 
@@ -23,65 +27,87 @@ None required.
 
 | Task | Description | Files |
 |------|-------------|-------|
-| 2.1 | **Session scanner utility** - Create a utility module to scan `~/.claude/projects/` directories, parse `.jsonl` files, extract metadata (session ID, first/last timestamp, summaries, cwd, message count). Handle large files efficiently (stream parsing, don't load entire file). | `agentwire/conversations.py` |
-| 2.2 | **CLI list command** - Add `agentwire conversations list` command. Options: `--project <path>` to filter by project, `--limit N` for recent N, `--json` for JSON output. Display: session ID (short), last summary, timestamp, message count. | `agentwire/__main__.py` |
-| 2.3 | **CLI show command** - Add `agentwire conversations show <session-id>` to display full metadata for a session. Include all summaries, first user message preview, timestamps, cwd, git branch. | `agentwire/__main__.py` |
+| 2.1 | **Conversations utility module** - Create utility to read conversation data. Primary source: `~/.claude/history.jsonl` (indexed user messages with sessionId, project, timestamp). Secondary: scan session files for summaries. Group by sessionId, extract first/last message, message count, project path. | `agentwire/conversations.py` |
+| 2.2 | **CLI list command** - Add `agentwire conversations list`. Options: `--project <path>` filter, `--limit N` (default 20), `--json`. Display: short session ID, last summary (from session file), relative timestamp, project name, message count. | `agentwire/__main__.py` |
+| 2.3 | **CLI show command** - Add `agentwire conversations show <session-id>`. Display: full session ID, all summaries (timeline), first user message preview, start/end timestamps, project path, git branch, total messages. | `agentwire/__main__.py` |
 
 ## Wave 3: CLI Resume Integration
 
 | Task | Description | Files |
 |------|-------------|-------|
-| 3.1 | **Resume via agentwire** - Add `agentwire conversations resume <session-id>` that spawns a tmux session with `claude --resume <uuid>`. Respect project's `.agentwire.yml` for type/roles. Option: `--session-name <name>` to specify tmux session name. | `agentwire/__main__.py` |
-| 3.2 | **Delete command** - Add `agentwire conversations delete <session-id>` to remove a conversation. Confirm before delete unless `--force`. | `agentwire/__main__.py` |
+| 3.1 | **Resume command** - Add `agentwire conversations resume <session-id>`. Spawns tmux session with `claude --resume <uuid>`. Options: `--name <tmux-name>` for session name, `--fork` to use `--fork-session` flag. Respects project's `.agentwire.yml` for type/roles. | `agentwire/__main__.py` |
+| 3.2 | **Delete command** - Add `agentwire conversations delete <session-id>`. Removes from history.jsonl and deletes session .jsonl file. Requires `--force` or interactive confirm. | `agentwire/__main__.py` |
 
 ## Wave 4: Portal API
 
 | Task | Description | Files |
 |------|-------------|-------|
-| 4.1 | **Conversations API endpoint** - Add `GET /api/conversations` endpoint. Query params: `project` (filter by project path), `limit` (default 20). Return array of conversation metadata objects. | `agentwire/server.py` |
-| 4.2 | **Single conversation endpoint** - Add `GET /api/conversations/<session-id>` for full conversation details including all summaries and message previews. | `agentwire/server.py` |
-| 4.3 | **Resume conversation endpoint** - Add `POST /api/conversations/<session-id>/resume` to spawn a tmux session resuming that conversation. Body: `{session_name?: string}`. Uses CLI internally. | `agentwire/server.py` |
+| 4.1 | **List conversations endpoint** - `GET /api/conversations`. Query: `project`, `limit` (default 20). Returns array of `{sessionId, project, firstMessage, lastSummary, timestamp, messageCount}`. Uses conversations utility. | `agentwire/server.py` |
+| 4.2 | **Get conversation endpoint** - `GET /api/conversations/<session-id>`. Returns full metadata: all summaries, message previews, timestamps, project, git branch. | `agentwire/server.py` |
+| 4.3 | **Resume endpoint** - `POST /api/conversations/<session-id>/resume`. Body: `{name?: string, fork?: boolean}`. Calls CLI `conversations resume` internally. Returns new tmux session name. | `agentwire/server.py` |
 
 ## Wave 5: Portal UI
 
 | Task | Description | Files |
 |------|-------------|-------|
-| 5.1 | **Conversations window** - Create new "Conversations" window (like Sessions/Machines). List conversations with: short ID, summary, relative timestamp ("2 hours ago"), project name. Click to see details. | `agentwire/static/js/windows/conversations-window.js`, `agentwire/static/css/desktop.css` |
-| 5.2 | **Conversation detail view** - Show full conversation metadata in the window. Display all summaries as a timeline. "Resume" button to start a new session continuing this conversation. | `agentwire/static/js/windows/conversations-window.js` |
-| 5.3 | **Menu integration** - Add "Conversations" menu item to nav bar. Wire up to open conversations window. | `agentwire/templates/desktop.html`, `agentwire/static/js/desktop.js` |
+| 5.1 | **Conversations window** - New ListWindow for conversations. Columns: ID (short), Summary, Time (relative), Project. Click row for details. Refresh button. | `agentwire/static/js/windows/conversations-window.js` |
+| 5.2 | **Detail panel** - When conversation selected, show: full ID, all summaries as timeline, first message preview, timestamps. "Resume" and "Resume (Fork)" buttons. | `agentwire/static/js/windows/conversations-window.js` |
+| 5.3 | **Menu integration** - Add "History" menu item (between Config and Chat). Opens conversations window. Update session count area to show conversation count on hover/click. | `agentwire/templates/desktop.html`, `agentwire/static/js/desktop.js` |
 
 ## Technical Notes
 
-### Session File Location
-Sessions stored in `~/.claude/projects/{encoded-path}/` where path is encoded as `-Users-dotdev-projects-foo` for `/Users/dotdev/projects/foo`.
+### Data Sources
 
-### JSONL Structure
-```jsonl
-{"type": "user", "sessionId": "uuid", "timestamp": "ISO", "message": {...}, ...}
-{"type": "assistant", "message": {...}, ...}
-{"type": "summary", "summary": "text", ...}
+**Primary: `~/.claude/history.jsonl`** (fast index)
+```json
+{
+  "display": "user message text",
+  "timestamp": 1762820357320,
+  "project": "/Users/dotdev/projects/anna",
+  "sessionId": "uuid"
+}
 ```
 
-### Efficient Parsing
-For listing, only need:
-- First line with `type: "user"` for session start time
-- Last line for end time
-- All `type: "summary"` lines for summaries
-- File stats for modification time
-
-Use streaming/line-by-line parsing, not full JSON load.
+**Secondary: `~/.claude/projects/{path}/*.jsonl`** (full data)
+```json
+{"type": "user", "sessionId": "uuid", "timestamp": "ISO", "message": {...}, "cwd": "...", "gitBranch": "..."}
+{"type": "assistant", "message": {...}}
+{"type": "summary", "summary": "Desktop UI terminal fix and menu behavior polish"}
+```
 
 ### Path Encoding
-To find sessions for a project path:
-1. Take absolute path: `/Users/dotdev/projects/anna`
-2. Replace `/` with `-`: `-Users-dotdev-projects-anna`
-3. Look in `~/.claude/projects/-Users-dotdev-projects-anna/`
+Project path `/Users/dotdev/projects/anna` → directory name `-Users-dotdev-projects-anna`
+
+### Efficient Implementation
+1. Read `history.jsonl` line-by-line, group by sessionId
+2. For summaries, grep session files for `"type":"summary"` lines only
+3. Cache results with file mtime for invalidation
+
+### Resume Flow
+```bash
+# User clicks "Resume" in portal
+POST /api/conversations/abc123/resume {name: "anna-resumed"}
+
+# Server calls CLI
+agentwire conversations resume abc123 --name anna-resumed
+
+# CLI spawns tmux
+tmux new-session -d -s anna-resumed -c /path/to/project
+tmux send-keys "claude --resume abc123" Enter
+```
 
 ## Completion Criteria
 
 - [ ] `agentwire conversations list` shows recent sessions with summaries
 - [ ] `agentwire conversations show <id>` displays full session metadata
 - [ ] `agentwire conversations resume <id>` spawns tmux with resumed session
-- [ ] Portal shows Conversations window with browsable history
-- [ ] Portal can resume a conversation into a new session
+- [ ] `agentwire conversations delete <id>` removes conversation data
+- [ ] Portal "History" window shows browsable conversation list
+- [ ] Portal can resume/fork conversations into new sessions
 - [ ] Works for both agentwire project sessions and chatbot sessions
+
+## References
+
+- [Claude Code Conversation History](https://kentgigger.com/posts/claude-code-conversation-history)
+- [Resume Claude Code Sessions](https://mehmetbaykar.com/posts/resume-claude-code-sessions-after-restart/)
+- [Claude Code Session Management](https://stevekinney.com/courses/ai-development/claude-code-session-management)
