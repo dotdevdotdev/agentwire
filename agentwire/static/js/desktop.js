@@ -13,11 +13,7 @@ import { openSessionsWindow } from './windows/sessions-window.js';
 import { openMachinesWindow } from './windows/machines-window.js';
 import { openConfigWindow } from './windows/config-window.js';
 import { openChatWindow } from './windows/chat-window.js';
-
-// Stub for Projects window - will be implemented in another task
-function openProjectsWindow() {
-    console.log('[Desktop] openProjectsWindow() - stub, to be implemented');
-}
+import { openProjectsWindow } from './windows/projects-window.js';
 
 // State - track open SessionWindows
 const sessionWindows = new Map();  // sessionId -> SessionWindow instance

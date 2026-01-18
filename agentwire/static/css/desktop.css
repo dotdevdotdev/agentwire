@@ -1036,6 +1036,81 @@ body {
     color: var(--text-muted);
 }
 
+/* Projects window items */
+.project-group-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 0;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid var(--chrome-border);
+}
+
+.project-group-header .machine-icon {
+    font-size: 14px;
+}
+
+.list-item:has(.project-group-header) {
+    background: var(--chrome);
+    cursor: default;
+    padding: 4px 12px;
+}
+
+.list-item:has(.project-group-header):hover {
+    background: var(--chrome);
+}
+
+.project-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+
+.project-name {
+    font-weight: 500;
+    color: var(--text);
+}
+
+.project-type {
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.project-type.type-agentwire {
+    background: rgba(74, 222, 128, 0.15);
+    color: var(--accent);
+}
+
+.project-type.type-worker {
+    background: rgba(148, 163, 184, 0.15);
+    color: var(--text-muted);
+}
+
+.project-details {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.project-path {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+}
+
+.project-machine {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
 /* ============================================
    Chat Window & Orb Component
    ============================================ */
