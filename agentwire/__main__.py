@@ -1784,6 +1784,12 @@ def cmd_new(args) -> int:
             existing = load_project_config(project_path_for_config)
             if existing and existing.roles:
                 role_names = existing.roles
+            else:
+                # Default to agentwire role for new projects
+                role_names = ["agentwire"]
+        else:
+            # Default to agentwire role when no path specified
+            role_names = ["agentwire"]
 
     # Load and validate roles
     roles: list[RoleConfig] = []
@@ -2018,7 +2024,7 @@ def cmd_new(args) -> int:
     )
     time.sleep(0.1)
 
-    # Determine session type from CLI flags or template
+    # Determine session type from CLI flags, template, or existing config
     if getattr(args, 'bare', False):
         session_type = SessionType.BARE
     elif getattr(args, 'restricted', False):
@@ -2034,7 +2040,12 @@ def cmd_new(args) -> int:
         else:
             session_type = SessionType.CLAUDE_BYPASS
     else:
-        session_type = SessionType.CLAUDE_BYPASS  # Default
+        # Check existing .agentwire.yml for type, otherwise default to bypass
+        existing_config = load_project_config(session_path)
+        if existing_config and existing_config.type:
+            session_type = existing_config.type
+        else:
+            session_type = SessionType.CLAUDE_BYPASS  # Default
 
     # Build and start Claude command
     claude_cmd = _build_claude_cmd(session_type, roles if roles else None)
@@ -5335,7 +5346,7 @@ def main() -> int:
     type_group.add_argument("--prompted", action="store_true", help="Claude with permission hooks (no bypass)")
     type_group.add_argument("--restricted", action="store_true", help="Claude restricted to say command only")
     # Roles
-    new_parser.add_argument("--roles", default="agentwire", help="Comma-separated list of roles (default: agentwire)")
+    new_parser.add_argument("--roles", help="Comma-separated list of roles (preserves existing config, defaults to agentwire for new projects)")
     new_parser.add_argument("--json", action="store_true", help="Output as JSON")
     new_parser.set_defaults(func=cmd_new)
 
