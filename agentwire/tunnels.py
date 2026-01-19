@@ -2,18 +2,20 @@
 SSH tunnel management for AgentWire.
 
 Creates and monitors SSH tunnels to reach remote services.
+Handles automatic creation, health checking, and cleanup of SSH port forwards.
 """
 
 import json
 import os
 import signal
-import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
 from .network import NetworkContext, TunnelSpec
+from .utils.paths import agentwire_dir
+from .utils.subprocess import run_command
 
 
 @dataclass
@@ -38,7 +40,7 @@ class TunnelManager:
             state_dir: Directory to store tunnel state (PIDs, etc.)
                       Defaults to ~/.agentwire/tunnels/
         """
-        self.state_dir = state_dir or (Path.home() / ".agentwire" / "tunnels")
+        self.state_dir = state_dir or (agentwire_dir() / "tunnels")
         self.state_dir.mkdir(parents=True, exist_ok=True)
 
     def _get_state_file(self, spec: TunnelSpec) -> Path:
@@ -145,9 +147,9 @@ class TunnelManager:
         ]
 
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            result = run_command(cmd, timeout=30)
 
-            if result.returncode != 0:
+            if not result.success:
                 return TunnelStatus(
                     spec=spec,
                     status="error",
@@ -176,8 +178,6 @@ class TunnelManager:
                     error="SSH started but could not find process",
                 )
 
-        except subprocess.TimeoutExpired:
-            return TunnelStatus(spec=spec, status="error", error="SSH connection timed out")
         except Exception as e:
             return TunnelStatus(spec=spec, status="error", error=str(e))
 
@@ -188,13 +188,9 @@ class TunnelManager:
             # Pattern must not start with - (interpreted as option on Linux)
             # Look for: ssh ... -L <local_port>:localhost:<remote_port>
             pattern = f"ssh.*{spec.local_port}:localhost:{spec.remote_port}"
-            result = subprocess.run(
-                ["pgrep", "-f", pattern],
-                capture_output=True,
-                text=True,
-            )
+            result = run_command(["pgrep", "-f", pattern], timeout=5)
 
-            if result.returncode == 0 and result.stdout.strip():
+            if result.success and result.stdout.strip():
                 # Return first matching PID
                 pids = result.stdout.strip().split("\n")
                 return int(pids[0])
@@ -325,25 +321,23 @@ def test_ssh_connectivity(host: str, user: Optional[str] = None, timeout: int = 
 
     start = time.time()
     try:
-        result = subprocess.run(
+        result = run_command(
             [
                 "ssh",
-                "-o", "ConnectTimeout=" + str(timeout),
+                "-o", f"ConnectTimeout={timeout}",
                 "-o", "StrictHostKeyChecking=accept-new",
                 "-o", "BatchMode=yes",
                 target,
                 "echo ok",
             ],
-            capture_output=True,
-            text=True,
             timeout=timeout + 2,
         )
 
-        if result.returncode == 0:
+        if result.success:
             elapsed = time.time() - start
             return int(elapsed * 1000)
 
-    except (subprocess.TimeoutExpired, Exception):
+    except Exception:
         pass
 
     return None
@@ -360,9 +354,9 @@ def test_service_health(url: str, timeout: int = 5) -> tuple[bool, Optional[str]
     Returns:
         Tuple of (is_healthy, error_message)
     """
-    import urllib.request
-    import urllib.error
     import ssl
+    import urllib.error
+    import urllib.request
 
     try:
         # Create SSL context that accepts self-signed certs

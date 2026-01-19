@@ -18,10 +18,10 @@ from pathlib import Path
 
 import torch
 import torchaudio
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
 from faster_whisper import WhisperModel
+from pydantic import BaseModel
 
 # GPU Optimizations (significant speedup on CUDA devices)
 torch.backends.cudnn.benchmark = True  # Auto-tune for input sizes

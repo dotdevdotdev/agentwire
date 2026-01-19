@@ -19,17 +19,17 @@ JSON output for ask patterns:
 """
 
 import json
-import sys
-import re
 import os
+import re
+import sys
 from pathlib import Path
-from typing import Tuple, List, Dict, Any
+from typing import Any, Dict, List, Tuple
 
 import yaml
 
 # Import audit logger (from same directory)
 try:
-    from audit_logger import log_blocked, log_asked, log_allowed
+    from audit_logger import log_allowed, log_asked, log_blocked
 except ImportError:
     # Fallback if audit_logger not available (no-op functions)
     def log_blocked(*args, **kwargs): pass
@@ -44,7 +44,7 @@ def is_glob_pattern(pattern: str) -> bool:
 
 def glob_to_regex(glob_pattern: str) -> str:
     """Convert a glob pattern to a regex pattern for matching in commands.
-    
+
     For file extension patterns like *.extension, ensures the extension is at a word boundary
     (not followed by more word characters like in json.things).
     """

@@ -8,7 +8,7 @@ import shutil
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Any, Optional
+from typing import Any, Dict, List, Optional
 
 try:
     import yaml
@@ -83,32 +83,32 @@ def glob_to_regex(pattern: str) -> str:
 def matches_path_in_command(pattern: str, command: str) -> bool:
     """
     Check if a path pattern matches in the command in a file-path context.
-    
+
     For glob patterns, we ensure we're matching file paths,
     not method calls like module.method().
     """
     expanded = os.path.expanduser(pattern)
-    
+
     if not is_glob_pattern(pattern):
         # Non-glob: simple substring match (existing behavior)
         return expanded in command
-    
+
     # Glob pattern: convert to regex and match in file-path contexts only
     glob_regex = glob_to_regex(expanded)
-    
+
     # Only match in file-path contexts:
     # - Preceded by: space, /, =, ", ', <, >, or start of string
     # - Followed by: space, ", ', ), <, >, or end of string
     file_path_regex = r'(?:^|[\s/="\'<>])' + glob_regex + r'(?:[\s"\')<>]|$)'
-    
+
     try:
         match = re.search(file_path_regex, command, re.IGNORECASE)
     except re.error:
         return False
-    
+
     if not match:
         return False
-    
+
     # Extra check: reject if it looks like a method call (preceded by identifier char and dot)
     # Method calls look like: module.method()
     extension = pattern.split('*')[-1] if '*' in pattern else pattern
@@ -118,7 +118,7 @@ def matches_path_in_command(pattern: str, command: str) -> bool:
         method_call_regex = r'\w\.' + re.escape(extension) + r'\s*\('
         if re.search(method_call_regex, command):
             return False
-    
+
     return True
 
 
@@ -323,7 +323,7 @@ def format_safety_status(status: Dict[str, Any]) -> str:
 
     if not status["hooks_installed"]:
         lines.append("⚠️  Hooks not installed")
-        lines.append(f"   Run: agentwire safety install")
+        lines.append("   Run: agentwire safety install")
         return "\n".join(lines)
 
     lines.append(f"✓ Hooks directory: {status['hooks_installed']}")

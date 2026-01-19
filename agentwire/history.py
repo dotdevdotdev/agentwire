@@ -4,19 +4,21 @@ Claude Code conversation history utilities.
 Reads conversation data from:
 - ~/.claude/history.jsonl - user message history with timestamps and projects
 - ~/.claude/projects/{encoded-path}/*.jsonl - session files with summaries
+
+Supports both local and remote machines via SSH for distributed setups.
 """
 
 import json
-import subprocess
 from pathlib import Path
+
+from .utils.file_io import load_json
+from .utils.paths import agentwire_dir
+from .utils.subprocess import run_command
 
 # Claude Code data directories
 CLAUDE_DIR = Path.home() / ".claude"
 HISTORY_FILE = CLAUDE_DIR / "history.jsonl"
 PROJECTS_DIR = CLAUDE_DIR / "projects"
-
-# Config directory for machine lookup
-CONFIG_DIR = Path.home() / ".agentwire"
 
 
 def encode_project_path(path: str) -> str:
@@ -38,16 +40,16 @@ def decode_project_path(encoded: str) -> str:
 
 
 def _get_machine_config(machine_id: str) -> dict | None:
-    """Load machine config from machines.json."""
-    machines_file = CONFIG_DIR / "machines.json"
-    if not machines_file.exists():
-        return None
+    """Load machine config from machines.json.
 
-    try:
-        with open(machines_file) as f:
-            machines_data = json.load(f)
-    except (json.JSONDecodeError, IOError):
-        return None
+    Args:
+        machine_id: Machine identifier.
+
+    Returns:
+        Machine config dict or None if not found.
+    """
+    machines_file = agentwire_dir() / "machines.json"
+    machines_data = load_json(machines_file, default={})
 
     machines = machines_data.get("machines", [])
     for m in machines:
@@ -84,18 +86,8 @@ def _run_ssh_command(machine: dict, command: str, timeout: int = 10) -> tuple[bo
         ssh_cmd.extend(["-p", str(port)])
     ssh_cmd.extend([ssh_target, command])
 
-    try:
-        result = subprocess.run(
-            ssh_cmd,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-        )
-        return result.returncode == 0, result.stdout
-    except subprocess.TimeoutExpired:
-        return False, ""
-    except Exception:
-        return False, ""
+    result = run_command(ssh_cmd, timeout=timeout)
+    return result.success, result.stdout
 
 
 def _read_file_content(filepath: str, machine: str = "local") -> str | None:
@@ -166,16 +158,8 @@ def _grep_file(filepath: str, pattern: str, machine: str = "local") -> list[str]
         path = Path(filepath)
         if not path.exists():
             return []
-        try:
-            result = subprocess.run(
-                ["grep", "-E", pattern, str(path)],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            return [line for line in result.stdout.strip().split("\n") if line]
-        except Exception:
-            return []
+        result = run_command(["grep", "-E", pattern, str(path)], timeout=5)
+        return [line for line in result.stdout.strip().split("\n") if line]
     else:
         machine_config = _get_machine_config(machine)
         if not machine_config:

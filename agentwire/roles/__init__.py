@@ -1,8 +1,8 @@
 """Role file parsing and merging for composable roles."""
 
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
-import re
 
 
 @dataclass

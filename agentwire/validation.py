@@ -171,8 +171,6 @@ def validate_config(
         # Can't validate machine references without valid machines.json
         machines = []
 
-    machine_ids = _get_machine_ids(machines) if machines else set()
-
     # Validate server port
     port_error = _validate_port(config.server.port, "server", config_path)
     if port_error:
@@ -336,7 +334,7 @@ def cmd_config_validate(args=None) -> int:
         print("Config validation passed. No issues found.")
         print("")
         print("Files checked:")
-        print(f"  - ~/.agentwire/config.yaml")
+        print("  - ~/.agentwire/config.yaml")
         print(f"  - {config.machines.file}")
         return 0
 

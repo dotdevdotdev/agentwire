@@ -281,7 +281,7 @@ def setup_remote_machine(
                 print_success("Added activation to ~/.bashrc")
 
                 # Update install command to use venv
-                install_command = f"~/.agentwire-venv/bin/pip install agentwire-dev"
+                install_command = "~/.agentwire-venv/bin/pip install agentwire-dev"
 
             except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
                 print_error(f"Failed to create venv: {e}")
@@ -313,7 +313,7 @@ def setup_remote_machine(
         )
 
         if result.returncode != 0:
-            print_error(f"Installation failed:")
+            print_error("Installation failed:")
             print(result.stderr)
             return False
 
@@ -470,7 +470,7 @@ def offer_autossh_setup(machine: dict, portal_port: int) -> None:
     print()
 
     if not prompt_yes_no(f"Set up autossh for {machine_id}?", default=False):
-        print_info(f"You can manually restart the tunnel with:")
+        print_info("You can manually restart the tunnel with:")
         print_info(f"  ssh -R {portal_port}:localhost:{portal_port} -N -f {ssh_target}")
         return
 
@@ -487,10 +487,10 @@ def offer_autossh_setup(machine: dict, portal_port: int) -> None:
         return
 
     # Create autossh command
-    print(f"\nTo make the tunnel persistent, add this to your startup scripts:")
+    print("\nTo make the tunnel persistent, add this to your startup scripts:")
     print()
     print(f"{CYAN}autossh -M 0 -N -f -R {portal_port}:localhost:{portal_port} \\")
-    print(f"  -o ServerAliveInterval=60 -o ServerAliveCountMax=3 \\")
+    print("  -o ServerAliveInterval=60 -o ServerAliveCountMax=3 \\")
     print(f"  {ssh_target}{RESET}")
     print()
     print_info("This will be started automatically on portal startup if added to agentwire config.")
@@ -579,7 +579,7 @@ services:
 
         # Write config.yaml
         subprocess.run(
-            ["ssh", ssh_target, f"cat > ~/.agentwire/config.yaml"],
+            ["ssh", ssh_target, "cat > ~/.agentwire/config.yaml"],
             input=config_yaml,
             check=True,
             capture_output=True,
@@ -589,7 +589,7 @@ services:
 
         # Write machines.json
         subprocess.run(
-            ["ssh", ssh_target, f"cat > ~/.agentwire/machines.json"],
+            ["ssh", ssh_target, "cat > ~/.agentwire/machines.json"],
             input=machines_json,
             check=True,
             capture_output=True,
@@ -600,7 +600,7 @@ services:
         # Create portal_url file for say to work
         portal_url = f"https://{portal_host}:8765"
         subprocess.run(
-            ["ssh", ssh_target, f"cat > ~/.agentwire/portal_url"],
+            ["ssh", ssh_target, "cat > ~/.agentwire/portal_url"],
             input=portal_url,
             check=True,
             capture_output=True,
@@ -1114,7 +1114,7 @@ def run_onboarding(skip_session: bool = False) -> int:
             print(f"\nTesting connection to {config['tts_url']}...")
             try:
                 import urllib.request
-                req = urllib.request.urlopen(f"{config['tts_url']}/voices", timeout=3)
+                urllib.request.urlopen(f"{config['tts_url']}/voices", timeout=3)
                 print_success("TTS server is reachable!")
             except Exception:
                 print_warning("Could not reach TTS server (may not be running yet)")
@@ -1159,7 +1159,7 @@ def run_onboarding(skip_session: bool = False) -> int:
     print()
 
     default_stt_url = config["stt_url"] or "http://localhost:8100"
-    stt_url = prompt_text(
+    stt_url = prompt(
         "STT server URL (leave empty to disable voice input)",
         default=default_stt_url
     ).strip()

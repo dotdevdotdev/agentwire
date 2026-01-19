@@ -3,12 +3,17 @@ Pane management for tmux-based worker agents.
 
 Workers are spawned as panes within the orchestrator's session,
 enabling a visual dashboard where all agents are visible simultaneously.
+
+Key concepts:
+- Pane 0 = orchestrator (main Claude Code session)
+- Panes 1+ = workers (spawned agents working in parallel)
 """
 
 import os
-import subprocess
 import time
 from dataclasses import dataclass
+
+from .utils.subprocess import run_command
 
 
 @dataclass
@@ -24,49 +29,53 @@ class PaneInfo:
 def get_current_session() -> str | None:
     """Get the session name from the current tmux environment.
 
-    Returns None if not running inside tmux.
+    Returns:
+        Session name, or None if not running inside tmux.
     """
     tmux_pane = os.environ.get("TMUX_PANE")
     if not tmux_pane:
         return None
 
-    result = subprocess.run(
+    result = run_command(
         ["tmux", "display", "-t", tmux_pane, "-p", "#{session_name}"],
-        capture_output=True,
-        text=True
+        timeout=5,
     )
-    if result.returncode == 0:
-        return result.stdout.strip()
-    return None
+    return result.stdout.strip() if result.success else None
 
 
 def get_current_pane_index() -> int | None:
     """Get the pane index from the current tmux environment.
 
-    Returns None if not running inside tmux.
+    Returns:
+        Pane index (0-based), or None if not running inside tmux.
     """
     tmux_pane = os.environ.get("TMUX_PANE")
     if not tmux_pane:
         return None
 
-    result = subprocess.run(
+    result = run_command(
         ["tmux", "display", "-t", tmux_pane, "-p", "#{pane_index}"],
-        capture_output=True,
-        text=True
+        timeout=5,
     )
-    if result.returncode == 0:
+    if result.success:
         return int(result.stdout.strip())
     return None
 
 
 def _get_window_dimensions(session: str) -> tuple[int, int]:
-    """Get window width and height for smart split direction."""
-    result = subprocess.run(
+    """Get window width and height for smart split direction.
+
+    Args:
+        session: Tmux session name.
+
+    Returns:
+        Tuple of (width, height) in characters.
+    """
+    result = run_command(
         ["tmux", "display", "-t", f"{session}:0", "-p", "#{window_width}:#{window_height}"],
-        capture_output=True,
-        text=True
+        timeout=5,
     )
-    if result.returncode == 0:
+    if result.success:
         parts = result.stdout.strip().split(":")
         if len(parts) == 2:
             return int(parts[0]), int(parts[1])
@@ -118,9 +127,9 @@ def spawn_worker_pane(
     if cwd:
         split_cmd.extend(["-c", cwd])
 
-    result = subprocess.run(split_cmd, capture_output=True, text=True)
+    result = run_command(split_cmd, timeout=10)
 
-    if result.returncode != 0:
+    if not result.success:
         raise RuntimeError(f"Failed to create pane: {result.stderr}")
 
     # Parse output: "1:%42"
@@ -137,10 +146,7 @@ def spawn_worker_pane(
     # Rebalance panes - use layout matching split direction
     # even-vertical = stacked (for -v), even-horizontal = side by side (for -h)
     layout = "even-horizontal" if split_flag == "-h" else "even-vertical"
-    subprocess.run(
-        ["tmux", "select-layout", "-t", f"{session}:0", layout],
-        capture_output=True
-    )
+    run_command(["tmux", "select-layout", "-t", f"{session}:0", layout], timeout=5)
 
     return pane_index
 
@@ -159,17 +165,16 @@ def list_panes(session: str | None = None) -> list[PaneInfo]:
         if session is None:
             raise RuntimeError("Not in tmux session and no session specified")
 
-    result = subprocess.run(
+    result = run_command(
         [
             "tmux", "list-panes",
             "-t", f"{session}:0",
             "-F", "#{pane_index}:#{pane_id}:#{pane_pid}:#{pane_current_command}:#{pane_active}"
         ],
-        capture_output=True,
-        text=True
+        timeout=5,
     )
 
-    if result.returncode != 0:
+    if not result.success:
         return []
 
     panes = []
@@ -206,19 +211,19 @@ def send_to_pane(session: str | None, pane_index: int, text: str, enter: bool = 
     target = f"{session}:0.{pane_index}"
 
     # Send text first
-    subprocess.run(["tmux", "send-keys", "-t", target, text], capture_output=True)
+    run_command(["tmux", "send-keys", "-t", target, text], timeout=5)
 
     if enter:
         # Wait for text to be displayed before sending Enter
         # Longer text needs more time (Claude Code shows "[Pasted text...]")
         wait_time = 0.5 if len(text) < 200 else 1.0
         time.sleep(wait_time)
-        subprocess.run(["tmux", "send-keys", "-t", target, "Enter"], capture_output=True)
+        run_command(["tmux", "send-keys", "-t", target, "Enter"], timeout=5)
 
         # For multi-line text, send another Enter to confirm paste
         if "\n" in text or len(text) > 200:
             time.sleep(0.5)
-            subprocess.run(["tmux", "send-keys", "-t", target, "Enter"], capture_output=True)
+            run_command(["tmux", "send-keys", "-t", target, "Enter"], timeout=5)
 
 
 def capture_pane(
@@ -251,7 +256,7 @@ def capture_pane(
         # Capture last N lines
         cmd.extend(["-S", f"-{lines}"])
 
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = run_command(cmd, timeout=5)
     return result.stdout
 
 
@@ -274,7 +279,7 @@ def kill_pane(session: str | None, pane_index: int) -> None:
             raise RuntimeError("Not in tmux session and no session specified")
 
     target = f"{session}:0.{pane_index}"
-    subprocess.run(["tmux", "kill-pane", "-t", target], capture_output=True)
+    run_command(["tmux", "kill-pane", "-t", target], timeout=5)
 
 
 def focus_pane(session: str | None, pane_index: int) -> None:
@@ -290,7 +295,7 @@ def focus_pane(session: str | None, pane_index: int) -> None:
             raise RuntimeError("Not in tmux session and no session specified")
 
     target = f"{session}:0.{pane_index}"
-    subprocess.run(["tmux", "select-pane", "-t", target], capture_output=True)
+    run_command(["tmux", "select-pane", "-t", target], timeout=5)
 
 
 def get_pane_info(tmux_pane_id: str) -> PaneInfo | None:
@@ -302,16 +307,15 @@ def get_pane_info(tmux_pane_id: str) -> PaneInfo | None:
     Returns:
         PaneInfo if found, None otherwise.
     """
-    result = subprocess.run(
+    result = run_command(
         [
             "tmux", "display", "-t", tmux_pane_id,
             "-p", "#{pane_index}:#{pane_id}:#{pane_pid}:#{pane_current_command}:#{pane_active}"
         ],
-        capture_output=True,
-        text=True
+        timeout=5,
     )
 
-    if result.returncode != 0:
+    if not result.success:
         return None
 
     parts = result.stdout.strip().split(":")
@@ -351,26 +355,16 @@ def get_repo_info(cwd: str | None = None) -> RepoInfo | None:
         cwd = os.getcwd()
 
     # Get repo root
-    result = subprocess.run(
-        ["git", "rev-parse", "--show-toplevel"],
-        capture_output=True,
-        text=True,
-        cwd=cwd
-    )
-    if result.returncode != 0:
+    result = run_command(["git", "rev-parse", "--show-toplevel"], cwd=cwd, timeout=5)
+    if not result.success:
         return None
 
     root = result.stdout.strip()
     name = os.path.basename(root)
 
     # Get current branch
-    result = subprocess.run(
-        ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-        capture_output=True,
-        text=True,
-        cwd=cwd
-    )
-    current_branch = result.stdout.strip() if result.returncode == 0 else "HEAD"
+    result = run_command(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=cwd, timeout=5)
+    current_branch = result.stdout.strip() if result.success else "HEAD"
 
     return RepoInfo(root=root, name=name, current_branch=current_branch)
 
@@ -403,43 +397,40 @@ def create_worker_worktree(branch_name: str, cwd: str | None = None) -> str:
     # Check if worktree already exists
     if os.path.exists(worktree_path):
         # Verify it's a valid worktree
-        result = subprocess.run(
+        result = run_command(
             ["git", "rev-parse", "--is-inside-work-tree"],
-            capture_output=True,
-            text=True,
-            cwd=worktree_path
+            cwd=worktree_path,
+            timeout=5,
         )
-        if result.returncode == 0 and result.stdout.strip() == "true":
+        if result.success and result.stdout.strip() == "true":
             return worktree_path
         else:
             raise RuntimeError(f"Path exists but is not a git worktree: {worktree_path}")
 
     # Check if branch exists
-    result = subprocess.run(
+    result = run_command(
         ["git", "show-ref", "--verify", "--quiet", f"refs/heads/{branch_name}"],
-        capture_output=True,
-        cwd=repo.root
+        cwd=repo.root,
+        timeout=5,
     )
-    branch_exists = result.returncode == 0
+    branch_exists = result.success
 
     if branch_exists:
         # Create worktree from existing branch
-        result = subprocess.run(
+        result = run_command(
             ["git", "worktree", "add", worktree_path, branch_name],
-            capture_output=True,
-            text=True,
-            cwd=repo.root
+            cwd=repo.root,
+            timeout=30,
         )
     else:
         # Create new branch and worktree from current HEAD
-        result = subprocess.run(
+        result = run_command(
             ["git", "worktree", "add", "-b", branch_name, worktree_path],
-            capture_output=True,
-            text=True,
-            cwd=repo.root
+            cwd=repo.root,
+            timeout=30,
         )
 
-    if result.returncode != 0:
+    if not result.success:
         raise RuntimeError(f"Failed to create worktree: {result.stderr}")
 
     return worktree_path
@@ -463,22 +454,20 @@ def remove_worker_worktree(worktree_path: str) -> bool:
         return False
 
     # Find the main worktree (not this one)
-    result = subprocess.run(
+    result = run_command(
         ["git", "worktree", "list", "--porcelain"],
-        capture_output=True,
-        text=True,
-        cwd=worktree_path
+        cwd=worktree_path,
+        timeout=10,
     )
 
-    if result.returncode != 0:
+    if not result.success:
         return False
 
     # Remove the worktree
-    result = subprocess.run(
+    result = run_command(
         ["git", "worktree", "remove", worktree_path],
-        capture_output=True,
-        text=True,
-        cwd=worktree_path
+        cwd=worktree_path,
+        timeout=30,
     )
 
-    return result.returncode == 0
+    return result.success

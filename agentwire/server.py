@@ -364,6 +364,7 @@ class AgentWireServer:
             Parsed YAML dict, or None if not found/invalid
         """
         import socket
+
         import yaml
         local_hostname = socket.gethostname().split('.')[0]
 
@@ -414,6 +415,7 @@ class AgentWireServer:
             True if written successfully, False otherwise
         """
         import socket
+
         import yaml
         local_hostname = socket.gethostname().split('.')[0]
 
@@ -904,7 +906,6 @@ class AgentWireServer:
             # Task: Forward WebSocket → tmux stdin
             async def forward_ws_to_tmux():
                 """Read from WebSocket and write to tmux stdin."""
-                loop = asyncio.get_event_loop()
                 try:
                     async for msg in ws:
                         if msg.type == web.WSMsgType.TEXT:
@@ -951,7 +952,7 @@ class AgentWireServer:
                                         # Remote: send tmux resize-window command
                                         resize_cmd = f"tmux resize-window -t {session_name} -x {cols} -y {rows}\n"
                                         resize_proc = await asyncio.create_subprocess_exec(
-                                            "ssh", machine, "sh", "-c", resize_cmd,
+                                            "ssh", ssh_target, "sh", "-c", resize_cmd,
                                             stdout=asyncio.subprocess.DEVNULL,
                                             stderr=asyncio.subprocess.DEVNULL,
                                         )
@@ -992,7 +993,7 @@ class AgentWireServer:
             logger.info(f"[Terminal] Disconnected from {session_name}")
 
         except FileNotFoundError:
-            logger.error(f"[Terminal] tmux command not found")
+            logger.error("[Terminal] tmux command not found")
             if not ws.closed:
                 await ws.send_json({
                     "type": "error",
@@ -2761,7 +2762,7 @@ projects:
 
             elif base_name == tts_session:
                 # Restart TTS server
-                result = subprocess.run(
+                subprocess.run(
                     ["agentwire", "tts", "stop"],
                     capture_output=True, text=True
                 )
