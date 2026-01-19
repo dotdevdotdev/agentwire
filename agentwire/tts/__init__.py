@@ -28,7 +28,7 @@ def get_tts_backend(config: dict) -> TTSBackend:
     backend = tts_config.get("backend")
 
     if backend == "chatterbox":
-        url = tts_config.get("url", "http://localhost:8001")
+        url = tts_config.get("url", "http://localhost:8100")
         exaggeration = tts_config.get("exaggeration", 0.5)
         cfg_weight = tts_config.get("cfg_weight", 0.5)
         return ChatterboxTTS(url=url, exaggeration=exaggeration, cfg_weight=cfg_weight)
