@@ -7,6 +7,7 @@
 </p>
 
 <p align="center">
+  <a href="https://www.agentwire.dev/projects/agentwire-dev"><img src="https://img.shields.io/badge/docs-agentwire.dev-blue" alt="Documentation"></a>
   <a href="https://pypi.org/project/agentwire-dev/"><img src="https://img.shields.io/pypi/v/agentwire-dev?color=green" alt="PyPI"></a>
   <a href="https://pypi.org/project/agentwire-dev/"><img src="https://img.shields.io/pypi/pyversions/agentwire-dev" alt="Python"></a>
   <a href="https://github.com/dotdevdotdev/agentwire-dev/blob/main/LICENSE"><img src="https://img.shields.io/github/license/dotdevdotdev/agentwire-dev" alt="License"></a>
