@@ -95,7 +95,7 @@ class TTSConfig:
 class STTConfig:
     """Speech-to-text configuration.
 
-    STT uses a remote server (agentwire-stt). Configure url to enable.
+    STT uses a remote server. Configure url to enable.
     """
 
     url: str | None = None  # STT server URL (e.g., http://localhost:8100)

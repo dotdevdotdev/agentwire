@@ -13,7 +13,7 @@
                          WebSocket
                               │
 ┌─────────────────────────────────────────────────────────────┐
-│  AgentWire Portal (agentwire-portal tmux session)           │
+│  AgentWire Portal (tmux session, default: agentwire-portal) │
 │  ├── HTTP routes (desktop UI, static assets)                │
 │  ├── WebSocket /ws/{session} (monitor mode output)          │
 │  ├── WebSocket /ws/terminal/{session} (terminal attach)     │

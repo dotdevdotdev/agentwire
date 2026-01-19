@@ -1155,7 +1155,7 @@ def run_onboarding(skip_session: bool = False) -> int:
     print_header("5. Speech-to-Text (STT)")
 
     print("STT converts your voice to text for sending to agents.")
-    print("STT uses agentwire-stt server (Docker or standalone).")
+    print("STT uses a dedicated server (Docker or standalone).")
     print()
 
     default_stt_url = config["stt_url"] or "http://localhost:8100"
@@ -1344,7 +1344,7 @@ tts:
   default_voice: "{config['tts_voice']}"
 
 stt:
-  url: "{config['stt_url']}"  # agentwire-stt server URL (empty = disabled)
+  url: "{config['stt_url']}"  # STT server URL (empty = disabled)
 
 audio:
   input_device: {config['audio_input_device']}  # Microphone for voice input & cloning

@@ -153,7 +153,7 @@ Right-click or use the actions menu on session windows for additional operations
 
 **Fork Session** uses Claude Code's `--resume <id> --fork-session` to create a new session that inherits the conversation context. Creates sessions named `project-fork-1`, `project-fork-2`, etc.
 
-**For system sessions** (`agentwire`, `agentwire-portal`, `agentwire-tts`):
+**For system sessions** (portal, TTS, main - names configurable via `services.*.session_name`):
 
 | Action | Description |
 |--------|-------------|

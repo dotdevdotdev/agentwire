@@ -381,7 +381,7 @@ agentwire kill -s unused-session
 ## Getting Help
 
 1. **Run diagnostics:** `agentwire doctor`
-2. **Check logs:** Portal logs are in the `agentwire-portal` tmux session
+2. **Check logs:** Portal logs are in the portal tmux session (default: `agentwire-portal`)
 3. **Report issues:** https://github.com/dotdevdotdev/agentwire-dev/issues
 
 When reporting issues, include:
