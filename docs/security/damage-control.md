@@ -500,7 +500,6 @@ bashToolPatterns:
 ## Related Documentation
 
 - [Migration Guide](./damage-control-migration.md) - How to enable damage-control in existing installations
-- [Mission Integration](../missions/completed/damage-control-integration.md) - Full integration mission details
 
 ---
 
