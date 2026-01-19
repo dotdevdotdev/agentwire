@@ -1,6 +1,6 @@
 # Codebase Quality Review Progress
 
-## Current Phase: Phase 1 Complete - Utilities Created
+## Current Phase: Phase 2 In Progress - Migrating Files
 
 ## Utilities Created
 - [x] agentwire/utils/__init__.py - Package init with re-exports
@@ -10,21 +10,22 @@
 - [ ] agentwire/utils/audio.py (if needed - defer until listen.py/voiceclone.py review)
 
 ## Files Migrated to Utilities
-- [ ] __main__.py (5,762 lines) - subprocess, file_io
+- [x] tunnels.py (382 lines) - subprocess → run_command, paths → agentwire_dir
+- [x] history.py (394 lines) - subprocess → run_command, file_io → load_json
+- [x] pane_manager.py (484 lines) - subprocess → run_command (all 20+ calls)
+- [ ] __main__.py (5,762 lines) - subprocess, file_io (large - do last)
 - [ ] server.py (3,050 lines) - subprocess, file_io
-- [ ] pane_manager.py (484 lines) - subprocess
 - [ ] onboarding.py (1,469 lines) - subprocess, file_io
 - [ ] listen.py (393 lines) - subprocess, paths
 - [ ] voiceclone.py (309 lines) - subprocess, paths
-- [ ] history.py (394 lines) - file_io
-- [ ] tunnels.py (382 lines) - subprocess
 
 ## Docstrings Added
+- [x] tunnels.py - already had good docstrings, enhanced module docstring
+- [x] history.py - already had good docstrings, enhanced module docstring
+- [x] pane_manager.py - already had good docstrings, enhanced module docstring
 - [ ] __main__.py
 - [ ] server.py
 - [ ] config.py (verify existing)
-- [ ] pane_manager.py
-- [ ] tunnels.py
 - [ ] agents/tmux.py
 
 ## Documentation
@@ -32,7 +33,7 @@
 - [ ] Module docstrings added to all files
 
 ## Ruff Status
-- Last run: not yet (ruff not in path, use `uv run ruff check agentwire/`)
+- Last run: not yet (use `uv run ruff check agentwire/`)
 - Errors: unknown
 - Fixed: none
 
@@ -43,6 +44,12 @@
 - Added file_io.py: load_json(), save_json(), load_yaml(), save_yaml() with atomic writes
 - Added paths.py: agentwire_dir(), config_path(), machines_path(), logs_dir(), voices_dir(), etc.
 - Verified imports work with `uv run python`
+- Committed: feat: add utility modules for subprocess, file I/O, paths
+
+### Iteration 2 (Phase 2 - Migration)
+- Migrated tunnels.py: 3 subprocess.run → run_command, Path.home() → agentwire_dir()
+- Migrated history.py: 2 subprocess.run → run_command, json.load → load_json
+- Migrated pane_manager.py: 20+ subprocess.run → run_command, removed unused import
 
 ## Issues Found
 (none yet)
