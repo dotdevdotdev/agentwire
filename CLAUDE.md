@@ -168,9 +168,19 @@ services:  # Where services run (for multi-machine setups)
   portal:
     machine: null  # null = local
     port: 8765
+    session_name: "agentwire-portal"  # tmux session name
   tts:
     machine: "gpu-server"  # or null for local
     port: 8100
+    session_name: "agentwire-tts"
+  stt:
+    session_name: "agentwire-stt"
+
+executables:  # Override executable paths (optional, auto-detected by default)
+  ffmpeg: "/opt/homebrew/bin/ffmpeg"
+  whisperkit-cli: "/opt/homebrew/bin/whisperkit-cli"
+  hs: "/opt/homebrew/bin/hs"
+  agentwire: "~/.local/bin/agentwire"
 
 uploads:
   dir: "~/.agentwire/uploads"

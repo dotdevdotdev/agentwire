@@ -640,14 +640,22 @@ class AgentWireServer:
         for ws in closed:
             self.dashboard_clients.discard(ws)
 
-    # System sessions that get special treatment (restart instead of fork/new/recreate)
-    SYSTEM_SESSIONS = {"agentwire", "agentwire-portal", "agentwire-tts"}
+    def _get_system_session_names(self) -> dict[str, str]:
+        """Get system session names from config."""
+        services = self.config.raw.get("services", {})
+        return {
+            "portal": services.get("portal", {}).get("session_name", "agentwire-portal"),
+            "tts": services.get("tts", {}).get("session_name", "agentwire-tts"),
+            "stt": services.get("stt", {}).get("session_name", "agentwire-stt"),
+            "main": "agentwire",  # Main session name is always "agentwire"
+        }
 
     def _is_system_session(self, name: str) -> bool:
         """Check if this is a system session (agentwire services)."""
         # Extract base session name (without @machine suffix)
         base_name = name.split("@")[0]
-        return base_name in self.SYSTEM_SESSIONS
+        session_names = self._get_system_session_names()
+        return base_name in session_names.values()
 
     def _get_session_activity_status(self, session: Session) -> str:
         """Calculate activity status based on last output timestamp.
@@ -2700,15 +2708,16 @@ projects:
     async def api_restart_service(self, request: web.Request) -> web.Response:
         """POST /api/session/{name}/restart-service - Restart a system service.
 
-        For system sessions (agentwire, agentwire-portal, agentwire-tts),
-        this properly restarts the service.
+        For system sessions (portal, tts, main), this properly restarts the service.
+        Session names are configurable via services.*.session_name in config.
         """
         import subprocess
 
         name = request.match_info["name"]
         base_name = name.split("@")[0]
+        session_names = self._get_system_session_names()
 
-        if base_name not in self.SYSTEM_SESSIONS:
+        if not self._is_system_session(name):
             return web.json_response(
                 {"error": f"'{name}' is not a system session"},
                 status=400
@@ -2716,8 +2725,11 @@ projects:
 
         try:
             logger.info(f"[{name}] Restarting service...")
+            portal_session = session_names["portal"]
+            tts_session = session_names["tts"]
+            main_session = session_names["main"]
 
-            if base_name == "agentwire-portal":
+            if base_name == portal_session:
                 # Special case: we are the portal, need to restart ourselves
                 # Schedule restart after responding
                 # Can't use `agentwire portal start` as it tries to attach to terminal
@@ -2726,17 +2738,17 @@ projects:
                     logger.info("Portal restarting...")
                     # Kill the tmux session (which kills us)
                     subprocess.run(
-                        ["tmux", "kill-session", "-t", "agentwire-portal"],
+                        ["tmux", "kill-session", "-t", portal_session],
                         capture_output=True
                     )
                     await asyncio.sleep(0.5)
                     # Create new tmux session with portal serve command
                     subprocess.run(
-                        ["tmux", "new-session", "-d", "-s", "agentwire-portal"],
+                        ["tmux", "new-session", "-d", "-s", portal_session],
                         capture_output=True
                     )
                     subprocess.run(
-                        ["tmux", "send-keys", "-t", "agentwire-portal",
+                        ["tmux", "send-keys", "-t", portal_session,
                          "agentwire portal serve", "Enter"],
                         capture_output=True
                     )
@@ -2747,7 +2759,7 @@ projects:
                     "message": "Portal restarting in 1 second..."
                 })
 
-            elif base_name == "agentwire-tts":
+            elif base_name == tts_session:
                 # Restart TTS server
                 result = subprocess.run(
                     ["agentwire", "tts", "stop"],
@@ -2764,7 +2776,7 @@ projects:
                     "message": "TTS server restarted"
                 })
 
-            elif base_name == "agentwire":
+            elif base_name == main_session:
                 # Restart the agentwire session - kill Claude and restart it
                 self.agent.send_keys(name, "/exit")
                 await asyncio.sleep(1)

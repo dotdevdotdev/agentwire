@@ -253,6 +253,24 @@ def get_source_dir() -> Path:
     return Path(source_dir).expanduser()
 
 
+def get_portal_session_name() -> str:
+    """Get portal tmux session name from config."""
+    config = load_config()
+    return config.get("services", {}).get("portal", {}).get("session_name", "agentwire-portal")
+
+
+def get_tts_session_name() -> str:
+    """Get TTS tmux session name from config."""
+    config = load_config()
+    return config.get("services", {}).get("tts", {}).get("session_name", "agentwire-tts")
+
+
+def get_stt_session_name() -> str:
+    """Get STT tmux session name from config."""
+    config = load_config()
+    return config.get("services", {}).get("stt", {}).get("session_name", "agentwire-stt")
+
+
 # === Wave 2: Remote Infrastructure Helpers ===
 
 
@@ -421,7 +439,7 @@ def _start_portal_local(args) -> int:
     from .network import NetworkContext
     from .tunnels import TunnelManager
 
-    session_name = "agentwire-portal"
+    session_name = get_portal_session_name()
 
     if tmux_session_exists(session_name):
         print(f"Portal already running in tmux session '{session_name}'")
@@ -492,7 +510,7 @@ def _start_portal_local(args) -> int:
 
 def _start_portal_remote(ssh_target: str, machine_id: str, args) -> int:
     """Start portal on remote machine via SSH."""
-    session_name = "agentwire-portal"
+    session_name = get_portal_session_name()
 
     # Check if portal already running remotely
     check_cmd = f"tmux has-session -t ={session_name} 2>/dev/null && echo running || echo stopped"
@@ -548,7 +566,7 @@ def _start_portal_remote(ssh_target: str, machine_id: str, args) -> int:
 
 def _stop_portal_remote(ssh_target: str, machine_id: str) -> int:
     """Stop portal on remote machine via SSH."""
-    session_name = "agentwire-portal"
+    session_name = get_portal_session_name()
 
     # Check if running
     check_cmd = f"tmux has-session -t ={session_name} 2>/dev/null && echo running || echo stopped"
@@ -643,7 +661,7 @@ def cmd_portal_stop(args) -> int:
     from .network import NetworkContext
 
     ctx = NetworkContext.from_config()
-    session_name = "agentwire-portal"
+    session_name = get_portal_session_name()
 
     if ctx.is_local("portal"):
         if not tmux_session_exists(session_name):
@@ -671,7 +689,7 @@ def cmd_portal_status(args) -> int:
     from .network import NetworkContext
 
     ctx = NetworkContext.from_config()
-    session_name = "agentwire-portal"
+    session_name = get_portal_session_name()
 
     if ctx.is_local("portal"):
         if tmux_session_exists(session_name):
@@ -740,7 +758,7 @@ def cmd_portal_restart(args) -> int:
 
 def _start_tts_local(args) -> int:
     """Start TTS server locally in tmux."""
-    session_name = "agentwire-tts"
+    session_name = get_tts_session_name()
 
     if tmux_session_exists(session_name):
         print(f"TTS server already running in tmux session '{session_name}'")
@@ -796,7 +814,7 @@ def _start_tts_local(args) -> int:
 
 def _start_tts_remote(ssh_target: str, machine_id: str, args) -> int:
     """Start TTS server on remote machine via SSH."""
-    session_name = "agentwire-tts"
+    session_name = get_tts_session_name()
 
     # Check if TTS already running remotely
     check_cmd = f"tmux has-session -t ={session_name} 2>/dev/null && echo running || echo stopped"
@@ -843,7 +861,7 @@ def _start_tts_remote(ssh_target: str, machine_id: str, args) -> int:
 
 def _stop_tts_remote(ssh_target: str, machine_id: str) -> int:
     """Stop TTS server on remote machine via SSH."""
-    session_name = "agentwire-tts"
+    session_name = get_tts_session_name()
 
     # Check if running
     check_cmd = f"tmux has-session -t ={session_name} 2>/dev/null && echo running || echo stopped"
@@ -940,7 +958,7 @@ def cmd_tts_stop(args) -> int:
     from .network import NetworkContext
 
     ctx = NetworkContext.from_config()
-    session_name = "agentwire-tts"
+    session_name = get_tts_session_name()
 
     if ctx.is_local("tts"):
         if not tmux_session_exists(session_name):
@@ -968,7 +986,7 @@ def cmd_tts_status(args) -> int:
     from .network import NetworkContext
 
     ctx = NetworkContext.from_config()
-    session_name = "agentwire-tts"
+    session_name = get_tts_session_name()
 
     if ctx.is_local("tts"):
         if tmux_session_exists(session_name):
@@ -1040,7 +1058,7 @@ def cmd_tts_status(args) -> int:
 
 def cmd_stt_start(args) -> int:
     """Start the STT server in tmux."""
-    session_name = "agentwire-stt"
+    session_name = get_stt_session_name()
 
     if tmux_session_exists(session_name):
         print(f"STT server already running in tmux session '{session_name}'")
@@ -1104,7 +1122,7 @@ def cmd_stt_serve(args) -> int:
 
 def cmd_stt_stop(args) -> int:
     """Stop the STT server."""
-    session_name = "agentwire-stt"
+    session_name = get_stt_session_name()
 
     if not tmux_session_exists(session_name):
         print("STT server is not running.")
@@ -1117,7 +1135,7 @@ def cmd_stt_stop(args) -> int:
 
 def cmd_stt_status(args) -> int:
     """Check STT server status."""
-    session_name = "agentwire-stt"
+    session_name = get_stt_session_name()
     config = load_config()
     stt_url = config.get("stt", {}).get("url", "http://localhost:8100")
 
@@ -4173,7 +4191,7 @@ def cmd_doctor(args) -> int:
                         print(f"     -> Starting {service_name}...", end=" ", flush=True)
 
                         if service_name == "portal":
-                            session_name = "agentwire-portal"
+                            session_name = get_portal_session_name()
                             if tmux_session_exists(session_name):
                                 print("[ok] already running in tmux")
                             else:
@@ -4189,7 +4207,7 @@ def cmd_doctor(args) -> int:
                                 issues_fixed += 1
 
                         elif service_name == "tts":
-                            session_name = "agentwire-tts"
+                            session_name = get_tts_session_name()
                             if tmux_session_exists(session_name):
                                 print("[ok] already running in tmux")
                             else:

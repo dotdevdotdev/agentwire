@@ -13,8 +13,22 @@ from agentwire.agents.tmux import tmux_session_exists
 CONFIG_DIR = Path.home() / ".agentwire"
 
 
+def _load_executables_config() -> dict:
+    """Load executables config from ~/.agentwire/config.yaml."""
+    config_path = CONFIG_DIR / "config.yaml"
+    if config_path.exists():
+        try:
+            import yaml
+            with open(config_path) as f:
+                config = yaml.safe_load(f) or {}
+                return config.get("executables", {})
+        except Exception:
+            pass
+    return {}
+
+
 def _find_executable(name: str, fallback_paths: list[str] | None = None) -> str:
-    """Find executable in PATH or fallback locations.
+    """Find executable in config, PATH, or fallback locations.
 
     Args:
         name: Executable name (e.g., 'ffmpeg')
@@ -23,7 +37,14 @@ def _find_executable(name: str, fallback_paths: list[str] | None = None) -> str:
     Returns:
         Path to executable, or the name itself if not found (will fail at runtime)
     """
-    # Try PATH first
+    # Check config first (executables.ffmpeg, executables.whisperkit, etc.)
+    exe_config = _load_executables_config()
+    if name in exe_config:
+        configured_path = Path(exe_config[name]).expanduser()
+        if configured_path.exists():
+            return str(configured_path)
+
+    # Try PATH
     path = shutil.which(name)
     if path:
         return path
@@ -38,7 +59,7 @@ def _find_executable(name: str, fallback_paths: list[str] | None = None) -> str:
     return name
 
 
-# Find executables - use PATH first, then common locations for Hammerspoon
+# Find executables - check config, then PATH, then common locations for Hammerspoon
 FFMPEG_PATH = _find_executable("ffmpeg", ["/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg"])
 WHISPERKIT_PATH = _find_executable("whisperkit-cli", ["/opt/homebrew/bin/whisperkit-cli"])
 HS_PATH = _find_executable("hs", ["/opt/homebrew/bin/hs", "/usr/local/bin/hs"])
