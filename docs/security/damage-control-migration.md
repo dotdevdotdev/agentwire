@@ -182,7 +182,7 @@ Start an AgentWire session and verify hooks are active:
 
 ```bash
 # Start test session
-agentwire start test-damage-control
+agentwire new -s test-damage-control
 
 # In session prompt, try:
 # "Try to run: rm -rf /tmp/test"

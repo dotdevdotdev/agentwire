@@ -104,11 +104,16 @@ agentwire roles show <name>     # show role details
 agentwire safety check "cmd"    # test if command would be blocked
 agentwire safety status         # show pattern counts and recent blocks
 agentwire safety logs           # query audit logs
-agentwire hooks install|status  # manage permission hooks
+agentwire safety install        # install damage control hooks
+agentwire hooks install         # install Claude Code permission hook
+agentwire hooks uninstall       # remove Claude Code permission hook
+agentwire hooks status          # check hook installation status
 agentwire network status        # complete network health check
 agentwire doctor                # auto-diagnose and fix issues
 
-# Development
+# Setup & Development
+agentwire init                  # interactive setup wizard
+agentwire generate-certs        # generate SSL certificates
 agentwire dev                   # start/attach to dev session
 agentwire rebuild               # clear uv cache and reinstall
 agentwire uninstall             # uninstall the tool
@@ -150,8 +155,9 @@ projects:
     suffix: "-worktrees"
 
 tts:
-  backend: "chatterbox"  # chatterbox | runpod | none
-  url: "http://localhost:8100"
+  backend: "runpod"  # runpod | chatterbox | none
+  runpod_endpoint_id: "your-endpoint-id"
+  runpod_api_key: "your-api-key"
   default_voice: "dotdev"
 
 stt:

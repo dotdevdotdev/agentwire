@@ -225,7 +225,6 @@ When a service is configured to run on a remote machine, you need an SSH tunnel 
 agentwire tunnels up       # Create all required tunnels
 agentwire tunnels down     # Tear down all tunnels
 agentwire tunnels status   # Show tunnel health
-agentwire tunnels check    # Verify with health checks
 ```
 
 **How tunnels work:**
@@ -270,7 +269,6 @@ agentwire doctor
 # Check specific components
 agentwire tunnels status    # Are tunnels up?
 agentwire network status    # Overall health
-agentwire config validate   # Config file issues
 ```
 
 ### Common Issues

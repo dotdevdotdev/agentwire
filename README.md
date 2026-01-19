@@ -184,6 +184,7 @@ agentwire spawn --roles worker    # Spawn worker pane in current session
 agentwire split -s <session>      # Add terminal pane(s)
 agentwire jump --pane <N>         # Focus a pane
 agentwire detach -s <session>     # Move pane to its own session
+agentwire resize -s <session>     # Resize window to fit largest client
 
 # Safety & Security
 agentwire safety check "command"  # Test if command would be blocked
@@ -191,6 +192,7 @@ agentwire safety status           # Show pattern counts and recent blocks
 agentwire safety logs --tail 20   # Query audit logs
 agentwire safety install          # Install damage control hooks
 agentwire hooks install           # Install Claude Code permission hook
+agentwire hooks uninstall         # Remove Claude Code permission hook
 agentwire hooks status            # Check hook installation status
 
 # Remote Machines & Tunnels
@@ -214,6 +216,7 @@ agentwire projects list           # Discover projects
 # Development
 agentwire dev                     # Start agentwire session
 agentwire rebuild                 # Reinstall from source
+agentwire uninstall               # Uninstall the tool
 ```
 
 ## Configuration
