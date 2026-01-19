@@ -182,11 +182,6 @@ class AgentWireServer:
         self.app.router.add_post("/api/config", self.api_save_config)
         self.app.router.add_post("/api/config/reload", self.api_reload_config)
         self.app.router.add_post("/api/sessions/refresh", self.api_refresh_sessions)
-        # Template management
-        self.app.router.add_get("/api/templates", self.api_list_templates)
-        self.app.router.add_get("/api/templates/{name}", self.api_get_template)
-        self.app.router.add_post("/api/templates", self.api_create_template)
-        self.app.router.add_delete("/api/templates/{name}", self.api_delete_template)
         # Permission request handling (from Claude Code hook)
         # Note: respond route must come first as aiohttp matches in order
         self.app.router.add_post("/api/permission/{name:.+}/respond", self.api_permission_respond)
@@ -1507,7 +1502,6 @@ class AgentWireServer:
             machine: Machine ID ('local' or remote machine ID)
             worktree: Whether to create a worktree session
             branch: Branch name for worktree sessions
-            template: Template name to apply (optional)
 
         Session naming:
             - worktree + branch: project/branch (or project/branch@machine)
@@ -1523,7 +1517,6 @@ class AgentWireServer:
             machine = data.get("machine", "local")
             worktree = data.get("worktree", False)
             branch = data.get("branch", "").strip()
-            template_name = data.get("template")
 
             if not name:
                 return web.json_response({"error": "Session name is required"})
@@ -1547,9 +1540,6 @@ class AgentWireServer:
             # Pass -p when provided (CLI uses it to locate repo for worktree creation)
             if custom_path:
                 args.extend(["-p", custom_path])
-            # Pass template if provided
-            if template_name:
-                args.extend(["-t", template_name])
             # Set session type via CLI flags
             if session_type == "claude-restricted":
                 args.append("--restricted")
@@ -1567,8 +1557,8 @@ class AgentWireServer:
             session_name = result.get("session", cli_session)
             session_path = result.get("path")
 
-            # CLI writes .agentwire.yml with type and template voice
-            # If user explicitly selected a voice different from template, update it
+            # CLI writes .agentwire.yml with type
+            # If user explicitly selected a voice, update it
             if session_path and voice != self.config.tts.default_voice:
                 # Parse session name for machine
                 machine_id = None
@@ -1585,7 +1575,7 @@ class AgentWireServer:
             sessions_data = await self._get_sessions_data()
             await self.broadcast_dashboard("sessions_update", {"sessions": sessions_data})
 
-            return web.json_response({"success": True, "name": session_name, "template": template_name})
+            return web.json_response({"success": True, "name": session_name})
 
         except Exception as e:
             logger.error(f"Failed to create session: {e}")
@@ -1923,70 +1913,6 @@ projects:
         except Exception as e:
             logger.error(f"Failed to refresh sessions: {e}")
             return web.json_response({"error": str(e)}, status=500)
-
-    async def api_list_templates(self, request: web.Request) -> web.Response:
-        """List available session templates."""
-        from .config import load_templates
-
-        templates = load_templates()
-        return web.json_response([t.to_dict() for t in templates])
-
-    async def api_get_template(self, request: web.Request) -> web.Response:
-        """Get details of a specific template."""
-        from .config import load_template
-
-        name = request.match_info["name"]
-        template = load_template(name)
-
-        if template is None:
-            return web.json_response({"error": f"Template '{name}' not found"}, status=404)
-
-        return web.json_response(template.to_dict())
-
-    async def api_create_template(self, request: web.Request) -> web.Response:
-        """Create or update a session template."""
-        from .config import Template, save_template, load_template
-
-        try:
-            data = await request.json()
-            name = data.get("name", "").strip()
-
-            if not name:
-                return web.json_response({"error": "Template name is required"})
-
-            # Check if it already exists and overwrite not specified
-            if load_template(name) and not data.get("overwrite", False):
-                return web.json_response({"error": f"Template '{name}' already exists. Set overwrite=true to replace."})
-
-            template = Template(
-                name=name,
-                description=data.get("description", ""),
-                roles=data.get("roles", []),
-                voice=data.get("voice"),
-                project=data.get("project"),
-                initial_prompt=data.get("initial_prompt", ""),
-                type=data.get("type", "claude-bypass"),
-            )
-
-            if save_template(template):
-                return web.json_response({"success": True, "template": template.to_dict()})
-            else:
-                return web.json_response({"error": "Failed to save template"})
-
-        except Exception as e:
-            logger.error(f"Failed to create template: {e}")
-            return web.json_response({"error": str(e)})
-
-    async def api_delete_template(self, request: web.Request) -> web.Response:
-        """Delete a session template."""
-        from .config import delete_template
-
-        name = request.match_info["name"]
-
-        if delete_template(name):
-            return web.json_response({"success": True})
-        else:
-            return web.json_response({"error": f"Template '{name}' not found or failed to delete"}, status=404)
 
     async def handle_transcribe(self, request: web.Request) -> web.Response:
         """Transcribe audio to text."""

@@ -10,6 +10,12 @@ from pathlib import Path
 from agentwire.agents.tmux import tmux_session_exists
 
 CONFIG_DIR = Path.home() / ".agentwire"
+
+# Use full paths for executables that may not be in Hammerspoon's PATH
+FFMPEG_PATH = "/opt/homebrew/bin/ffmpeg"
+WHISPERKIT_PATH = "/opt/homebrew/bin/whisperkit-cli"
+HS_PATH = "/opt/homebrew/bin/hs"
+AGENTWIRE_PATH = "/Users/dotdev/.local/bin/agentwire"
 LOCK_FILE = Path("/tmp/agentwire-listen.lock")
 PID_FILE = Path("/tmp/agentwire-listen.pid")
 AUDIO_FILE = Path("/tmp/agentwire-listen.wav")
@@ -94,7 +100,7 @@ def start_recording() -> int:
             input_spec = f":{device}"
 
         proc = subprocess.Popen(
-            ["ffmpeg", "-f", "avfoundation", "-i", input_spec,
+            [FFMPEG_PATH, "-f", "avfoundation", "-i", input_spec,
              "-ar", "16000", "-ac", "1",
              "-acodec", "pcm_s16le",  # Uncompressed for quality
              str(AUDIO_FILE), "-y"],
@@ -192,7 +198,7 @@ def stop_recording(session: str, voice_prompt: bool = True, type_at_cursor: bool
     try:
         result = subprocess.run(
             [
-                "whisperkit-cli", "transcribe",
+                WHISPERKIT_PATH, "transcribe",
                 "--audio-path", str(AUDIO_FILE),
                 "--model-path", model_path,
             ],
@@ -252,7 +258,7 @@ def stop_recording(session: str, voice_prompt: bool = True, type_at_cursor: bool
         '''
 
         result = subprocess.run(
-            ["hs", "-c", hs_script],
+            [HS_PATH, "-c", hs_script],
             capture_output=True,
             text=True,
         )
@@ -289,7 +295,7 @@ def stop_recording(session: str, voice_prompt: bool = True, type_at_cursor: bool
 
         # Use agentwire send CLI for consistent behavior
         result = subprocess.run(
-            ["agentwire", "send", "-s", session, full_text],
+            [AGENTWIRE_PATH, "send", "-s", session, full_text],
             capture_output=True,
             text=True,
         )

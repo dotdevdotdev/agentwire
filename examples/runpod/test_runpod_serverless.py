@@ -23,10 +23,10 @@ from dotenv import load_dotenv
 load_dotenv()
 
 RUNPOD_API_KEY = os.getenv("RUNPOD_API_KEY")
-ENDPOINT_ID = "dw0aqos9tvt95h"
+ENDPOINT_ID = os.getenv("RUNPOD_ENDPOINT_ID")
 
-if not RUNPOD_API_KEY:
-    print("Error: RUNPOD_API_KEY not found in environment")
+if not RUNPOD_API_KEY or not ENDPOINT_ID:
+    print("Error: RUNPOD_API_KEY and RUNPOD_ENDPOINT_ID must be set in environment")
     sys.exit(1)
 
 def test_tts_generation():

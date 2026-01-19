@@ -1798,30 +1798,18 @@ def cmd_new(args) -> int:
     - "project@machine" -> remote session
     - "project/branch@machine" -> remote worktree session
     """
-    from .config import load_template as load_template_fn
-
     name = args.session
     path = args.path
-    template_name = getattr(args, 'template', None)
     json_mode = getattr(args, 'json', False)
 
     if not name:
         return _output_result(False, json_mode, "Usage: agentwire new -s <name> [-p path] [-f]")
 
-    # Load template if specified
-    template = None
-    if template_name:
-        template = load_template_fn(template_name)
-        if template is None:
-            return _output_result(False, json_mode, f"Template '{template_name}' not found")
-
-    # Parse roles from CLI, template, or existing .agentwire.yml
+    # Parse roles from CLI or existing .agentwire.yml
     roles_arg = getattr(args, 'roles', None)
     role_names: list[str] = []
     if roles_arg:
         role_names = [r.strip() for r in roles_arg.split(",") if r.strip()]
-    elif template and hasattr(template, 'roles') and template.roles:
-        role_names = template.roles
     else:
         # Check existing .agentwire.yml in the project
         project_path_for_config = Path(path).expanduser().resolve() if path else None
@@ -1919,20 +1907,13 @@ def cmd_new(args) -> int:
                 return _output_result(False, json_mode, f"Session '{session_name}' already exists on {machine_id}. Use -f to replace.")
 
         # Create remote tmux session
-        # Determine session type from CLI flags or template
+        # Determine session type from CLI flags
         if getattr(args, 'bare', False):
             session_type = SessionType.BARE
         elif getattr(args, 'restricted', False):
             session_type = SessionType.CLAUDE_RESTRICTED
         elif getattr(args, 'prompted', False):
             session_type = SessionType.CLAUDE_PROMPTED
-        elif template:
-            if template.restricted:
-                session_type = SessionType.CLAUDE_RESTRICTED
-            elif not template.bypass_permissions:
-                session_type = SessionType.CLAUDE_PROMPTED
-            else:
-                session_type = SessionType.CLAUDE_BYPASS
         else:
             session_type = SessionType.CLAUDE_BYPASS
 
@@ -1957,23 +1938,6 @@ def cmd_new(args) -> int:
         if result.returncode != 0:
             return _output_result(False, json_mode, f"Failed to create remote session: {result.stderr}")
 
-        # Send initial prompt from template if specified
-        if template and template.initial_prompt:
-            # Wait for Claude to be ready
-            time.sleep(2)
-            # Expand template variables
-            variables = {
-                "project_name": project,
-                "branch": branch or "",
-                "machine": machine_id,
-            }
-            initial_prompt = template.expand_variables(variables)
-            # Send initial prompt via tmux
-            # Use printf + base64 to handle multi-line prompts safely
-            encoded = base64.b64encode(initial_prompt.encode()).decode()
-            send_cmd = f"echo {shlex.quote(encoded)} | base64 -d | tmux load-buffer - && tmux paste-buffer -t {shlex.quote(session_name)} && tmux send-keys -t {shlex.quote(session_name)} Enter"
-            _run_remote(machine_id, send_cmd)
-
         if json_mode:
             _output_json({
                 "success": True,
@@ -1981,12 +1945,9 @@ def cmd_new(args) -> int:
                 "path": remote_path,
                 "branch": branch,
                 "machine": machine_id,
-                "template": template_name,
             })
         else:
             print(f"Created session '{session_name}' on {machine_id} in {remote_path}")
-            if template:
-                print(f"Applied template: {template_name}")
             print(f"Attach via portal or: ssh {machine.get('host', machine_id)} -t tmux attach -t {session_name}")
 
         _notify_portal_sessions_changed()
@@ -2070,21 +2031,13 @@ def cmd_new(args) -> int:
     )
     time.sleep(0.1)
 
-    # Determine session type from CLI flags, template, or existing config
+    # Determine session type from CLI flags or existing config
     if getattr(args, 'bare', False):
         session_type = SessionType.BARE
     elif getattr(args, 'restricted', False):
         session_type = SessionType.CLAUDE_RESTRICTED
     elif getattr(args, 'prompted', False):
         session_type = SessionType.CLAUDE_PROMPTED
-    elif template:
-        # Use template settings
-        if template.restricted:
-            session_type = SessionType.CLAUDE_RESTRICTED
-        elif not template.bypass_permissions:
-            session_type = SessionType.CLAUDE_PROMPTED
-        else:
-            session_type = SessionType.CLAUDE_BYPASS
     else:
         # Check existing .agentwire.yml for type, otherwise default to bypass
         existing_config = load_project_config(session_path)
@@ -2105,40 +2058,20 @@ def cmd_new(args) -> int:
     # Note: session name is NOT stored in config - it's runtime context
     existing_config = load_project_config(session_path)
     if existing_config:
-        # Preserve existing voice and roles if not overridden by CLI/template
+        # Preserve existing voice and roles if not overridden by CLI
         project_config = ProjectConfig(
             type=session_type,
             roles=role_names if role_names else existing_config.roles,
-            voice=template.voice if template and template.voice else existing_config.voice,
+            voice=existing_config.voice,
         )
     else:
         # Create new config
         project_config = ProjectConfig(
             type=session_type,
             roles=role_names if role_names else [],
-            voice=template.voice if template and template.voice else None,
+            voice=None,
         )
     save_project_config(project_config, session_path)
-
-    # Send initial prompt from template if specified
-    if template and template.initial_prompt:
-        # Wait for Claude to be ready
-        time.sleep(2)
-        # Expand template variables
-        variables = {
-            "project_name": project,
-            "branch": branch or "",
-            "machine": "",
-        }
-        initial_prompt = template.expand_variables(variables)
-        # Send initial prompt via tmux
-        # Use load-buffer to handle multi-line prompts safely
-        encoded = base64.b64encode(initial_prompt.encode()).decode()
-        subprocess.run(
-            f"echo {shlex.quote(encoded)} | base64 -d | tmux load-buffer - && tmux paste-buffer -t {shlex.quote(session_name)} && tmux send-keys -t {shlex.quote(session_name)} Enter",
-            shell=True,
-            check=True
-        )
 
     if json_mode:
         _output_json({
@@ -2147,12 +2080,9 @@ def cmd_new(args) -> int:
             "path": str(session_path),
             "branch": branch,
             "machine": None,
-            "template": template_name,
         })
     else:
         print(f"Created session '{session_name}' in {session_path}")
-        if template:
-            print(f"Applied template: {template_name}")
         print(f"Attach with: tmux attach -t {session_name}")
 
     _notify_portal_sessions_changed()
@@ -4454,278 +4384,6 @@ CLAUDE_HOOKS_DIR = Path.home() / ".claude" / "hooks"
 
 
 # =============================================================================
-# Template Commands
-# =============================================================================
-
-
-def cmd_template_list(args) -> int:
-    """List available session templates."""
-    from .config import load_templates
-
-    json_mode = getattr(args, 'json', False)
-    templates = load_templates()
-
-    if json_mode:
-        _output_json([t.to_dict() for t in templates])
-        return 0
-
-    if not templates:
-        print("No templates found.")
-        print(f"Create one with: agentwire template create <name>")
-        print(f"Templates directory: ~/.agentwire/templates/")
-        return 0
-
-    print(f"Available templates ({len(templates)}):\n")
-    for t in templates:
-        mode = "restricted" if t.restricted else ("bypass" if t.bypass_permissions else "prompted")
-        print(f"  {t.name}")
-        if t.description:
-            print(f"    {t.description}")
-        if t.voice:
-            print(f"    Voice: {t.voice}")
-        if t.project:
-            print(f"    Project: {t.project}")
-        print(f"    Mode: {mode}")
-        if t.initial_prompt:
-            # Show first line of initial prompt
-            first_line = t.initial_prompt.strip().split('\n')[0][:60]
-            print(f"    Prompt: {first_line}...")
-        print()
-
-    return 0
-
-
-def cmd_template_show(args) -> int:
-    """Show details of a specific template."""
-    from .config import load_template
-
-    name = args.name
-    json_mode = getattr(args, 'json', False)
-
-    template = load_template(name)
-    if template is None:
-        if json_mode:
-            _output_json({"error": f"Template '{name}' not found"})
-        else:
-            print(f"Template '{name}' not found.", file=sys.stderr)
-        return 1
-
-    if json_mode:
-        _output_json(template.to_dict())
-        return 0
-
-    print(f"Template: {template.name}")
-    print(f"Description: {template.description or '(none)'}")
-    print(f"Voice: {template.voice or '(default)'}")
-    print(f"Roles: {', '.join(template.roles) if template.roles else '(none)'}")
-    print(f"Project: {template.project or '(none)'}")
-    mode = "restricted" if template.restricted else ("bypass" if template.bypass_permissions else "prompted")
-    print(f"Permission Mode: {mode}")
-    print()
-    if template.initial_prompt:
-        print("Initial Prompt:")
-        print("-" * 40)
-        print(template.initial_prompt)
-        print("-" * 40)
-    else:
-        print("Initial Prompt: (none)")
-
-    return 0
-
-
-def cmd_template_create(args) -> int:
-    """Create a new session template interactively."""
-    from .config import Template, save_template, load_template
-
-    name = args.name
-    json_mode = getattr(args, 'json', False)
-
-    # Check if template already exists
-    existing = load_template(name)
-    if existing:
-        if not args.force:
-            if json_mode:
-                _output_json({"error": f"Template '{name}' already exists. Use --force to overwrite."})
-            else:
-                print(f"Template '{name}' already exists. Use --force to overwrite.", file=sys.stderr)
-            return 1
-
-    if json_mode:
-        # In JSON mode, require --description and --prompt
-        roles_arg = getattr(args, 'roles', None)
-        roles_list = [r.strip() for r in roles_arg.split(",")] if roles_arg else []
-        template = Template(
-            name=name,
-            description=args.description or "",
-            voice=args.voice,
-            roles=roles_list,
-            project=args.project,
-            initial_prompt=args.prompt or "",
-            bypass_permissions=not args.no_bypass,
-            restricted=args.restricted or False,
-        )
-    else:
-        # Interactive mode
-        print(f"Creating template: {name}\n")
-
-        description = input("Description (optional): ").strip()
-
-        print("\nEnter initial prompt (end with a line containing just '.'):")
-        lines = []
-        while True:
-            line = input()
-            if line == '.':
-                break
-            lines.append(line)
-        initial_prompt = '\n'.join(lines)
-
-        voice = input("\nVoice (optional, press Enter for default): ").strip() or None
-        roles_input = input("Roles (comma-separated, e.g., worker,code-review): ").strip()
-        roles_list = [r.strip() for r in roles_input.split(",")] if roles_input else []
-        project = input("Default project path (optional): ").strip() or None
-
-        print("\nPermission mode:")
-        print("  1. Bypass (default - no prompts)")
-        print("  2. Normal (permission prompts)")
-        print("  3. Restricted (voice-only, all else denied)")
-        mode_choice = input("Select [1/2/3]: ").strip()
-
-        bypass_permissions = mode_choice != "2"
-        restricted = mode_choice == "3"
-
-        template = Template(
-            name=name,
-            description=description,
-            voice=voice,
-            roles=roles_list,
-            project=project,
-            initial_prompt=initial_prompt,
-            bypass_permissions=bypass_permissions,
-            restricted=restricted,
-        )
-
-    if save_template(template):
-        if json_mode:
-            _output_json({"success": True, "template": template.to_dict()})
-        else:
-            print(f"\nTemplate '{name}' saved to ~/.agentwire/templates/{name}.yaml")
-        return 0
-    else:
-        if json_mode:
-            _output_json({"error": "Failed to save template"})
-        else:
-            print("Failed to save template.", file=sys.stderr)
-        return 1
-
-
-def cmd_template_delete(args) -> int:
-    """Delete a session template."""
-    from .config import delete_template, load_template
-
-    name = args.name
-    json_mode = getattr(args, 'json', False)
-
-    # Check if template exists
-    template = load_template(name)
-    if template is None:
-        if json_mode:
-            _output_json({"error": f"Template '{name}' not found"})
-        else:
-            print(f"Template '{name}' not found.", file=sys.stderr)
-        return 1
-
-    if not args.force:
-        confirm = input(f"Delete template '{name}'? [y/N] ").strip().lower()
-        if confirm != 'y':
-            print("Aborted.")
-            return 1
-
-    if delete_template(name):
-        if json_mode:
-            _output_json({"success": True, "deleted": name})
-        else:
-            print(f"Template '{name}' deleted.")
-        return 0
-    else:
-        if json_mode:
-            _output_json({"error": "Failed to delete template"})
-        else:
-            print("Failed to delete template.", file=sys.stderr)
-        return 1
-
-
-def get_sample_templates_source() -> Path:
-    """Get the path to the sample_templates directory in the installed package."""
-    # First try: sample_templates directory inside the agentwire package
-    package_dir = Path(__file__).parent
-    templates_dir = package_dir / "sample_templates"
-    if templates_dir.exists():
-        return templates_dir
-
-    # Fallback: try importlib.resources (for installed packages)
-    try:
-        with importlib.resources.files("agentwire").joinpath("sample_templates") as p:
-            if p.exists():
-                return Path(p)
-    except (TypeError, FileNotFoundError):
-        pass
-
-    raise FileNotFoundError("Could not find sample_templates directory in package")
-
-
-def cmd_template_install_samples(args) -> int:
-    """Install sample templates to ~/.agentwire/templates/."""
-    from .config import get_config
-
-    json_mode = getattr(args, 'json', False)
-    force = getattr(args, 'force', False)
-
-    try:
-        source_dir = get_sample_templates_source()
-    except FileNotFoundError as e:
-        if json_mode:
-            _output_json({"error": str(e)})
-        else:
-            print(f"Error: {e}", file=sys.stderr)
-        return 1
-
-    config = get_config()
-    target_dir = config.templates.dir
-    target_dir.mkdir(parents=True, exist_ok=True)
-
-    installed = []
-    skipped = []
-
-    for template_file in source_dir.glob("*.yaml"):
-        target_file = target_dir / template_file.name
-
-        if target_file.exists() and not force:
-            skipped.append(template_file.stem)
-            continue
-
-        shutil.copy2(template_file, target_file)
-        installed.append(template_file.stem)
-
-    if json_mode:
-        _output_json({
-            "success": True,
-            "installed": installed,
-            "skipped": skipped,
-            "target_dir": str(target_dir),
-        })
-    else:
-        if installed:
-            print(f"Installed templates: {', '.join(installed)}")
-        if skipped:
-            print(f"Skipped (already exist): {', '.join(skipped)}")
-        if not installed and not skipped:
-            print("No sample templates found.")
-        print(f"Templates directory: {target_dir}")
-
-    return 0
-
-
-# =============================================================================
 # Roles Commands
 # =============================================================================
 
@@ -5591,7 +5249,6 @@ def main() -> int:
     new_parser = subparsers.add_parser("new", help="Create new Claude Code session")
     new_parser.add_argument("-s", "--session", required=True, help="Session name (project, project/branch, or project/branch@machine)")
     new_parser.add_argument("-p", "--path", help="Working directory (default: ~/projects/<name>)")
-    new_parser.add_argument("-t", "--template", help="Apply session template (from ~/.agentwire/templates/)")
     new_parser.add_argument("-f", "--force", action="store_true", help="Replace existing session")
     # Session type flags (mutually exclusive)
     type_group = new_parser.add_mutually_exclusive_group()
@@ -5810,52 +5467,6 @@ def main() -> int:
     history_resume.add_argument("--project", "-p", required=True, help="Project path")
     history_resume.add_argument("--json", action="store_true", help="JSON output")
     history_resume.set_defaults(func=cmd_history_resume)
-
-    # === template command group ===
-    template_parser = subparsers.add_parser(
-        "template", help="Manage session templates"
-    )
-    template_subparsers = template_parser.add_subparsers(dest="template_command")
-
-    # template list
-    template_list = template_subparsers.add_parser("list", help="List available templates")
-    template_list.add_argument("--json", action="store_true", help="Output as JSON")
-    template_list.set_defaults(func=cmd_template_list)
-
-    # template show <name>
-    template_show = template_subparsers.add_parser("show", help="Show template details")
-    template_show.add_argument("name", help="Template name")
-    template_show.add_argument("--json", action="store_true", help="Output as JSON")
-    template_show.set_defaults(func=cmd_template_show)
-
-    # template create <name>
-    template_create = template_subparsers.add_parser("create", help="Create a new template")
-    template_create.add_argument("name", help="Template name")
-    template_create.add_argument("--description", help="Template description")
-    template_create.add_argument("--voice", help="TTS voice")
-    template_create.add_argument("--roles", help="Comma-separated list of roles to apply")
-    template_create.add_argument("--project", help="Default project path")
-    template_create.add_argument("--prompt", help="Initial prompt text")
-    template_create.add_argument("--no-bypass", action="store_true", help="Use normal permission mode")
-    template_create.add_argument("--restricted", action="store_true", help="Use restricted mode")
-    template_create.add_argument("-f", "--force", action="store_true", help="Overwrite existing template")
-    template_create.add_argument("--json", action="store_true", help="Non-interactive JSON mode")
-    template_create.set_defaults(func=cmd_template_create)
-
-    # template delete <name>
-    template_delete = template_subparsers.add_parser("delete", help="Delete a template")
-    template_delete.add_argument("name", help="Template name")
-    template_delete.add_argument("-f", "--force", action="store_true", help="Skip confirmation")
-    template_delete.add_argument("--json", action="store_true", help="Output as JSON")
-    template_delete.set_defaults(func=cmd_template_delete)
-
-    # template install-samples
-    template_install_samples = template_subparsers.add_parser(
-        "install-samples", help="Install sample templates"
-    )
-    template_install_samples.add_argument("-f", "--force", action="store_true", help="Overwrite existing templates")
-    template_install_samples.add_argument("--json", action="store_true", help="Output as JSON")
-    template_install_samples.set_defaults(func=cmd_template_install_samples)
 
     # === roles command group ===
     roles_parser = subparsers.add_parser(

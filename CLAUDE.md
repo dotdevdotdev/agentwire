@@ -22,7 +22,7 @@ agentwire rebuild
 
 ### Architecture Principle
 
-All session/machine/template logic lives in CLI commands (`__main__.py`). The portal (`server.py`) is a thin wrapper that:
+All session/machine logic lives in CLI commands (`__main__.py`). The portal (`server.py`) is a thin wrapper that:
 1. Calls CLI via `run_agentwire_cmd(["command", "args"])`
 2. Parses JSON output (`--json` flag)
 3. Adds WebSocket/real-time features
@@ -62,12 +62,6 @@ agentwire machine list
 agentwire machine add <id> <host>
 agentwire machine remove <id>
 
-# Template management
-agentwire template list
-agentwire template show <name>
-agentwire template create <name>
-agentwire template delete <name>
-
 # Project discovery
 agentwire projects list          # discover projects from projects_dir
 agentwire projects list --json   # JSON output for scripting
@@ -87,7 +81,6 @@ All in `~/.agentwire/`:
 | `config.yaml` | Main config (TTS/STT backends, ports) |
 | `roles/*.md` | Role instructions appended to sessions |
 | `hooks/` | PreToolUse hooks (damage-control, session-type) |
-| `templates/*.yaml` | Session templates |
 
 Per-session config (type, roles, voice) lives in `.agentwire.yml` in each project directory.
 

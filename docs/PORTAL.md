@@ -8,7 +8,7 @@ The portal is a thin wrapper around CLI commands. All business logic lives in `a
 
 ### Design Principles
 
-1. **CLI is source of truth** - session/machine/template logic in `__main__.py`
+1. **CLI is source of truth** - session/machine logic in `__main__.py`
 2. **Portal wraps CLI** - calls `run_agentwire_cmd()` instead of direct implementations
 3. **JSON mode** - CLI commands support `--json` for machine-readable output
 4. **WebSocket for real-time** - portal adds WebSocket layer for live updates
@@ -256,17 +256,13 @@ uploads:
 | `/api/machines/{id}` | DELETE | Remove a machine |
 | `/api/machine/{id}/status` | GET | Get machine status |
 
-### Configuration & Templates
+### Configuration
 
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
 | `/api/config` | GET | Get current config |
 | `/api/config` | POST | Save config |
 | `/api/config/reload` | POST | Reload config from disk |
-| `/api/templates` | GET | List templates |
-| `/api/templates` | POST | Create template |
-| `/api/templates/{name}` | GET | Get template details |
-| `/api/templates/{name}` | DELETE | Delete template |
 
 ### Permission Handling
 
