@@ -1,11 +1,13 @@
-# TTS Setup Guide
+# Self-Hosted TTS Setup
 
-AgentWire uses Chatterbox for high-quality text-to-speech synthesis. This guide covers installation and configuration.
+> **Recommended:** Use [RunPod serverless TTS](runpod-tts.md) instead. It requires no GPU hardware and scales to zero when idle. This guide is for users who want to self-host on their own GPU.
+
+AgentWire uses Chatterbox for high-quality text-to-speech synthesis. This guide covers self-hosted installation and configuration.
 
 ## Quick Start
 
 ```bash
-# Start the TTS server
+# Start the TTS server (requires GPU)
 agentwire tts start
 
 # Test it
@@ -45,14 +47,16 @@ Edit `~/.agentwire/config.yaml`:
 
 ```yaml
 tts:
-  backend: "chatterbox"
+  backend: "chatterbox"  # Use "chatterbox" for self-hosted
   url: "http://localhost:8100"
   default_voice: "default"
-  
-  # Voice settings
+
+  # Voice settings (optional)
   exaggeration: 0.5    # 0-1, voice expressiveness
   cfg_weight: 0.5      # 0-1, adherence to voice profile
 ```
+
+> For RunPod configuration, see [runpod-tts.md](runpod-tts.md).
 
 ## CLI Commands
 

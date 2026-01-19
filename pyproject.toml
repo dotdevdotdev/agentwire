@@ -1,7 +1,7 @@
 [project]
 name = "agentwire-dev"
 version = "0.1.0"
-description = "Multi-room voice web interface for AI coding agents"
+description = "Multi-session voice web interface for AI coding agents"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"

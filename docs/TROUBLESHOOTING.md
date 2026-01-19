@@ -159,9 +159,12 @@ agentwire say "Hello world"
 ```yaml
 # ~/.agentwire/config.yaml
 tts:
-  backend: "chatterbox"  # or "none" to disable
-  url: "http://localhost:8100"
+  backend: "runpod"  # runpod | chatterbox | none
+  runpod_endpoint_id: "your-endpoint-id"
+  runpod_api_key: "your-api-key"
 ```
+
+See `docs/runpod-tts.md` for RunPod setup or `docs/tts-self-hosted.md` for self-hosting.
 
 ### STT (Speech-to-Text) Not Working
 

@@ -31,12 +31,14 @@ Push-to-talk voice input from any device to tmux sessions running Claude Code or
 
 ## What's New
 
-**v0.1.0 (January 2026):**
+**v1.0.0 (January 2026):**
 
 - Desktop Control Center with WinBox-based window management
 - Safety hooks with 300+ dangerous command patterns blocked
 - Git worktree support for parallel agent work
 - Session roles (orchestrator/worker) for coordinated workflows
+- Voice cloning support with custom TTS voices
+- Remote machine orchestration via SSH tunnels
 
 ## Quick Start
 
@@ -144,8 +146,8 @@ agentwire portal start      # Start in background (tmux)
 agentwire portal stop       # Stop the portal
 agentwire portal status     # Check if running
 
-# TTS Server (on GPU machine)
-agentwire tts start         # Start TTS server in tmux
+# TTS Server (self-hosted, requires GPU)
+agentwire tts start         # Start local TTS server
 agentwire tts stop          # Stop TTS server
 agentwire tts status        # Check if running
 
@@ -173,6 +175,7 @@ agentwire output -s <session> [-n 100] # Read session output
 agentwire info -s <session>            # Get session info (cwd, panes)
 agentwire kill -s <session>            # Kill session (clean shutdown)
 agentwire send -s <session> "prompt"   # Send prompt to session
+agentwire send-keys -s <session> keys  # Send raw keys (with pauses)
 agentwire recreate -s <session>        # Destroy and recreate session
 agentwire fork -s <session>            # Fork into new worktree
 
@@ -187,6 +190,7 @@ agentwire safety check "command"  # Test if command would be blocked
 agentwire safety status           # Show pattern counts and recent blocks
 agentwire safety logs --tail 20   # Query audit logs
 agentwire safety install          # Install damage control hooks
+agentwire hooks install           # Install Claude Code permission hook
 agentwire hooks status            # Check hook installation status
 
 # Remote Machines & Tunnels
@@ -227,9 +231,9 @@ projects:
     enabled: true
 
 tts:
-  backend: "chatterbox"  # chatterbox | none
-  url: "http://localhost:8100"
-  default_voice: "default"
+  backend: "runpod"  # runpod | chatterbox | none
+  runpod_endpoint_id: "your-endpoint-id"
+  runpod_api_key: "your-api-key"
 
 agent:
   command: "claude --dangerously-skip-permissions"
@@ -318,32 +322,42 @@ agentwire say "Hello world"  # Automatically routes to browser or local speakers
 - For remote machines, configure portal URL in `~/.agentwire/portal_url`
 
 
-TTS requires a GPU machine running the Chatterbox server:
+TTS requires a GPU server running Chatterbox. We recommend RunPod:
 
-```bash
-# On GPU machine
-pip install agentwire-dev[tts]
-agentwire tts start
+```yaml
+# In config.yaml
+tts:
+  backend: "runpod"
+  runpod_endpoint_id: "your-endpoint-id"
+  runpod_api_key: "your-api-key"
 ```
+
+See `docs/runpod-tts.md` for RunPod setup, or use `agentwire tts start` if self-hosting on your own GPU.
 
 Or run with TTS disabled (text-only):
 
 ```yaml
-# In config.yaml
 tts:
   backend: "none"
 ```
 
 ## STT (Speech-to-Text)
 
-STT runs locally using WhisperKit (Apple's CoreML-optimized Whisper). No server or Docker needed.
+**Default (macOS):** STT runs locally using WhisperKit (Apple's CoreML-optimized Whisper). Fast and private - no server needed.
 
-**Requirements:**
+**Requirements for local STT:**
 - macOS with Apple Silicon (M1/M2/M3)
 - [whisperkit-cli](https://github.com/argmaxinc/WhisperKit): `brew install whisperkit-cli`
 - A WhisperKit model (e.g., via [MacWhisper](https://goodsnooze.gumroad.com/l/macwhisper))
 
 **Default model path:** `~/Library/Application Support/MacWhisper/models/whisperkit/models/argmaxinc/whisperkit-coreml/openai_whisper-large-v3-v20240930`
+
+**Alternative (Linux/cross-platform):** Run the STT server with faster-whisper:
+
+```bash
+pip install agentwire-dev[stt]
+agentwire stt start
+```
 
 ## Architecture
 
