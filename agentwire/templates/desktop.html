@@ -1,0 +1,68 @@
+{% extends 'base.html' %}
+
+{% block title %}AgentWire Desktop{% endblock %}
+
+{% block styles %}
+<link rel="stylesheet" href="/static/css/desktop.css">
+{% endblock %}
+
+{% block content %}
+<div class="desktop-container">
+    <!-- Menu Bar -->
+    <div class="menu-bar">
+        <div class="menu-left">
+            <div class="menu-item" id="projectsMenu">Projects</div>
+            <div class="menu-item" id="sessionsMenu">Sessions</div>
+        </div>
+        <div class="menu-right">
+            <div class="status-item" id="connectionStatus">
+                <span class="status-dot disconnected"></span>
+                <span class="status-text">Connecting...</span>
+            </div>
+            <div class="status-item" id="sessionCount">
+                <span class="count">0</span> sessions
+            </div>
+            <div class="menu-time" id="menuTime"></div>
+            <div class="menu-item dropdown" id="settingsMenu">
+                <span class="settings-icon">&#9881;</span>
+                <div class="dropdown-content dropdown-right">
+                    <div class="dropdown-item" id="machinesMenuItem">
+                        <span class="icon">&#128421;</span>
+                        <span>Machines</span>
+                    </div>
+                    <div class="dropdown-item" id="configMenuItem">
+                        <span class="icon">&#9881;</span>
+                        <span>Config</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Desktop Area -->
+    <div class="desktop-area" id="desktopArea">
+        <div class="desktop-wallpaper">
+            <img src="/static/agentwire-logo-splash-green-dark.png" alt="">
+        </div>
+    </div>
+
+    <!-- Taskbar -->
+    <div class="taskbar" id="taskbar">
+        <div class="taskbar-windows" id="taskbarWindows"></div>
+        <div class="taskbar-tray">
+            <button class="tray-ptt" id="globalPtt" title="Hold to talk to AgentWire (Ctrl+Space)">
+                <span class="ptt-icon">🎤</span>
+            </button>
+            <div class="tray-item" id="voiceIndicator" title="Voice Status">🔇</div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/winbox.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css">
+<script type="module" src="/static/js/desktop.js"></script>
+{% endblock %}

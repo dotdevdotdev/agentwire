@@ -1,0 +1,125 @@
+[project]
+name = "agentwire-dev"
+version = "0.1.0"
+description = "Multi-room voice web interface for AI coding agents"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [
+    { name = "dotdev", email = "dev@dotdev.dev" }
+]
+keywords = ["ai", "voice", "agent", "claude", "tmux", "tts", "stt"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Web Environment",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: User Interfaces",
+]
+dependencies = [
+    "aiohttp>=3.9.0",
+    "aiohttp-jinja2>=1.6",
+    "jinja2>=3.1.0",
+    "pyyaml>=6.0",
+    "requests>=2.28.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-asyncio>=0.23.0",
+    "ruff>=0.1.0",
+]
+# STT server dependencies (faster-whisper for speech-to-text)
+stt = [
+    "fastapi>=0.104.0",
+    "uvicorn>=0.24.0",
+    "python-multipart>=0.0.6",
+    "faster-whisper>=1.0.0",
+]
+# TTS server dependencies (for GPU machines running the TTS backend)
+tts = [
+    "fastapi>=0.104.0",
+    "uvicorn>=0.24.0",
+    "python-multipart>=0.0.6",
+    "pydantic>=2.0.0",
+    "torch>=2.0.0",
+    "torchaudio>=2.0.0",
+    "faster-whisper>=1.0.0",
+    "chatterbox-tts>=0.1.6",
+    "runpod>=1.6.0",
+]
+
+[project.scripts]
+agentwire = "agentwire.__main__:main"
+
+[project.urls]
+Homepage = "https://github.com/dotdevdotdev/agentwire"
+Repository = "https://github.com/dotdevdotdev/agentwire"
+Documentation = "https://github.com/dotdevdotdev/agentwire#readme"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["agentwire"]
+artifacts = [
+    "agentwire/hooks/**/*.py",
+    "agentwire/hooks/**/*.yaml",
+    "agentwire/hooks/**/*.sh",
+]
+exclude = [
+    "agentwire/static/*.xcf",
+    "agentwire/static/*-blue.*",
+    "agentwire/static/agentwire-logo-splash.jpeg",
+    "agentwire/static/agentwire-logo-splash-dark.jpeg",
+    "agentwire/static/agentwire-logo-splash-green.jpeg",
+    "agentwire/static/agentwire-logo-splash-green-dark.jpeg",
+]
+
+[tool.hatch.build.targets.sdist]
+exclude = [
+    # Git artifacts
+    ".git",
+    ".gitignore",
+    # Virtual environments
+    ".venv*/",
+    # Dev/local config files
+    ".claude/",
+    ".agentwire.yml",
+    "uv.lock",
+    "requirements-runpod.txt",
+    "CLAUDE.md",
+    # Build artifacts
+    "dist/",
+    # Dev docs and missions
+    "docs/missions/",
+    "docs/research/",
+    "docs/testing/",
+    # Dev examples and scripts
+    "examples/",
+    "scripts/",
+    # Static file dev assets
+    "agentwire/static/*.xcf",
+    "agentwire/static/*-blue.*",
+    "agentwire/static/agentwire-logo-splash.jpeg",
+    "agentwire/static/agentwire-logo-splash-dark.jpeg",
+    "agentwire/static/agentwire-logo-splash-green.jpeg",
+    "agentwire/static/agentwire-logo-splash-green-dark.jpeg",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W"]
+ignore = ["E501"]
