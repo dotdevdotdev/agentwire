@@ -1,13 +1,13 @@
 # Codebase Quality Review Progress
 
-## Current Phase: Not Started
+## Current Phase: Phase 1 Complete - Utilities Created
 
 ## Utilities Created
-- [ ] agentwire/utils/__init__.py
-- [ ] agentwire/utils/subprocess.py
-- [ ] agentwire/utils/file_io.py
-- [ ] agentwire/utils/paths.py
-- [ ] agentwire/utils/audio.py (if needed)
+- [x] agentwire/utils/__init__.py - Package init with re-exports
+- [x] agentwire/utils/subprocess.py - run_command(), run_command_check()
+- [x] agentwire/utils/file_io.py - load_json(), save_json(), load_yaml(), save_yaml()
+- [x] agentwire/utils/paths.py - agentwire_dir(), config_path(), logs_dir(), etc.
+- [ ] agentwire/utils/audio.py (if needed - defer until listen.py/voiceclone.py review)
 
 ## Files Migrated to Utilities
 - [ ] __main__.py (5,762 lines) - subprocess, file_io
@@ -32,9 +32,17 @@
 - [ ] Module docstrings added to all files
 
 ## Ruff Status
-- Last run: not yet
+- Last run: not yet (ruff not in path, use `uv run ruff check agentwire/`)
 - Errors: unknown
 - Fixed: none
+
+## Iteration Log
+### Iteration 1 (Phase 1 - Utilities)
+- Created agentwire/utils/ package
+- Added subprocess.py: CommandResult dataclass, run_command(), run_command_check()
+- Added file_io.py: load_json(), save_json(), load_yaml(), save_yaml() with atomic writes
+- Added paths.py: agentwire_dir(), config_path(), machines_path(), logs_dir(), voices_dir(), etc.
+- Verified imports work with `uv run python`
 
 ## Issues Found
 (none yet)
