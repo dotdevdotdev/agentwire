@@ -1,6 +1,6 @@
 # Codebase Quality Review Progress
 
-## Current Phase: Phase 2 In Progress - Migrating Files
+## Current Phase: Phase 3 - Ruff Fixes Complete, Continuing Migration
 
 ## Utilities Created
 - [x] agentwire/utils/__init__.py - Package init with re-exports
@@ -33,9 +33,9 @@
 - [ ] Module docstrings added to all files
 
 ## Ruff Status
-- Last run: not yet (use `uv run ruff check agentwire/`)
-- Errors: unknown
-- Fixed: none
+- Last run: All checks passed!
+- Errors: 0
+- Fixed: 19 errors fixed in iteration 3
 
 ## Iteration Log
 ### Iteration 1 (Phase 1 - Utilities)
@@ -50,6 +50,27 @@
 - Migrated tunnels.py: 3 subprocess.run → run_command, Path.home() → agentwire_dir()
 - Migrated history.py: 2 subprocess.run → run_command, json.load → load_json
 - Migrated pane_manager.py: 20+ subprocess.run → run_command, removed unused import
+- Committed: refactor: migrate tunnels, history, pane_manager to use utilities
+
+### Iteration 3 (Ruff Fixes)
+- Fixed F821 (undefined names):
+  - onboarding.py:1162 - prompt_text → prompt (function was named prompt)
+  - server.py:956 - machine → ssh_target (variable was defined as ssh_target)
+- Fixed F841 (unused variables):
+  - __main__.py:1072 - removed unused stt_config, then config
+  - onboarding.py:1117 - removed req = before urlopen
+  - server.py:909 - removed unused loop variable
+  - server.py:2766 - removed result = before subprocess.run
+  - validation.py:174 - removed unused machine_ids
+- Fixed W293 (whitespace in blank lines):
+  - cli_safety.py:86
+  - hooks/damage-control/bash-tool-damage-control.py:47
+- Fixed E402 (imports after code):
+  - runpod_handler.py - added noqa: E402 comments (intentional for debug prints)
+- Fixed N999 (invalid module names):
+  - Added per-file-ignores in pyproject.toml for hooks directory
+  - Hook files intentionally named with dashes to match Claude Code convention
 
 ## Issues Found
-(none yet)
+- onboarding.py had prompt_text (undefined) instead of prompt (defined)
+- server.py had machine (undefined) instead of ssh_target (defined) - real bug in resize handling

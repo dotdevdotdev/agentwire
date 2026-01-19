@@ -15,18 +15,18 @@ Exit codes:
   2 = Block edit (stderr fed back to Claude)
 """
 
-import json
-import sys
-import os
 import fnmatch
+import json
+import os
+import sys
 from pathlib import Path
-from typing import Dict, Any, Tuple
+from typing import Any, Dict, Tuple
 
 import yaml
 
 # Import audit logger (from same directory)
 try:
-    from audit_logger import log_blocked, log_allowed
+    from audit_logger import log_allowed, log_blocked
 except ImportError:
     # Fallback if audit_logger not available (no-op functions)
     def log_blocked(*args, **kwargs): pass

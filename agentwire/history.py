@@ -11,8 +11,8 @@ Supports both local and remote machines via SSH for distributed setups.
 import json
 from pathlib import Path
 
-from .utils.paths import agentwire_dir
 from .utils.file_io import load_json
+from .utils.paths import agentwire_dir
 from .utils.subprocess import run_command
 
 # Claude Code data directories

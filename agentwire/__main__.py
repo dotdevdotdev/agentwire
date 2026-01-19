@@ -14,12 +14,16 @@ import sys
 import time
 from pathlib import Path
 
-from . import __version__
-from .worktree import parse_session_name, ensure_worktree, remove_worktree
-from . import cli_safety
+from . import __version__, cli_safety, pane_manager
+from .project_config import (
+    ProjectConfig,
+    SessionType,
+    get_voice_from_config,
+    load_project_config,
+    save_project_config,
+)
 from .roles import RoleConfig, load_roles, merge_roles
-from .project_config import ProjectConfig, SessionType, save_project_config, get_voice_from_config, load_project_config
-from . import pane_manager
+from .worktree import ensure_worktree, parse_session_name, remove_worktree
 
 # Default config directory
 CONFIG_DIR = Path.home() / ".agentwire"
@@ -411,8 +415,8 @@ def _notify_portal_sessions_changed():
     This is fire-and-forget - failures are silently ignored since the portal
     may not be running.
     """
-    import urllib.request
     import ssl
+    import urllib.request
 
     try:
         # Create SSL context that doesn't verify (localhost self-signed cert)
@@ -443,7 +447,7 @@ def _start_portal_local(args) -> int:
 
     if tmux_session_exists(session_name):
         print(f"Portal already running in tmux session '{session_name}'")
-        print(f"Attaching... (Ctrl+B D to detach)")
+        print("Attaching... (Ctrl+B D to detach)")
         subprocess.run(["tmux", "attach-session", "-t", session_name])
         return 0
 
@@ -465,9 +469,9 @@ def _start_portal_local(args) -> int:
                 result = tm.create_tunnel(spec, ctx)
 
                 if result.status == "up":
-                    print(f"[ok]")
+                    print("[ok]")
                 else:
-                    print(f"[!!]")
+                    print("[!!]")
                     print(f"      Warning: Could not create tunnel: {result.error}")
                     print(f"      The portal may not be able to reach {spec.remote_machine}.")
 
@@ -503,7 +507,7 @@ def _start_portal_local(args) -> int:
         "tmux", "send-keys", "-t", session_name, server_cmd, "Enter",
     ])
 
-    print(f"Portal started. Attaching... (Ctrl+B D to detach)")
+    print("Portal started. Attaching... (Ctrl+B D to detach)")
     subprocess.run(["tmux", "attach-session", "-t", session_name])
     return 0
 
@@ -602,8 +606,8 @@ def _stop_portal_remote(ssh_target: str, machine_id: str) -> int:
 
 def _check_portal_health(url: str, timeout: int = 2) -> bool:
     """Check if portal is responding at URL."""
-    import urllib.request
     import ssl
+    import urllib.request
 
     try:
         ctx = ssl.create_default_context()
@@ -701,7 +705,7 @@ def cmd_portal_status(args) -> int:
             if _check_portal_health(url):
                 print(f"  Health: OK ({url})")
             else:
-                print(f"  Health: starting or not responding yet")
+                print("  Health: starting or not responding yet")
 
             return 0
         else:
@@ -716,19 +720,19 @@ def cmd_portal_status(args) -> int:
     print(f"Portal runs on {machine_id}")
 
     if _check_portal_health(url):
-        print(f"  Status: running")
+        print("  Status: running")
         print(f"  Health: OK ({url})")
         return 0
     else:
         # Try direct connection if tunnel might not exist
         direct_url = ctx.get_service_url("portal", use_tunnel=False)
         if direct_url != url and _check_portal_health(direct_url):
-            print(f"  Status: running (tunnel not working, direct OK)")
+            print("  Status: running (tunnel not working, direct OK)")
             print(f"  Health: OK ({direct_url})")
-            print(f"  Hint: Run 'agentwire tunnels check' to verify tunnels")
+            print("  Hint: Run 'agentwire tunnels check' to verify tunnels")
             return 0
 
-        print(f"  Status: not reachable")
+        print("  Status: not reachable")
         print(f"  Checked: {url}")
         if direct_url != url:
             print(f"  Also checked: {direct_url}")
@@ -762,7 +766,7 @@ def _start_tts_local(args) -> int:
 
     if tmux_session_exists(session_name):
         print(f"TTS server already running in tmux session '{session_name}'")
-        print(f"Attaching... (Ctrl+B D to detach)")
+        print("Attaching... (Ctrl+B D to detach)")
         subprocess.run(["tmux", "attach-session", "-t", session_name])
         return 0
 
@@ -807,7 +811,7 @@ def _start_tts_local(args) -> int:
         "tmux", "send-keys", "-t", session_name, tts_cmd, "Enter",
     ])
 
-    print(f"TTS server started. Attaching... (Ctrl+B D to detach)")
+    print("TTS server started. Attaching... (Ctrl+B D to detach)")
     subprocess.run(["tmux", "attach-session", "-t", session_name])
     return 0
 
@@ -1011,7 +1015,7 @@ def cmd_tts_status(args) -> int:
             url = ctx.get_service_url("tts", use_tunnel=False)
             healthy, voices = _check_tts_health(url)
             if healthy:
-                print(f"TTS server is running (external/tunnel)")
+                print("TTS server is running (external/tunnel)")
                 if voices:
                     print(f"  Voices: {', '.join(voices)}")
                 print(f"  URL: {url}")
@@ -1029,7 +1033,7 @@ def cmd_tts_status(args) -> int:
 
     healthy, voices = _check_tts_health(url)
     if healthy:
-        print(f"  Status: running")
+        print("  Status: running")
         if voices:
             print(f"  Voices: {', '.join(voices)}")
         print(f"  URL: {url}")
@@ -1040,14 +1044,14 @@ def cmd_tts_status(args) -> int:
         if direct_url != url:
             healthy, voices = _check_tts_health(direct_url)
             if healthy:
-                print(f"  Status: running (tunnel not working, direct OK)")
+                print("  Status: running (tunnel not working, direct OK)")
                 if voices:
                     print(f"  Voices: {', '.join(voices)}")
                 print(f"  URL: {direct_url}")
-                print(f"  Hint: Run 'agentwire tunnels check' to verify tunnels")
+                print("  Hint: Run 'agentwire tunnels check' to verify tunnels")
                 return 0
 
-        print(f"  Status: not reachable")
+        print("  Status: not reachable")
         print(f"  Checked: {url}")
         if direct_url != url:
             print(f"  Also checked: {direct_url}")
@@ -1065,8 +1069,6 @@ def cmd_stt_start(args) -> int:
         print(f"  Attach: tmux attach -t {session_name}")
         return 0
 
-    config = load_config()
-    stt_config = config.get("stt", {})
     port = args.port or 8100
     host = args.host or "0.0.0.0"
     model = args.model or os.environ.get("WHISPER_MODEL", "base")
@@ -1145,7 +1147,7 @@ def cmd_stt_status(args) -> int:
         req = urllib.request.Request(f"{stt_url}/health")
         with urllib.request.urlopen(req, timeout=3) as resp:
             data = json.loads(resp.read().decode())
-            print(f"STT server is running")
+            print("STT server is running")
             print(f"  Model: {data.get('model', 'unknown')}")
             print(f"  Device: {data.get('device', 'unknown')}")
             print(f"  URL: {stt_url}")
@@ -1161,7 +1163,7 @@ def cmd_stt_status(args) -> int:
         return 0
 
     print("STT server is not running.")
-    print(f"  Start: agentwire stt start")
+    print("  Start: agentwire stt start")
     return 1
 
 
@@ -1275,9 +1277,8 @@ def _check_portal_connections(session: str, portal_url: str) -> tuple[bool, str]
         - has_connections: True if there are connections (audio should go to portal)
         - actual_session_name: The session name that has connections (may include @machine)
     """
-    import urllib.request
     import ssl
-    import socket
+    import urllib.request
 
     # Try session variants: as-is, with hostname, with @local
     session_variants = [session]
@@ -1321,9 +1322,6 @@ def _local_say_runpod(
     Works with runpod backend - calls the API directly.
     Falls back to chatterbox HTTP if that's the backend.
     """
-    import urllib.request
-    import tempfile
-    import base64
 
     backend = tts_config.get("backend", "none")
 
@@ -1348,9 +1346,8 @@ def _local_say_runpod_api(
     tts_config: dict,
 ) -> int:
     """Generate TTS via RunPod serverless API and play locally."""
-    import urllib.request
     import tempfile
-    import base64
+    import urllib.request
 
     endpoint_id = tts_config.get("runpod_endpoint_id", "")
     api_key = tts_config.get("runpod_api_key", "")
@@ -1478,8 +1475,8 @@ def cmd_say(args) -> int:
 
 def _local_say(text: str, voice: str, exaggeration: float, cfg_weight: float, tts_url: str) -> int:
     """Generate TTS locally and play via system audio."""
-    import urllib.request
     import tempfile
+    import urllib.request
 
     try:
         # Request audio from chatterbox
@@ -1533,8 +1530,8 @@ def _local_say(text: str, voice: str, exaggeration: float, cfg_weight: float, tt
 
 def _remote_say(text: str, session: str, portal_url: str) -> int:
     """Send TTS to a session via the portal (for remote sessions)."""
-    import urllib.request
     import ssl
+    import urllib.request
 
     try:
         # Create SSL context that doesn't verify (self-signed certs)
@@ -3600,9 +3597,9 @@ def cmd_machine_remove(args) -> int:
             if result.returncode == 0:
                 print(f"  ✓ Killed autossh tunnel for {host}")
             else:
-                print(f"  - No tunnel running (or already stopped)")
+                print("  - No tunnel running (or already stopped)")
         else:
-            print(f"  - No tunnel running (or already stopped)")
+            print("  - No tunnel running (or already stopped)")
 
     # Step 3: Remove from machines.json
     print("Updating machines.json...")
@@ -3622,18 +3619,18 @@ def cmd_machine_remove(args) -> int:
     print(f"   Edit ~/.ssh/config and remove the 'Host {machine_id}' block")
     print()
     print("2. Remove from tunnel startup script (if using):")
-    print(f"   Edit ~/.local/bin/agentwire-tunnels")
+    print("   Edit ~/.local/bin/agentwire-tunnels")
     print(f"   Remove '{machine_id}' from the MACHINES list")
     print()
     print("3. Delete GitHub deploy keys:")
-    print(f"   gh repo deploy-key list --repo <user>/<repo>")
+    print("   gh repo deploy-key list --repo <user>/<repo>")
     print(f"   # Find keys titled '{machine_id}' and delete them:")
-    print(f"   gh repo deploy-key delete <key-id> --repo <user>/<repo>")
+    print("   gh repo deploy-key delete <key-id> --repo <user>/<repo>")
     print()
     print("4. Destroy remote machine:")
-    print(f"   Option A: Delete user only")
-    print(f"     ssh root@<ip> 'pkill -u agentwire; userdel -r agentwire'")
-    print(f"   Option B: Destroy the VM entirely via provider console")
+    print("   Option A: Delete user only")
+    print("     ssh root@<ip> 'pkill -u agentwire; userdel -r agentwire'")
+    print("   Option B: Destroy the VM entirely via provider console")
     print()
     print("5. Restart portal to pick up changes:")
     print("   agentwire portal stop && agentwire portal start")
@@ -3718,7 +3715,7 @@ def cmd_dev(args) -> int:
         "tmux", "send-keys", "-t", session_name, claude_cmd, "Enter",
     ])
 
-    print(f"Attaching... (Ctrl+B D to detach)")
+    print("Attaching... (Ctrl+B D to detach)")
     subprocess.run(["tmux", "attach-session", "-t", session_name])
     return 0
 
@@ -3794,9 +3791,8 @@ def cmd_listen_toggle(args) -> int:
 
 def cmd_network_status(args) -> int:
     """Show complete network health at a glance."""
-    import socket
     from .network import NetworkContext
-    from .tunnels import TunnelManager, test_ssh_connectivity, test_service_health
+    from .tunnels import TunnelManager, test_service_health, test_ssh_connectivity
 
     ctx = NetworkContext.from_config()
     tm = TunnelManager()
@@ -3943,7 +3939,7 @@ def cmd_network_status(args) -> int:
                 print()
                 print("     To fix:")
                 print(f"       Check SSH connectivity: ssh {issue['host']}")
-                print(f"       Verify machine is running")
+                print("       Verify machine is running")
                 print()
 
             elif issue["type"] == "service_down":
@@ -4007,7 +4003,7 @@ def cmd_safety_install(args) -> int:
 def cmd_doctor(args) -> int:
     """Auto-diagnose and fix common issues."""
     from .network import NetworkContext
-    from .tunnels import TunnelManager, test_ssh_connectivity, test_service_health
+    from .tunnels import TunnelManager, test_service_health, test_ssh_connectivity
     from .validation import validate_config
 
     dry_run = getattr(args, 'dry_run', False)
@@ -4077,7 +4073,7 @@ def cmd_doctor(args) -> int:
     if permission_hook.exists():
         print(f"  [ok] Permission hook: {permission_hook}")
     else:
-        print(f"  [..] Permission hook: not found (optional for prompted sessions)")
+        print("  [..] Permission hook: not found (optional for prompted sessions)")
         print("     Run: agentwire hooks install")
 
     # 5. Validate config
@@ -4165,7 +4161,7 @@ def cmd_doctor(args) -> int:
     for service_name in ["portal", "tts"]:
         # Skip TTS local check if using RunPod backend
         if service_name == "tts" and tts_backend == "runpod":
-            print(f"  [ok] Tts: using RunPod backend (no local service needed)")
+            print("  [ok] Tts: using RunPod backend (no local service needed)")
             continue
 
         service_config = getattr(ctx.config.services, service_name, None)
@@ -4245,7 +4241,7 @@ def cmd_doctor(args) -> int:
             if latency is not None:
                 print(f"    [ok] SSH connectivity ({latency}ms)")
             else:
-                print(f"    [!!] SSH connectivity failed")
+                print("    [!!] SSH connectivity failed")
                 print(f"         Fix: ssh {target}")
                 issues_found += 1
                 continue  # Can't check further if SSH fails
@@ -4262,12 +4258,12 @@ def cmd_doctor(args) -> int:
                     version = result.stdout.strip()
                     print(f"    [ok] agentwire installed ({version})")
                 else:
-                    print(f"    [!!] agentwire not installed")
+                    print("    [!!] agentwire not installed")
                     print(f"         Fix: ssh {target} 'pip install agentwire-dev'")
                     issues_found += 1
                     continue
             except (subprocess.TimeoutExpired, subprocess.CalledProcessError):
-                print(f"    [!!] agentwire not installed")
+                print("    [!!] agentwire not installed")
                 print(f"         Fix: ssh {target} 'pip install agentwire-dev'")
                 issues_found += 1
                 continue
@@ -4284,11 +4280,11 @@ def cmd_doctor(args) -> int:
                     portal_url = result.stdout.strip()
                     print(f"    [ok] portal_url set ({portal_url})")
                 else:
-                    print(f"    [!!] portal_url not set")
+                    print("    [!!] portal_url not set")
                     print(f"         Fix: ssh {target} 'echo \"https://localhost:8765\" > ~/.agentwire/portal_url'")
                     issues_found += 1
             except (subprocess.TimeoutExpired, subprocess.CalledProcessError):
-                print(f"    [!!] portal_url not set")
+                print("    [!!] portal_url not set")
                 print(f"         Fix: ssh {target} 'echo \"https://localhost:8765\" > ~/.agentwire/portal_url'")
                 issues_found += 1
 
@@ -4301,11 +4297,11 @@ def cmd_doctor(args) -> int:
                     timeout=7,
                 )
                 if result.returncode == 0:
-                    print(f"    [ok] say command available")
+                    print("    [ok] say command available")
                 else:
-                    print(f"    [..] say: not found (optional, use 'agentwire say' directly)")
+                    print("    [..] say: not found (optional, use 'agentwire say' directly)")
             except (subprocess.TimeoutExpired, subprocess.CalledProcessError):
-                print(f"    [..] say: not found (optional, use 'agentwire say' directly)")
+                print("    [..] say: not found (optional, use 'agentwire say' directly)")
 
     # Summary
     print()
@@ -4515,7 +4511,7 @@ def cmd_roles_list(args) -> int:
 
     if not roles_data:
         print("No roles found.")
-        print(f"Create roles in: ~/.agentwire/roles/")
+        print("Create roles in: ~/.agentwire/roles/")
         return 0
 
     # Print table
@@ -4528,8 +4524,8 @@ def cmd_roles_list(args) -> int:
         print(f"{r['name']:<20} {r['source']:<10} {desc:<40}")
 
     print()
-    print(f"User roles: ~/.agentwire/roles/")
-    print(f"Use 'agentwire roles show <name>' for details")
+    print("User roles: ~/.agentwire/roles/")
+    print("Use 'agentwire roles show <name>' for details")
     return 0
 
 
@@ -4581,7 +4577,7 @@ def cmd_roles_show(args) -> int:
             _output_json({"error": f"Role '{name}' not found"})
         else:
             print(f"Role '{name}' not found.", file=sys.stderr)
-            print(f"Available locations:")
+            print("Available locations:")
             print(f"  User: ~/.agentwire/roles/{name}.md")
             print(f"  Bundled: agentwire/roles/{name}.md")
         return 1
@@ -4589,7 +4585,7 @@ def cmd_roles_show(args) -> int:
     role = parse_role_file(role_path)
     if not role:
         if json_mode:
-            _output_json({"error": f"Failed to parse role file"})
+            _output_json({"error": "Failed to parse role file"})
         else:
             print(f"Failed to parse role file: {role_path}", file=sys.stderr)
         return 1
@@ -4876,15 +4872,15 @@ def cmd_hooks_status(args) -> int:
     if hook_installed:
         if hook_file.is_symlink():
             source = hook_file.resolve()
-            print(f"Permission hook: installed (symlink)")
+            print("Permission hook: installed (symlink)")
             print(f"  Location: {hook_file} -> {source}")
         else:
-            print(f"Permission hook: installed (copy)")
+            print("Permission hook: installed (copy)")
             print(f"  Location: {hook_file}")
         if hook_registered:
-            print(f"  Registered: yes (in ~/.claude/settings.json)")
+            print("  Registered: yes (in ~/.claude/settings.json)")
         else:
-            print(f"  Registered: NO - run 'agentwire hooks install --force' to fix")
+            print("  Registered: NO - run 'agentwire hooks install --force' to fix")
     else:
         print("Permission hook: not installed")
         print("  Run 'agentwire hooks install' to enable permission dialogs in portal")
@@ -4989,9 +4985,9 @@ def cmd_tunnels_status(args) -> int:
         if status.status == "up":
             print(f"  Status: + UP (PID {status.pid})")
         elif status.status == "down":
-            print(f"  Status: - DOWN")
+            print("  Status: - DOWN")
         else:
-            print(f"  Status: x ERROR")
+            print("  Status: x ERROR")
             if status.error:
                 print(f"  Error: {status.error}")
 
@@ -5085,38 +5081,38 @@ def _print_tunnel_help(spec, error: str) -> None:
     if "port" in error_lower and "in use" in error_lower:
         print("        1. Another process is using this port")
         print("        2. A previous tunnel wasn't cleaned up")
-        print(f"\n      To diagnose:")
+        print("\n      To diagnose:")
         print(f"        lsof -i :{spec.local_port}    # Find process using port")
-        print(f"        agentwire tunnels down        # Clean up stale tunnels")
+        print("        agentwire tunnels down        # Clean up stale tunnels")
 
     elif "permission denied" in error_lower:
         print("        1. SSH key not authorized on remote machine")
         print("        2. Wrong user configured")
-        print(f"\n      To fix:")
+        print("\n      To fix:")
         print(f"        ssh-copy-id {spec.remote_machine}")
 
     elif "host key" in error_lower:
         print("        1. Remote machine was reinstalled/changed")
         print("        2. Possible security issue (man-in-the-middle)")
-        print(f"\n      If expected, fix with:")
+        print("\n      If expected, fix with:")
         print(f"        ssh-keygen -R {spec.remote_machine}")
 
     elif "connection refused" in error_lower:
         print("        1. SSH server not running on remote")
         print("        2. Firewall blocking port 22")
-        print(f"\n      To diagnose:")
+        print("\n      To diagnose:")
         print(f"        ssh {spec.remote_machine} echo ok")
 
     elif "timed out" in error_lower or "no route" in error_lower:
         print("        1. Machine is powered off or unreachable")
         print("        2. Network connectivity issue")
-        print(f"\n      To diagnose:")
+        print("\n      To diagnose:")
         print(f"        ping {spec.remote_machine}")
 
     elif "not responding" in error_lower:
         print("        1. Remote service not started")
         print("        2. Remote service on wrong port")
-        print(f"\n      To diagnose:")
+        print("\n      To diagnose:")
         print(f"        ssh {spec.remote_machine} 'lsof -i :{spec.remote_port}'")
 
 

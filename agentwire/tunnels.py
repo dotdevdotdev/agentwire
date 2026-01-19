@@ -354,9 +354,9 @@ def test_service_health(url: str, timeout: int = 5) -> tuple[bool, Optional[str]
     Returns:
         Tuple of (is_healthy, error_message)
     """
-    import urllib.request
-    import urllib.error
     import ssl
+    import urllib.error
+    import urllib.request
 
     try:
         # Create SSL context that accepts self-signed certs

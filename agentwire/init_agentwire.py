@@ -114,12 +114,12 @@ def spawn_init_session() -> int:
             return 0
 
         if choice == "attach":
-            print(f"\nAttaching to session... (Ctrl+B D to detach)")
+            print("\nAttaching to session... (Ctrl+B D to detach)")
             subprocess.run(["tmux", "attach-session", "-t", session_name])
             return 0
 
         if choice == "restart":
-            print(f"Killing existing session...")
+            print("Killing existing session...")
             subprocess.run(["tmux", "kill-session", "-t", session_name])
 
     # Find project directory (where agentwire source lives)

@@ -22,15 +22,15 @@ print("=" * 60)
 print("AgentWire TTS RunPod Serverless Starting...")
 print("=" * 60)
 
-import base64
-import io
-from pathlib import Path
-from typing import Optional, List
+import base64  # noqa: E402
+import io  # noqa: E402
+from pathlib import Path  # noqa: E402
+from typing import List, Optional  # noqa: E402
 
 print("Importing dependencies...")
-import runpod
-import torch
-import torchaudio
+import runpod  # noqa: E402
+import torch  # noqa: E402
+import torchaudio  # noqa: E402
 
 print("Dependencies imported successfully!")
 

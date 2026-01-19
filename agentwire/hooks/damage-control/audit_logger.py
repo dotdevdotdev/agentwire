@@ -214,20 +214,20 @@ if __name__ == "__main__":
         command = sys.argv[3] if len(sys.argv) > 3 else "test command"
         reason = sys.argv[4] if len(sys.argv) > 4 else "test reason"
         log_blocked(tool, command, reason)
-        print(f"✓ Blocked entry logged")
+        print("✓ Blocked entry logged")
 
     elif cmd == "asked":
         tool = sys.argv[2] if len(sys.argv) > 2 else "Bash"
         command = sys.argv[3] if len(sys.argv) > 3 else "test command"
         reason = sys.argv[4] if len(sys.argv) > 4 else "test reason"
         log_asked(tool, command, reason)
-        print(f"✓ Asked entry logged")
+        print("✓ Asked entry logged")
 
     elif cmd == "allowed":
         tool = sys.argv[2] if len(sys.argv) > 2 else "Bash"
         command = sys.argv[3] if len(sys.argv) > 3 else "test command"
         log_allowed(tool, command)
-        print(f"✓ Allowed entry logged")
+        print("✓ Allowed entry logged")
 
     else:
         print(f"Unknown command: {cmd}")
