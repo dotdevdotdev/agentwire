@@ -18,29 +18,25 @@ Push-to-talk voice input from any device to tmux sessions running Claude Code or
 
 ## Features
 
-- **Desktop Control Center** - OS-like interface with draggable/resizable windows for managing sessions
-- **Session Windows** - Monitor mode (read-only) or Terminal mode (full interactive xterm.js) per session
-- **Voice Sessions** - One session per AI agent (tmux + your agent)
-- **Push-to-Talk** - Hold to speak, release to send transcription
-- **Multiline Input** - Auto-expanding textarea with Enter/Shift+Enter support
-- **TTS Playback** - Agent responses spoken back via browser audio
-- **Multi-Device** - Access from phone, tablet, laptop on your network
-- **Session Locking** - One person talks at a time per session
-- **Git Worktrees** - Multiple agents work same project in parallel (CLI + UI support)
-- **Remote Machines** - Orchestrate agents on remote servers
-- **Session Templates** - Pre-configured session setups with initial prompts, voice, and permission modes
-- **Safety Hooks** - Damage control system blocks dangerous operations (rm -rf, secret exposure, etc.)
-- **Permission Hooks** - Claude Code integration for permission dialogs in portal
+- **Desktop Control Center** - WinBox-powered window management with draggable/resizable session windows
+- **Session Windows** - Monitor mode (read-only output) or Terminal mode (full xterm.js) per session
+- **Push-to-Talk Voice** - Hold to speak, release to send transcription from any device
+- **TTS Playback** - Agent responses spoken back via browser audio with smart routing
+- **Multi-Device Access** - Control sessions from phone, tablet, or laptop on your network
+- **Git Worktrees** - Multiple agents work the same project in parallel on separate branches
+- **Remote Machines** - Orchestrate Claude Code sessions on remote servers via SSH
+- **Safety Hooks** - 300+ dangerous command patterns blocked (rm -rf, git push --force, secret exposure)
+- **Session Roles** - Orchestrator sessions coordinate voice, workers execute focused tasks
+- **Permission Hooks** - Claude Code integration for permission dialogs in the portal
 
-## Recent Updates
+## What's New
 
-**January 2026:**
+**v1.0 (January 2026):**
 
-- ✅ **Desktop Control Center** - Full frontend rewrite with WinBox-based window management
-- ✅ **Multiline Input** - Auto-expanding textarea with natural Enter/Shift+Enter behavior ([#12](https://github.com/dotdevdotdev/agentwire/pull/12))
-- ✅ **CLI Worktree Support** - Complete worktree operations: new, fork, recreate ([#11](https://github.com/dotdevdotdev/agentwire/pull/11))
-- ✅ **Damage Control Hooks** - PreToolUse security hooks for parallel agent protection ([#9](https://github.com/dotdevdotdev/agentwire/pull/9))
-- ✅ **Session Templates** - Pre-configured session setups with voice, permissions, initial prompts ([#8](https://github.com/dotdevdotdev/agentwire/pull/8))
+- Desktop Control Center with WinBox-based window management
+- Safety hooks with 300+ dangerous command patterns blocked
+- Git worktree support for parallel agent work
+- Session roles (orchestrator/worker) for coordinated workflows
 
 ## Quick Start
 
@@ -50,6 +46,7 @@ Before installing, ensure you have:
 
 | Requirement | Minimum | Check |
 |-------------|---------|-------|
+| **Claude Code** | Any recent | `claude --version` |
 | **Python** | 3.10+ | `python3 --version` |
 | **tmux** | Any recent | `tmux -V` |
 | **ffmpeg** | Any recent | `ffmpeg -version` |
@@ -162,17 +159,9 @@ agentwire voiceclone list       # List available voices
 # Session Management
 agentwire list                        # List all tmux sessions
 agentwire new -s <name> [-p path] [-f] # Create new Claude session
-agentwire new -s <name> --template <template> # Create session with template
 agentwire output -s <session> [-n 100] # Read session output
 agentwire kill -s <session>           # Kill session (clean shutdown)
 agentwire send -s <session> "prompt"  # Send prompt to session
-
-# Session Templates
-agentwire template list               # List available templates
-agentwire template show <name>        # Show template details
-agentwire template create <name>      # Create new template
-agentwire template delete <name>      # Delete a template
-agentwire template install-samples    # Install sample templates
 
 # Safety & Security
 agentwire safety check "command"      # Test if command would be blocked
@@ -231,41 +220,6 @@ Multiple agents working on the same project in parallel, each on their own branc
 ml@gpu-server -> SSH to gpu-server, session "ml"
 ```
 Agent running on a remote machine.
-
-## Session Templates
-
-Session templates provide pre-configured setups with initial prompts, voice settings, and permission modes.
-
-### Install Sample Templates
-
-```bash
-agentwire template install-samples
-```
-
-### Available Templates
-
-| Template | Description | Mode | Use Case |
-|----------|-------------|------|----------|
-| `bug-fix` | Systematic debugging assistant | bypass | Investigating and fixing bugs |
-| `code-review` | Code review and improvements | bypass | Reviewing code quality |
-| `feature-impl` | Feature implementation with planning | bypass | Building new features |
-| `voice-assistant` | Voice-only assistant, no code execution | restricted | Conversational assistance |
-
-### Usage
-
-```bash
-# Create session with template
-agentwire new -s myproject --template feature-impl
-
-# Create custom template
-agentwire template create my-template
-```
-
-Templates can include:
-- **Initial prompts** - Auto-sent when session starts
-- **Voice settings** - Default TTS voice for the session
-- **Permission modes** - bypass (fast) or restricted (voice-only)
-- **Variable expansion** - `{{project_name}}`, `{{branch}}`
 
 ## Safety & Security
 
@@ -378,9 +332,19 @@ cd agentwire
 # Install with uv
 uv venv && uv pip install -e .
 
-# Run
-agentwire portal start
+# Run in dev mode (picks up source changes)
+agentwire portal start --dev
+
+# After structural changes (pyproject.toml, new files)
+agentwire rebuild
 ```
+
+## Contributing
+
+Contributions welcome! Please open an issue first to discuss changes.
+
+- [Report bugs](https://github.com/dotdevdotdev/agentwire/issues)
+- [Request features](https://github.com/dotdevdotdev/agentwire/issues)
 
 ## License
 

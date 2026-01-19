@@ -8,26 +8,7 @@ AgentWire can manage Claude Code sessions on remote machines via SSH. This guide
 
 ## Adding a Machine
 
-### Interactive Wizard (Recommended)
-
-Use the `/machine-setup` skill for guided setup:
-
-```
-/machine-setup do-2 167.99.123.45
-```
-
-The wizard walks through:
-- SSH access configuration
-- Dependency installation (tmux, Node.js, Claude CLI)
-- GitHub SSH key setup
-- Claude Code authentication
-- Portal registration
-- Tunnel configuration
-- Voice command testing
-
-### Quick Add (Portal Only)
-
-Skip the wizard and add directly:
+### CLI (Recommended)
 
 ```bash
 agentwire machine add <id> --host <host> --user <user> --projects-dir <path>
@@ -53,23 +34,7 @@ Fill in:
 
 ## Removing a Machine
 
-### Interactive Wizard (Recommended)
-
-Use the `/machine-remove` skill for guided removal:
-
-```
-/machine-remove do-1
-```
-
-The wizard offers cleanup levels:
-
-| Level | Actions |
-|-------|---------|
-| **Disconnect only** | Remove from portal, kill tunnel |
-| **Full cleanup** | + Remove SSH config entry + revoke GitHub deploy keys |
-| **Complete destruction** | + Destroy the VM (DigitalOcean, etc.) |
-
-### Quick Remove (Portal-Side Only)
+### CLI
 
 ```bash
 agentwire machine remove <id>
@@ -79,7 +44,7 @@ This:
 - Removes from `machines.json`
 - Kills active SSH tunnel
 - Cleans entries from `rooms.json`
-- Prints reminders for manual cleanup
+- Prints reminders for manual cleanup (SSH config, deploy keys, etc.)
 
 ### Portal UI
 

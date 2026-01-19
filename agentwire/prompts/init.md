@@ -144,7 +144,7 @@ When everything is working:
 - Open https://localhost:8765 in your browser for the web portal
 - Create coding sessions with `agentwire new -s myproject`
 - Send voice commands from your phone/tablet
-- Use /sessions, /send, /output skills to orchestrate
+- Use `agentwire list`, `agentwire send`, `agentwire output` to orchestrate
 
 **Quick reference:**
 - `agentwire portal start/stop/status` - Manage web portal
