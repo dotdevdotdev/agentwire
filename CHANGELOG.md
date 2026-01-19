@@ -55,4 +55,4 @@ Initial public release of AgentWire.
 - Remote machines guide
 - Security documentation
 
-[0.1.0]: https://github.com/dotdevdotdev/agentwire/releases/tag/v0.1.0
+[0.1.0]: https://github.com/dotdevdotdev/agentwire-dev/releases/tag/v0.1.0

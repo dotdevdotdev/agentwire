@@ -250,7 +250,7 @@ def setup_remote_machine(
     print("Checking for externally-managed Python...")
     is_externally_managed = check_remote_externally_managed(host, user)
 
-    install_command = "pip3 install git+https://github.com/dotdevdotdev/agentwire.git"
+    install_command = "pip3 install agentwire-dev"
 
     if is_externally_managed:
         print_warning("Externally-managed Python environment detected (Ubuntu 24.04+)")
@@ -281,20 +281,20 @@ def setup_remote_machine(
                 print_success("Added activation to ~/.bashrc")
 
                 # Update install command to use venv
-                install_command = f"~/.agentwire-venv/bin/pip install git+https://github.com/dotdevdotdev/agentwire.git"
+                install_command = f"~/.agentwire-venv/bin/pip install agentwire-dev"
 
             except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
                 print_error(f"Failed to create venv: {e}")
                 print()
                 print("Alternative: use --break-system-packages (not recommended)")
                 if prompt_yes_no("Try with --break-system-packages?", default=False):
-                    install_command = "pip3 install --break-system-packages git+https://github.com/dotdevdotdev/agentwire.git"
+                    install_command = "pip3 install --break-system-packages agentwire-dev"
                 else:
                     return False
         else:
             print()
             if prompt_yes_no("Use --break-system-packages instead?", default=False):
-                install_command = "pip3 install --break-system-packages git+https://github.com/dotdevdotdev/agentwire.git"
+                install_command = "pip3 install --break-system-packages agentwire-dev"
             else:
                 print_info("Setup cancelled. You can install manually later.")
                 return False

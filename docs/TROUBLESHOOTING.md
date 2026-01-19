@@ -52,7 +52,7 @@ sudo apt install python3.12
 python3 -m venv ~/.agentwire-venv
 source ~/.agentwire-venv/bin/activate
 echo 'source ~/.agentwire-venv/bin/activate' >> ~/.bashrc
-pip install git+https://github.com/dotdevdotdev/agentwire.git
+pip install agentwire-dev
 ```
 
 ### "agentwire: command not found"
@@ -382,7 +382,7 @@ agentwire kill -s unused-session
 
 1. **Run diagnostics:** `agentwire doctor`
 2. **Check logs:** Portal logs are in the `agentwire-portal` tmux session
-3. **Report issues:** https://github.com/dotdevdotdev/agentwire/issues
+3. **Report issues:** https://github.com/dotdevdotdev/agentwire-dev/issues
 
 When reporting issues, include:
 

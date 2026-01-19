@@ -1055,7 +1055,7 @@ def cmd_stt_start(args) -> int:
 
     if not agentwire_dir:
         print("Error: Cannot find agentwire source directory with .venv", file=sys.stderr)
-        print("Run from ~/projects/agentwire or set up .venv there", file=sys.stderr)
+        print("Run from ~/projects/agentwire-dev or set up .venv there", file=sys.stderr)
         return 1
 
     # Build command using source venv
@@ -4242,12 +4242,12 @@ def cmd_doctor(args) -> int:
                     print(f"    [ok] agentwire installed ({version})")
                 else:
                     print(f"    [!!] agentwire not installed")
-                    print(f"         Fix: ssh {target} 'pip install git+https://github.com/dotdevdotdev/agentwire.git'")
+                    print(f"         Fix: ssh {target} 'pip install agentwire-dev'")
                     issues_found += 1
                     continue
             except (subprocess.TimeoutExpired, subprocess.CalledProcessError):
                 print(f"    [!!] agentwire not installed")
-                print(f"         Fix: ssh {target} 'pip install git+https://github.com/dotdevdotdev/agentwire.git'")
+                print(f"         Fix: ssh {target} 'pip install agentwire-dev'")
                 issues_found += 1
                 continue
 
@@ -4429,7 +4429,7 @@ def cmd_uninstall(args) -> int:
 
     print()
     print("Uninstall complete.")
-    print("To reinstall: cd ~/projects/agentwire && uv tool install .")
+    print("To reinstall: cd ~/projects/agentwire-dev && uv tool install .")
     return 0
 
 

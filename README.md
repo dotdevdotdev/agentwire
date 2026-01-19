@@ -7,9 +7,9 @@
 </p>
 
 <p align="center">
-  <a href="https://pypi.org/project/agentwire/"><img src="https://img.shields.io/pypi/v/agentwire?color=green" alt="PyPI"></a>
-  <a href="https://pypi.org/project/agentwire/"><img src="https://img.shields.io/pypi/pyversions/agentwire" alt="Python"></a>
-  <a href="https://github.com/dotdevdotdev/agentwire/blob/main/LICENSE"><img src="https://img.shields.io/github/license/dotdevdotdev/agentwire" alt="License"></a>
+  <a href="https://pypi.org/project/agentwire-dev/"><img src="https://img.shields.io/pypi/v/agentwire-dev?color=green" alt="PyPI"></a>
+  <a href="https://pypi.org/project/agentwire-dev/"><img src="https://img.shields.io/pypi/pyversions/agentwire-dev" alt="Python"></a>
+  <a href="https://github.com/dotdevdotdev/agentwire-dev/blob/main/LICENSE"><img src="https://img.shields.io/github/license/dotdevdotdev/agentwire-dev" alt="License"></a>
 </p>
 
 ---
@@ -67,7 +67,7 @@ pyenv install 3.12.0
 pyenv global 3.12.0
 
 # Install AgentWire
-pip install git+https://github.com/dotdevdotdev/agentwire.git
+pip install agentwire-dev
 ```
 
 **Ubuntu/Debian:**
@@ -84,7 +84,7 @@ source ~/.agentwire-venv/bin/activate
 echo 'source ~/.agentwire-venv/bin/activate' >> ~/.bashrc
 
 # Install AgentWire
-pip install git+https://github.com/dotdevdotdev/agentwire.git
+pip install agentwire-dev
 ```
 
 **WSL2:**
@@ -92,7 +92,7 @@ pip install git+https://github.com/dotdevdotdev/agentwire.git
 ```bash
 # Same as Ubuntu
 sudo apt install tmux ffmpeg python3-pip
-pip install git+https://github.com/dotdevdotdev/agentwire.git
+pip install agentwire-dev
 
 # Note: Audio support limited in WSL
 # Recommended: Use as remote worker with portal on Windows host
@@ -360,8 +360,8 @@ Phone/Tablet ──► AgentWire Portal ──► tmux session
 
 ```bash
 # Clone
-git clone https://github.com/dotdevdotdev/agentwire
-cd agentwire
+git clone https://github.com/dotdevdotdev/agentwire-dev
+cd agentwire-dev
 
 # Install with uv
 uv venv && uv pip install -e .
@@ -377,8 +377,8 @@ agentwire rebuild
 
 Contributions welcome! Please open an issue first to discuss changes.
 
-- [Report bugs](https://github.com/dotdevdotdev/agentwire/issues)
-- [Request features](https://github.com/dotdevdotdev/agentwire/issues)
+- [Report bugs](https://github.com/dotdevdotdev/agentwire-dev/issues)
+- [Request features](https://github.com/dotdevdotdev/agentwire-dev/issues)
 
 ## License
 

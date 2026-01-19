@@ -71,11 +71,11 @@ If you have the AgentWire source:
 
 ```bash
 # Copy patterns
-cp ~/projects/agentwire/.agentwire-templates/hooks/damage-control/patterns.yaml \
+cp ~/projects/agentwire-dev/.agentwire-templates/hooks/damage-control/patterns.yaml \
    ~/.agentwire/hooks/damage-control/
 
 # Copy hook scripts
-cp ~/projects/agentwire/.agentwire-templates/hooks/damage-control/*.py \
+cp ~/projects/agentwire-dev/.agentwire-templates/hooks/damage-control/*.py \
    ~/.agentwire/hooks/damage-control/
 ```
 

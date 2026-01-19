@@ -396,7 +396,7 @@ def create_worker_worktree(branch_name: str, cwd: str | None = None) -> str:
         raise RuntimeError("Not in a git repository")
 
     # Worktree location: sibling directory named {repo}-{branch}
-    # e.g., /projects/agentwire -> /projects/agentwire-feature-x
+    # e.g., /projects/agentwire-dev -> /projects/agentwire-dev-feature-x
     parent_dir = os.path.dirname(repo.root)
     worktree_path = os.path.join(parent_dir, f"{repo.name}-{branch_name}")
 

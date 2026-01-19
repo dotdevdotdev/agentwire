@@ -61,9 +61,9 @@ tts = [
 agentwire = "agentwire.__main__:main"
 
 [project.urls]
-Homepage = "https://github.com/dotdevdotdev/agentwire"
-Repository = "https://github.com/dotdevdotdev/agentwire"
-Documentation = "https://github.com/dotdevdotdev/agentwire#readme"
+Homepage = "https://github.com/dotdevdotdev/agentwire-dev"
+Repository = "https://github.com/dotdevdotdev/agentwire-dev"
+Documentation = "https://github.com/dotdevdotdev/agentwire-dev#readme"
 
 [build-system]
 requires = ["hatchling"]
