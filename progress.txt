@@ -1,0 +1,40 @@
+# Codebase Quality Review Progress
+
+## Current Phase: Not Started
+
+## Utilities Created
+- [ ] agentwire/utils/__init__.py
+- [ ] agentwire/utils/subprocess.py
+- [ ] agentwire/utils/file_io.py
+- [ ] agentwire/utils/paths.py
+- [ ] agentwire/utils/audio.py (if needed)
+
+## Files Migrated to Utilities
+- [ ] __main__.py (5,762 lines) - subprocess, file_io
+- [ ] server.py (3,050 lines) - subprocess, file_io
+- [ ] pane_manager.py (484 lines) - subprocess
+- [ ] onboarding.py (1,469 lines) - subprocess, file_io
+- [ ] listen.py (393 lines) - subprocess, paths
+- [ ] voiceclone.py (309 lines) - subprocess, paths
+- [ ] history.py (394 lines) - file_io
+- [ ] tunnels.py (382 lines) - subprocess
+
+## Docstrings Added
+- [ ] __main__.py
+- [ ] server.py
+- [ ] config.py (verify existing)
+- [ ] pane_manager.py
+- [ ] tunnels.py
+- [ ] agents/tmux.py
+
+## Documentation
+- [ ] CONTRIBUTING.md created
+- [ ] Module docstrings added to all files
+
+## Ruff Status
+- Last run: not yet
+- Errors: unknown
+- Fixed: none
+
+## Issues Found
+(none yet)
