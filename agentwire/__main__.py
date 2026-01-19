@@ -753,7 +753,7 @@ def _start_tts_local(args) -> int:
         # TTS deps not in current env, try to find project venv
         # Look for agentwire project in common locations
         possible_paths = [
-            Path.home() / "projects" / "agentwire",
+            Path.home() / "projects" / "agentwire-dev",
             Path("/usr/local/share/agentwire"),  # System-wide install location
             Path.cwd(),
         ]
@@ -1045,7 +1045,7 @@ def cmd_stt_start(args) -> int:
 
     # Find agentwire source directory (for running from source venv)
     source_dirs = [
-        Path.home() / "projects" / "agentwire",
+        Path.home() / "projects" / "agentwire-dev",
     ]
     agentwire_dir = None
     for d in source_dirs:
@@ -3671,7 +3671,7 @@ def cmd_machine_list(args) -> int:
 def cmd_dev(args) -> int:
     """Start or attach to the AgentWire dev/agentwire session."""
     session_name = "agentwire"
-    project_dir = Path.home() / "projects" / "agentwire"
+    project_dir = Path.home() / "projects" / "agentwire-dev"
 
     if tmux_session_exists(session_name):
         print(f"Dev session exists. Attaching to '{session_name}'...")
