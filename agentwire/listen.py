@@ -9,22 +9,13 @@ import time
 from pathlib import Path
 
 from agentwire.agents.tmux import tmux_session_exists
-
-CONFIG_DIR = Path.home() / ".agentwire"
+from agentwire.utils import config_path, load_yaml
 
 
 def _load_executables_config() -> dict:
     """Load executables config from ~/.agentwire/config.yaml."""
-    config_path = CONFIG_DIR / "config.yaml"
-    if config_path.exists():
-        try:
-            import yaml
-            with open(config_path) as f:
-                config = yaml.safe_load(f) or {}
-                return config.get("executables", {})
-        except Exception:
-            pass
-    return {}
+    config = load_yaml(config_path(), default={})
+    return config.get("executables", {})
 
 
 def _find_executable(name: str, fallback_paths: list[str] | None = None) -> str:
@@ -104,15 +95,7 @@ def beep(sound: str) -> None:
 
 def load_config() -> dict:
     """Load agentwire config."""
-    config_path = CONFIG_DIR / "config.yaml"
-    if config_path.exists():
-        try:
-            import yaml
-            with open(config_path) as f:
-                return yaml.safe_load(f) or {}
-        except Exception:
-            pass
-    return {}
+    return load_yaml(config_path(), default={})
 
 
 def get_audio_device() -> str:

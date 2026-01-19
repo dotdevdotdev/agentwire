@@ -9,7 +9,8 @@ from pathlib import Path
 
 import requests
 
-CONFIG_DIR = Path.home() / ".agentwire"
+from agentwire.utils import config_path, load_yaml
+
 LOCK_FILE = Path("/tmp/agentwire-voiceclone.lock")
 PID_FILE = Path("/tmp/agentwire-voiceclone.pid")
 AUDIO_FILE = Path("/tmp/agentwire-voiceclone.wav")
@@ -47,15 +48,7 @@ def beep(sound: str) -> None:
 
 def load_config() -> dict:
     """Load agentwire config."""
-    config_path = CONFIG_DIR / "config.yaml"
-    if config_path.exists():
-        try:
-            import yaml
-            with open(config_path) as f:
-                return yaml.safe_load(f) or {}
-        except Exception:
-            pass
-    return {}
+    return load_yaml(config_path(), default={})
 
 
 def get_tts_url() -> str | None:
