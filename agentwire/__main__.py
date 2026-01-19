@@ -4382,8 +4382,8 @@ def cmd_rebuild(args) -> int:
     # Find the project root (where pyproject.toml is)
     project_root = Path(__file__).parent.parent
     if not (project_root / "pyproject.toml").exists():
-        # Fallback: assume we're in ~/projects/agentwire
-        project_root = Path.home() / "projects" / "agentwire"
+        # Fallback: assume we're in ~/projects/agentwire-dev
+        project_root = Path.home() / "projects" / "agentwire-dev"
 
     print(f"Installing from {project_root}...")
     result = subprocess.run(
