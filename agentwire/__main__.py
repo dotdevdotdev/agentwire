@@ -243,6 +243,16 @@ def load_config() -> dict:
     return {}
 
 
+def get_source_dir() -> Path:
+    """Get the agentwire source directory from config.
+
+    Reads dev.source_dir from config.yaml, defaults to ~/projects/agentwire-dev.
+    """
+    config = load_config()
+    source_dir = config.get("dev", {}).get("source_dir", "~/projects/agentwire-dev")
+    return Path(source_dir).expanduser()
+
+
 # === Wave 2: Remote Infrastructure Helpers ===
 
 
@@ -753,7 +763,7 @@ def _start_tts_local(args) -> int:
         # TTS deps not in current env, try to find project venv
         # Look for agentwire project in common locations
         possible_paths = [
-            Path.home() / "projects" / "agentwire-dev",
+            get_source_dir(),
             Path("/usr/local/share/agentwire"),  # System-wide install location
             Path.cwd(),
         ]
@@ -1044,19 +1054,12 @@ def cmd_stt_start(args) -> int:
     model = args.model or os.environ.get("WHISPER_MODEL", "base")
 
     # Find agentwire source directory (for running from source venv)
-    source_dirs = [
-        Path.home() / "projects" / "agentwire-dev",
-    ]
-    agentwire_dir = None
-    for d in source_dirs:
-        if (d / ".venv" / "bin" / "python").exists():
-            agentwire_dir = d
-            break
-
-    if not agentwire_dir:
+    source_dir = get_source_dir()
+    if not (source_dir / ".venv" / "bin" / "python").exists():
         print("Error: Cannot find agentwire source directory with .venv", file=sys.stderr)
-        print("Run from ~/projects/agentwire-dev or set up .venv there", file=sys.stderr)
+        print(f"Configure dev.source_dir in ~/.agentwire/config.yaml (current: {source_dir})", file=sys.stderr)
         return 1
+    agentwire_dir = source_dir
 
     # Build command using source venv
     python_path = agentwire_dir / ".venv" / "bin" / "python"
@@ -3671,7 +3674,7 @@ def cmd_machine_list(args) -> int:
 def cmd_dev(args) -> int:
     """Start or attach to the AgentWire dev/agentwire session."""
     session_name = "agentwire"
-    project_dir = Path.home() / "projects" / "agentwire-dev"
+    project_dir = get_source_dir()
 
     if tmux_session_exists(session_name):
         print(f"Dev session exists. Attaching to '{session_name}'...")
@@ -4382,8 +4385,8 @@ def cmd_rebuild(args) -> int:
     # Find the project root (where pyproject.toml is)
     project_root = Path(__file__).parent.parent
     if not (project_root / "pyproject.toml").exists():
-        # Fallback: assume we're in ~/projects/agentwire-dev
-        project_root = Path.home() / "projects" / "agentwire-dev"
+        # Fallback to configured source directory
+        project_root = get_source_dir()
 
     print(f"Installing from {project_root}...")
     result = subprocess.run(
@@ -4429,7 +4432,7 @@ def cmd_uninstall(args) -> int:
 
     print()
     print("Uninstall complete.")
-    print("To reinstall: cd ~/projects/agentwire-dev && uv tool install .")
+    print(f"To reinstall: cd {get_source_dir()} && uv tool install .")
     return 0
 
 

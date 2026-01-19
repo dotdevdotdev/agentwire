@@ -161,6 +161,9 @@ stt:
 agent:
   command: "claude --dangerously-skip-permissions"
 
+dev:
+  source_dir: "~/projects/agentwire-dev"  # agentwire source for TTS/STT venv
+
 services:  # Where services run (for multi-machine setups)
   portal:
     machine: null  # null = local
