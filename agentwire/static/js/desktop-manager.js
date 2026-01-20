@@ -201,6 +201,14 @@ class DesktopManager {
                 this.emit('session_closed', { session: msg.session });
                 break;
 
+            case 'pane_died':
+                this.emit('pane_died', { session: msg.session, pane_id: msg.pane_id });
+                break;
+
+            case 'pane_created':
+                this.emit('pane_created', { session: msg.session, pane_id: msg.pane_id });
+                break;
+
             case 'tts_start':
                 console.log('[DesktopManager] TTS starting for session:', msg.session);
                 this.emit('tts_start', { session: msg.session, text: msg.text });

@@ -42,30 +42,30 @@ client JS updates UI (closes window, refreshes list)
 
 ### Wave 1: Portal Notification Endpoint (Human: None)
 
-- [ ] Add `/api/notify` endpoint to portal server
-- [ ] Endpoint accepts `{event: "session-closed", session: "name"}` etc.
-- [ ] Portal broadcasts event to all connected WebSocket clients
-- [ ] Client JS handlers for each event type
+- [x] Add `/api/notify` endpoint to portal server
+- [x] Endpoint accepts `{event: "session-closed", session: "name"}` etc.
+- [x] Portal broadcasts event to all connected WebSocket clients
+- [ ] Client JS handlers for each event type *(moved to Wave 4)*
 
 ### Wave 2: CLI Notify Command
 
-- [ ] Add `agentwire notify <event> --session <name>` command
-- [ ] Calls portal `/api/notify` endpoint
-- [ ] Works locally and remotely (uses portal URL from config)
+- [x] Add `agentwire notify <event> --session <name>` command
+- [x] Calls portal `/api/notify` endpoint
+- [x] Works locally and remotely (uses portal URL from config)
 
 ### Wave 3: Hook Installation
 
-- [ ] Add hook setup to `agentwire new` (session-created, session-closed)
-- [ ] Add hook setup to `agentwire spawn` (pane-died for workers)
-- [ ] Hooks call `agentwire notify` via `run-shell`
-- [ ] Handle hook persistence (server vs session scope)
+- [x] Add hook setup to `agentwire new` (session-closed)
+- [x] Add hook setup to `agentwire spawn` (after-kill-pane for workers)
+- [x] Hooks call `agentwire notify` via `run-shell -b`
+- [x] Session-scoped hooks (cleaned up when session closes)
 
 ### Wave 4: Client UI Updates
 
-- [ ] `session-closed` → close session window, remove from list
-- [ ] `pane-died` → update pane count, close worker window if applicable
-- [ ] `session-created` → add to sessions list (if not already there)
-- [ ] Debounce rapid events
+- [x] `session_closed` → close session window, sessions list auto-updates
+- [x] `pane_died` → sessions list auto-updates with pane counts
+- [x] `session_created` → sessions list auto-updates
+- [x] Debounce handled by server sending single sessions_update
 
 ### Wave 5: Cleanup & Edge Cases
 
