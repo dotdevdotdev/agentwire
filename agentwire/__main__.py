@@ -1226,59 +1226,107 @@ def _get_agentwire_path() -> str:
 def _install_global_tmux_hooks() -> None:
     """Install global tmux hooks for portal sync.
 
-    Installs session-created hook globally so the portal is notified
-    when ANY tmux session is created (not just via agentwire new).
+    Installs hooks globally so the portal is notified of:
+    - session-created: New session created
+    - session-closed: Session destroyed
+    - client-attached: Client attached to session (presence tracking)
+    - client-detached: Client detached from session
+    - after-split-window: New pane created
+    - session-renamed: Session name changed
+    - alert-activity: Activity in monitored window (requires monitor-activity on)
     """
     agentwire_path = _get_agentwire_path()
 
-    # Check if hook already installed
+    # Check existing hooks
     result = subprocess.run(
         ["tmux", "show-hooks", "-g"],
         capture_output=True,
         text=True,
     )
+    existing = result.stdout
 
-    # Install session-created hook if not present
-    if "session-created" not in result.stdout or agentwire_path not in result.stdout:
-        hook_cmd = f'run-shell -b "{agentwire_path} notify session_created -s #{{session_name}}"'
-        subprocess.run(
-            ["tmux", "set-hook", "-g", "session-created", hook_cmd],
-            capture_output=True,
-        )
+    # Helper to install hook if not present
+    def install_hook(hook_name: str, hook_cmd: str) -> None:
+        if hook_name not in existing or agentwire_path not in existing:
+            subprocess.run(
+                ["tmux", "set-hook", "-g", hook_name, hook_cmd],
+                capture_output=True,
+            )
 
-    # Install session-closed hook globally as fallback for sessions without per-session hook
-    if "session-closed" not in result.stdout or agentwire_path not in result.stdout:
-        hook_cmd = f'run-shell -b "{agentwire_path} notify session_closed -s #{{hook_session_name}}"'
-        subprocess.run(
-            ["tmux", "set-hook", "-g", "session-closed", hook_cmd],
-            capture_output=True,
-        )
+    # Session lifecycle hooks
+    install_hook(
+        "session-created",
+        f'run-shell -b "{agentwire_path} notify session_created -s #{{session_name}}"'
+    )
+    install_hook(
+        "session-closed",
+        f'run-shell -b "{agentwire_path} notify session_closed -s #{{hook_session_name}}"'
+    )
+
+    # Presence tracking hooks
+    install_hook(
+        "client-attached",
+        f'run-shell -b "{agentwire_path} notify client_attached -s #{{session_name}}"'
+    )
+    install_hook(
+        "client-detached",
+        f'run-shell -b "{agentwire_path} notify client_detached -s #{{session_name}}"'
+    )
+
+    # Pane creation hook (global - catches all pane creations)
+    install_hook(
+        "after-split-window",
+        f'run-shell -b "{agentwire_path} notify pane_created -s #{{session_name}} --pane-id #{{pane_id}}"'
+    )
+
+    # Session rename hook
+    # Note: #{hook_session_name} has new name, we pass old name via #{@_old_session_name} if set
+    install_hook(
+        "session-renamed",
+        f'run-shell -b "{agentwire_path} notify session_renamed -s #{{session_name}}"'
+    )
+
+    # Activity notification hook (fires when monitor-activity is enabled on a window)
+    install_hook(
+        "alert-activity",
+        f'run-shell -b "{agentwire_path} notify window_activity -s #{{session_name}}"'
+    )
 
 
 def _install_pane_hooks(session_name: str, pane_index: int) -> None:
     """Install tmux hooks to notify portal of pane state changes.
 
-    Installs after-kill-pane hook that calls agentwire notify when a pane is killed.
-    Uses run-shell -b for background execution to not block tmux.
+    Installs:
+    - after-kill-pane: Fires when a pane is killed
+    - pane-focus-in: Fires when pane focus changes (for multi-pane sessions)
 
-    Note: We use after-kill-pane which fires after `tmux kill-pane` command.
-    This is more reliable than pane-exited for our use case.
+    Uses run-shell -b for background execution to not block tmux.
     """
     agentwire_path = _get_agentwire_path()
 
-    # Install after-kill-pane hook on the session
-    # Uses #{hook_pane} to get the pane ID that was killed
-    hook_cmd = f'run-shell -b "{agentwire_path} notify pane_died -s {session_name} --pane-id #{{hook_pane}}"'
-
-    # First check if we already have an after-kill-pane hook
+    # Check existing hooks
     result = subprocess.run(
         ["tmux", "show-hooks", "-t", session_name],
         capture_output=True,
         text=True,
     )
-    if "after-kill-pane" not in result.stdout:
+    existing = result.stdout
+
+    # Install after-kill-pane hook on the session
+    # Uses #{hook_pane} to get the pane ID that was killed
+    if "after-kill-pane" not in existing:
+        hook_cmd = f'run-shell -b "{agentwire_path} notify pane_died -s {session_name} --pane-id #{{hook_pane}}"'
         subprocess.run(
             ["tmux", "set-hook", "-t", session_name, "after-kill-pane", hook_cmd],
+            capture_output=True,
+        )
+
+    # Install pane-focus-in hook for active pane tracking
+    # This fires when a pane gains focus within the session
+    if "pane-focus-in" not in existing:
+        hook_cmd = f'run-shell -b "{agentwire_path} notify pane_focused -s {session_name} --pane-id #{{pane_id}}"'
+        subprocess.run(
+            ["tmux", "set-hook", "-t", session_name, "pane-focus-in", hook_cmd],
             capture_output=True,
         )
 
@@ -1649,14 +1697,17 @@ def _remote_say(text: str, session: str, portal_url: str) -> int:
 def cmd_notify(args) -> int:
     """Send a notification to the portal about session/pane state changes.
 
-    Called by tmux hooks to notify the portal when sessions are created/closed
-    or panes are created/killed. The portal broadcasts these events to connected
-    dashboard clients for real-time UI updates.
+    Called by tmux hooks to notify the portal when sessions are created/closed,
+    panes are created/killed, clients attach/detach, sessions are renamed, etc.
+    The portal broadcasts these events to connected dashboard clients for real-time
+    UI updates.
     """
     event = args.event
     session = getattr(args, 'session', None)
     pane = getattr(args, 'pane', None)
     pane_id = getattr(args, 'pane_id', None)
+    old_name = getattr(args, 'old_name', None)
+    new_name = getattr(args, 'new_name', None)
     json_mode = getattr(args, 'json', False)
 
     if not event:
@@ -1674,6 +1725,10 @@ def cmd_notify(args) -> int:
         payload["pane"] = pane
     if pane_id is not None:
         payload["pane_id"] = pane_id
+    if old_name is not None:
+        payload["old_name"] = old_name
+    if new_name is not None:
+        payload["new_name"] = new_name
 
     try:
         # Use urllib to avoid requests dependency in core CLI
@@ -5515,10 +5570,16 @@ def main() -> int:
 
     # === notify command ===
     notify_parser = subparsers.add_parser("notify", help="Notify portal of session/pane state changes")
-    notify_parser.add_argument("event", help="Event type (session_closed, session_created, pane_died, pane_created)")
+    notify_parser.add_argument(
+        "event",
+        help="Event type: session_closed, session_created, pane_died, pane_created, "
+             "client_attached, client_detached, session_renamed, pane_focused, window_activity"
+    )
     notify_parser.add_argument("-s", "--session", help="Session name")
     notify_parser.add_argument("--pane", type=int, help="Pane index (for pane events)")
     notify_parser.add_argument("--pane-id", help="Pane ID from tmux (for pane events via hooks)")
+    notify_parser.add_argument("--old-name", help="Old session name (for session_renamed)")
+    notify_parser.add_argument("--new-name", help="New session name (for session_renamed)")
     notify_parser.add_argument("--json", action="store_true", help="Output as JSON")
     notify_parser.set_defaults(func=cmd_notify)
 

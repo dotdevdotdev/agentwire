@@ -209,6 +209,38 @@ class DesktopManager {
                 this.emit('pane_created', { session: msg.session, pane_id: msg.pane_id });
                 break;
 
+            case 'client_attached':
+                this.emit('client_attached', {
+                    session: msg.session,
+                    client_count: msg.client_count
+                });
+                break;
+
+            case 'client_detached':
+                this.emit('client_detached', {
+                    session: msg.session,
+                    client_count: msg.client_count
+                });
+                break;
+
+            case 'session_renamed':
+                this.emit('session_renamed', {
+                    old_name: msg.old_name,
+                    new_name: msg.new_name
+                });
+                break;
+
+            case 'pane_focused':
+                this.emit('pane_focused', {
+                    session: msg.session,
+                    pane_id: msg.pane_id
+                });
+                break;
+
+            case 'window_activity':
+                this.emit('window_activity', { session: msg.session });
+                break;
+
             case 'tts_start':
                 console.log('[DesktopManager] TTS starting for session:', msg.session);
                 this.emit('tts_start', { session: msg.session, text: msg.text });
