@@ -2650,10 +2650,23 @@ def cmd_spawn(args) -> int:
     parallel commits without conflicts.
     """
     json_mode = getattr(args, 'json', False)
-    cwd = getattr(args, 'cwd', None) or os.getcwd()
+    cwd = getattr(args, 'cwd', None)
     roles_arg = getattr(args, 'roles', 'worker')
     session = getattr(args, 'session', None)
     branch = getattr(args, 'branch', None)
+
+    # If cwd not specified, use the target session's pane 0 directory
+    if not cwd:
+        target_session = session or pane_manager.get_current_session()
+        if target_session:
+            result = subprocess.run(
+                ["tmux", "display", "-t", f"{target_session}:0.0", "-p", "#{pane_current_path}"],
+                capture_output=True, text=True
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                cwd = result.stdout.strip()
+        if not cwd:
+            cwd = os.getcwd()
 
     worktree_path = None
 
