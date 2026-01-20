@@ -51,6 +51,8 @@ async function init() {
     desktop.on('session_closed', handleSessionClosed);
     desktop.on('session_created', handleSessionCreated);
     desktop.on('pane_died', handlePaneDied);
+    desktop.on('session_renamed', handleSessionRenamed);
+    desktop.on('window_activity', handleWindowActivity);
 
     await desktop.connect();
     updateConnectionStatus(true);
@@ -94,6 +96,49 @@ function handleSessionCreated({ session }) {
 function handlePaneDied({ session, pane_id }) {
     console.log('[Desktop] Pane died:', session, pane_id);
     // Sessions list (with pane counts) will be updated by sessions_update event
+}
+
+/**
+ * Handle session_renamed event from tmux hook.
+ * Updates open windows and taskbar buttons with new session name.
+ */
+function handleSessionRenamed({ old_name, new_name }) {
+    console.log('[Desktop] Session renamed:', old_name, '->', new_name);
+
+    // Update session window if open
+    if (old_name && sessionWindows.has(old_name)) {
+        const sw = sessionWindows.get(old_name);
+        sessionWindows.delete(old_name);
+        sessionWindows.set(new_name, sw);
+
+        // Update taskbar button
+        removeTaskbarButton(old_name);
+        addTaskbarButton(new_name, sw);
+    }
+
+    // Sessions list will be updated by sessions_update event
+}
+
+/**
+ * Handle window_activity event from tmux hook.
+ * Shows desktop notification for background session activity.
+ */
+function handleWindowActivity({ session }) {
+    console.log('[Desktop] Window activity:', session);
+
+    // Only notify if session window is not focused
+    if (desktop.getActiveWindow() !== session) {
+        // Request notification permission if needed
+        if (Notification.permission === 'granted') {
+            new Notification(`Activity in ${session}`, {
+                body: 'Session has new output',
+                icon: '/static/img/icon-192.png',
+                tag: `activity-${session}`,  // Prevent duplicate notifications
+            });
+        } else if (Notification.permission !== 'denied') {
+            Notification.requestPermission();
+        }
+    }
 }
 
 // Clean up on page unload

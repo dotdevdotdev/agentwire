@@ -60,7 +60,9 @@ async function fetchSessions() {
         type: s.type || 'bare',
         path: s.path || null,
         // Chat button shown for Claude session types (not bare)
-        hasVoice: s.type && s.type.startsWith('claude-')
+        hasVoice: s.type && s.type.startsWith('claude-'),
+        // Attached client count for presence indicator
+        clientCount: s.client_count || 0
     }));
 }
 
@@ -74,6 +76,14 @@ function renderSessionItem(session) {
     const statusDot = session.active ? '●' : '○';
     const chatButton = session.hasVoice
         ? '<button class="btn btn-small" data-action="chat">Chat</button>'
+        : '';
+
+    // Presence indicator - user icon with count badge
+    const presenceIndicator = session.clientCount > 0
+        ? `<span class="presence-indicator" title="${session.clientCount} client${session.clientCount !== 1 ? 's' : ''} attached">
+             <span class="presence-icon">👤</span>
+             <span class="presence-count">${session.clientCount}</span>
+           </span>`
         : '';
 
     // Format path for display (show last 2 segments or full if short)
@@ -96,6 +106,7 @@ function renderSessionItem(session) {
             <div class="session-info" data-session="${session.name}">
                 <span class="session-status ${statusClass}">${statusDot}</span>
                 <span class="session-name">${session.name}</span>
+                ${presenceIndicator}
             </div>
             <div class="list-item-actions">
                 <button class="btn btn-small" data-action="monitor">Monitor</button>

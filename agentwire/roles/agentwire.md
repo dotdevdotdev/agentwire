@@ -58,85 +58,65 @@ Spawn workers for:
 | Parallel independent tasks | Multiple workers = speed |
 | Long-running operations | Stay available for conversation |
 
-## Communicating with Workers
+## Spawning Workers
+
+Workers spawn as **panes in your session** - you can see them working alongside you.
+
+**Layout:** You (orchestrator) are pane 0 at the top (60% height). Workers spawn below as panes 1, 2, 3... sharing the remaining 40%.
+
+### Basic Pattern
+
+```bash
+# Spawn a worker (creates pane 1)
+agentwire spawn
+
+# Send it a task
+agentwire send --pane 1 "Research Lambda Labs GPU pricing and write findings to docs/lambda-labs.md"
+
+# Spawn another worker (creates pane 2)
+agentwire spawn
+
+# Send it a different task
+agentwire send --pane 2 "Research Vast.ai pricing and write findings to docs/vast-ai.md"
+
+# Monitor progress
+agentwire output --pane 1
+agentwire output --pane 2
+
+# Kill workers when done
+agentwire kill --pane 1
+agentwire kill --pane 2
+```
+
+### Communicating with Workers
 
 Workers are Claude agents. Talk to them naturally - describe goals, not commands.
 
-### Good: Describe the Goal
-
-```
-agentwire send -s project/auth "Add JWT authentication to the API.
+**Good: Describe the Goal**
+```bash
+agentwire send --pane 1 "Add JWT authentication to the API.
 We need login/logout endpoints and a verify middleware.
 Check the existing user model in models/user.py for context."
 ```
 
-### Bad: Script Commands
-
-```
-agentwire send -s project/task "Run these commands in order:
+**Bad: Script Commands**
+```bash
+agentwire send --pane 1 "Run these commands in order:
 1. Open src/auth.py
-2. Add import jwt at line 3
-3. Create function login() at line 45
-..."
+2. Add import jwt at line 3..."
 ```
 
 Workers know how to code. Tell them **what** you need, not **how** to type it.
 
-### Good: Set Context and Constraints
+### When Workers Need Git Access
 
-```
-agentwire send -s project/refactor "Consolidate the three cache
-implementations into a single utility. Keep the LRU eviction
-strategy from cache_v2.py - it's the most battle-tested."
-```
-
-### Bad: Over-Specify Implementation
-
-```
-agentwire send -s project/refactor "Create file src/utils/cache.py.
-Copy lines 10-45 from cache_v2.py. Then modify the constructor to..."
-```
-
-## Spawning Workers
-
-Workers spawn as panes in your session - you can see them working alongside you.
-
-### Critical: Clean Directory Rule
-
-**Never spawn workers into a dirty working directory.** Before spawning:
-
-1. Check `git status` for uncommitted changes
-2. If dirty, choose one:
-   - **Commit first** (preferred if your work is complete)
-   - **Use `--branch`** to give worker an isolated worktree
-   - **Stash temporarily** if you need to pause your work
-
-```bash
-# WRONG: Spawning into dirty directory
-# You have uncommitted changes, worker will conflict with them
-agentwire spawn --roles worker  # Bad - shares your dirty directory
-
-# RIGHT: Commit first, then spawn
-git add -A && git commit -m "WIP: my changes"
-agentwire spawn --roles worker  # Clean directory
-
-# RIGHT: Give worker isolated worktree (safest for parallel git work)
-agentwire spawn --branch feature-x --roles worker  # Own directory + branch
-```
-
-**Why this matters:** Workers sharing a dirty directory can't commit cleanly. They'll either conflict with your changes or have to create awkward workaround branches. Worktrees eliminate this entirely.
-
-### Spawning Workers (ALWAYS Use Worktrees)
-
-**If workers will make commits, ALWAYS use `--branch` for isolated worktrees.**
-
-This is not optional. Workers in the same directory will conflict on git operations.
+**If workers will make commits, use `--branch` for isolated worktrees.**
 
 ```bash
 # Each worker gets its own branch/worktree - completely isolated
-agentwire spawn --branch security-review --roles worker
-agentwire spawn --branch docs-review --roles worker
-agentwire spawn --branch code-quality --roles worker
+agentwire spawn --branch security-review
+agentwire spawn --branch docs-review
+agentwire spawn --branch code-quality
 
 # Send tasks - each worker commits to their own branch
 agentwire send --pane 1 "Review security, fix issues, commit"
@@ -146,24 +126,10 @@ agentwire send --pane 3 "Review code quality, fix issues, commit"
 # When done, merge their branches or create PRs
 ```
 
-**Benefits of worktrees:**
-- Each worker has isolated directory - no conflicts
-- Workers can commit independently without coordination
-- Your main directory stays clean for your own work
-- Easy merge paths: PR, local merge, or cherry-pick
-- Even if you forget to commit your changes, workers are unaffected
-
-**Exception - Read-only workers:** If workers only need to search/read (no commits), you can skip worktrees:
+**Read-only workers** (research, exploration) don't need worktrees:
 ```bash
-# Read-only exploration - no git conflicts possible
-agentwire spawn --roles worker
+agentwire spawn
 agentwire send --pane 1 "Search for all uses of the cache API and report findings"
-```
-
-**Alternative (separate sessions)**: For longer-running or isolated work:
-```bash
-agentwire new -s project/auth --roles worker
-agentwire send -s project/auth "Long-running refactor..."
 ```
 
 ## Monitoring and Reporting

@@ -128,6 +128,7 @@ class AgentWireServer:
         self.active_sessions: dict[str, Session] = {}  # Active sessions with connected clients
         self.session_activity: dict[str, dict] = {}  # Global activity tracking for all sessions
         self.dashboard_clients: set = set()  # WebSocket clients for dashboard updates
+        self.session_client_counts: dict[str, int] = {}  # Attached tmux client counts per session
         self.tts = None
         self.stt = None
         self.agent = None
@@ -605,7 +606,10 @@ class AgentWireServer:
 
             sessions = result.get("sessions", [])
             for s in sessions:
-                s["activity"] = self._get_global_session_activity(s.get("name", ""))
+                name = s.get("name", "")
+                s["activity"] = self._get_global_session_activity(name)
+                # Include attached client count for presence indicator
+                s["client_count"] = self.session_client_counts.get(name, 0)
             return sessions
         except Exception as e:
             logger.error(f"Failed to get sessions data: {e}")
@@ -2930,9 +2934,18 @@ projects:
         Broadcasts the event to all connected dashboard clients.
 
         Request body:
-            event: Event type (session_closed, session_created, pane_died, pane_created)
+            event: Event type:
+                - session_closed, session_created: Session lifecycle
+                - pane_died, pane_created: Pane lifecycle
+                - client_attached, client_detached: Presence tracking
+                - session_renamed: Session name changes (old_name, new_name)
+                - pane_focused: Active pane tracking (pane_id)
+                - window_activity: Activity in monitored window
             session: Session name
             pane: Pane index (optional, for pane events)
+            pane_id: Pane ID (optional, for pane events)
+            old_name: Previous session name (for session_renamed)
+            new_name: New session name (for session_renamed)
 
         Response:
             {success: true}
@@ -2977,6 +2990,55 @@ projects:
                 # Also send sessions_update to refresh pane counts
                 sessions_data = await self._get_sessions_data()
                 await self.broadcast_dashboard("sessions_update", {"sessions": sessions_data})
+
+            elif event == "client_attached":
+                # Increment attached client count for this session
+                self.session_client_counts[session] = self.session_client_counts.get(session, 0) + 1
+                await self.broadcast_dashboard("client_attached", {
+                    "session": session,
+                    "client_count": self.session_client_counts[session]
+                })
+                # Also send sessions_update to refresh client counts
+                sessions_data = await self._get_sessions_data()
+                await self.broadcast_dashboard("sessions_update", {"sessions": sessions_data})
+
+            elif event == "client_detached":
+                # Decrement attached client count for this session
+                count = self.session_client_counts.get(session, 1)
+                self.session_client_counts[session] = max(0, count - 1)
+                await self.broadcast_dashboard("client_detached", {
+                    "session": session,
+                    "client_count": self.session_client_counts[session]
+                })
+                # Also send sessions_update to refresh client counts
+                sessions_data = await self._get_sessions_data()
+                await self.broadcast_dashboard("sessions_update", {"sessions": sessions_data})
+
+            elif event == "session_renamed":
+                # Handle session rename - old_name and new_name in data
+                old_name = data.get("old_name")
+                new_name = data.get("new_name") or session
+                # Transfer client count to new name
+                if old_name and old_name in self.session_client_counts:
+                    self.session_client_counts[new_name] = self.session_client_counts.pop(old_name)
+                await self.broadcast_dashboard("session_renamed", {
+                    "old_name": old_name,
+                    "new_name": new_name
+                })
+                sessions_data = await self._get_sessions_data()
+                await self.broadcast_dashboard("sessions_update", {"sessions": sessions_data})
+
+            elif event == "pane_focused":
+                # Track which pane is focused in a session
+                pane_id = data.get("pane_id")
+                await self.broadcast_dashboard("pane_focused", {
+                    "session": session,
+                    "pane_id": pane_id
+                })
+
+            elif event == "window_activity":
+                # Activity detected in a monitored window
+                await self.broadcast_dashboard("window_activity", {"session": session})
 
             else:
                 # Generic event - just broadcast it

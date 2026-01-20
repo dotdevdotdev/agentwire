@@ -759,6 +759,30 @@ body {
     opacity: 0.8;
 }
 
+/* Presence indicator - shows attached client count */
+.presence-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    margin-left: 6px;
+    padding: 2px 6px;
+    background: var(--hover);
+    border-radius: 10px;
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.presence-icon {
+    font-size: 12px;
+    line-height: 1;
+}
+
+.presence-count {
+    font-weight: 500;
+    min-width: 12px;
+    text-align: center;
+}
+
 .list-item-actions button {
     padding: 4px 10px;
     font-size: 11px;
