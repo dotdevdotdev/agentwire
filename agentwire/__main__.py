@@ -1197,6 +1197,29 @@ def _get_portal_url() -> str:
     return direct_url.replace("http://", "https://")
 
 
+def _get_agentwire_path() -> str:
+    """Get the full path to the agentwire executable.
+
+    Checks config first, then falls back to shutil.which() to find it in PATH.
+    This ensures tmux hooks work even when run-shell has a minimal PATH.
+    """
+    import shutil
+
+    config = load_config()
+    configured_path = config.get("executables", {}).get("agentwire")
+
+    if configured_path:
+        return os.path.expanduser(configured_path)
+
+    # Find agentwire in PATH
+    found = shutil.which("agentwire")
+    if found:
+        return found
+
+    # Fallback to common location
+    return os.path.expanduser("~/.local/bin/agentwire")
+
+
 def _install_session_hooks(session_name: str) -> None:
     """Install tmux hooks to notify portal of session state changes.
 
@@ -1204,10 +1227,7 @@ def _install_session_hooks(session_name: str) -> None:
     Uses hook_session_name because session_name is empty when session closes.
     Uses run-shell -b for background execution to not block tmux.
     """
-    # Get the agentwire executable path from config or use default
-    config = load_config()
-    agentwire_path = config.get("executables", {}).get("agentwire", "agentwire")
-    agentwire_path = os.path.expanduser(agentwire_path)
+    agentwire_path = _get_agentwire_path()
 
     # Install session-closed hook
     # Note: #{hook_session_name} is used because #{session_name} is empty when session closes
@@ -1227,10 +1247,7 @@ def _install_pane_hooks(session_name: str, pane_index: int) -> None:
     Note: We use after-kill-pane which fires after `tmux kill-pane` command.
     This is more reliable than pane-exited for our use case.
     """
-    # Get the agentwire executable path from config or use default
-    config = load_config()
-    agentwire_path = config.get("executables", {}).get("agentwire", "agentwire")
-    agentwire_path = os.path.expanduser(agentwire_path)
+    agentwire_path = _get_agentwire_path()
 
     # Install after-kill-pane hook on the session
     # Uses #{hook_pane} to get the pane ID that was killed
