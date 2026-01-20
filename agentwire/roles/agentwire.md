@@ -121,7 +121,9 @@ Check the existing user model in models/user.py for context."
 
 ### Communicating with OpenCode/GLM Workers
 
-**GLM-4.7 needs explicit, structured instructions.** Key differences:
+**GLM-4.7 needs explicit, structured instructions.** Before writing instructions for OpenCode workers, use `/glm-instructions` to review the full prompting guide.
+
+Key differences:
 
 1. **Front-load critical rules** - GLM weighs the start heavily
 2. **Use firm language** - "MUST", "STRICTLY", not "please try to"
