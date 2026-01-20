@@ -2740,8 +2740,8 @@ def cmd_kill(args) -> int:
         if result.returncode != 0:
             return _output_result(False, json_mode, f"Session '{session}' not found on {machine_id}")
 
-        # Send /exit to Claude first for clean shutdown
-        exit_cmd = f"tmux send-keys -t {shlex.quote(session)} /exit Enter"
+        # Send /exit to Claude first for clean shutdown (target pane 0 specifically)
+        exit_cmd = f"tmux send-keys -t {shlex.quote(session)}:0.0 /exit Enter"
         _run_remote(machine_id, exit_cmd)
         if not json_mode:
             print(f"Sent /exit to {session_full}, waiting 3s...")
@@ -2768,13 +2768,17 @@ def cmd_kill(args) -> int:
         return _output_result(False, json_mode, f"Session '{session}' not found")
 
     # Send /exit to Claude first for clean shutdown
-    subprocess.run(["tmux", "send-keys", "-t", session, "/exit", "Enter"])
+    # Target pane 0 specifically and capture output to avoid terminal noise
+    subprocess.run(
+        ["tmux", "send-keys", "-t", f"{session}:0.0", "/exit", "Enter"],
+        capture_output=True
+    )
     if not json_mode:
         print(f"Sent /exit to {session}, waiting 3s...")
     time.sleep(3)
 
     # Kill the session
-    subprocess.run(["tmux", "kill-session", "-t", session])
+    subprocess.run(["tmux", "kill-session", "-t", session], capture_output=True)
     if not json_mode:
         print(f"Killed session '{session}'")
 

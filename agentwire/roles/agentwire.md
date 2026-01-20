@@ -88,25 +88,85 @@ agentwire kill --pane 1
 agentwire kill --pane 2
 ```
 
-### Communicating with Workers
+### Worker Types
 
-Workers are AI agents. Talk to them naturally - describe goals, not commands.
+You can spawn **Claude workers** (default) or **OpenCode/GLM workers**:
 
-**Good: Describe the Goal**
+```bash
+# Claude worker (default) - good for nuanced, context-heavy tasks
+agentwire spawn
+
+# OpenCode/GLM worker - good for well-defined execution tasks
+agentwire spawn --type opencode-bypass
+```
+
+**When to use each:**
+
+| Claude Workers | OpenCode/GLM Workers |
+|----------------|---------------------|
+| Nuanced judgment needed | Clear, defined scope |
+| Ambiguous requirements | Explicit requirements |
+| Needs to infer from context | Can specify everything upfront |
+| Complex refactoring | Structured implementation |
+
+### Communicating with Claude Workers
+
+Talk naturally - describe goals, not commands. Claude infers well from context.
+
 ```bash
 agentwire send --pane 1 "Add JWT authentication to the API.
 We need login/logout endpoints and a verify middleware.
 Check the existing user model in models/user.py for context."
 ```
 
-**Bad: Script Commands**
+### Communicating with OpenCode/GLM Workers
+
+**GLM-4.7 needs explicit, structured instructions.** Key differences:
+
+1. **Front-load critical rules** - GLM weighs the start heavily
+2. **Use firm language** - "MUST", "STRICTLY", not "please try to"
+3. **Absolute paths** - GLM handles paths literally
+4. **Explicit steps** - Break into numbered sequence
+5. **Language directive** - Prevent multilingual output
+
+**Template for GLM workers:**
+
 ```bash
-agentwire send --pane 1 "Run these commands in order:
-1. Open src/auth.py
-2. Add import jwt at line 3..."
+agentwire send --pane 1 "CRITICAL REQUIREMENTS (follow STRICTLY):
+- MUST commit changes when complete
+- ONLY modify files in /Users/dotdev/projects/app/src/auth/
+- ALWAYS run tests after changes
+- LANGUAGE: English only
+
+TASK: Add JWT authentication to the API
+
+STEPS (execute IN ORDER):
+1. Read /Users/dotdev/projects/app/src/models/user.py for context
+2. Create /Users/dotdev/projects/app/src/auth/jwt.py with token generation
+3. Create /Users/dotdev/projects/app/src/auth/middleware.py with verify middleware
+4. Add login endpoint to /Users/dotdev/projects/app/src/routes/auth.py
+5. Add logout endpoint to the same file
+6. Run: pytest tests/auth/ -v
+7. Fix any failures
+8. Commit with message 'feat: add JWT authentication'
+
+SUCCESS CRITERIA:
+- [ ] Login endpoint returns JWT token
+- [ ] Logout endpoint invalidates token
+- [ ] Middleware rejects invalid tokens
+- [ ] All tests pass"
 ```
 
-Workers know how to code. Tell them **what** you need, not **how** to type it.
+**Quick reference - GLM instruction phrases:**
+
+| Instead of... | Use... |
+|---------------|--------|
+| "You should..." | "You MUST..." |
+| "Please try to..." | "STRICTLY..." |
+| "Consider..." | "REQUIRED:..." |
+| "the config file" | "/absolute/path/to/config.yaml" |
+
+Workers know how to code. Tell Claude **what** you need; tell GLM **what** AND **how** explicitly.
 
 ### When Workers Need Git Access
 
