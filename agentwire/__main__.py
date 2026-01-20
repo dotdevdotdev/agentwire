@@ -1306,42 +1306,43 @@ def _install_global_tmux_hooks() -> None:
             )
 
     # Session lifecycle hooks
+    # All hooks suppress output (>/dev/null 2>&1) to avoid noise in terminals
     install_hook(
         "session-created",
-        f'run-shell -b "{agentwire_path} notify session_created -s #{{session_name}}"'
+        f'run-shell -b "{agentwire_path} notify session_created -s #{{session_name}} >/dev/null 2>&1"'
     )
     install_hook(
         "session-closed",
-        f'run-shell -b "{agentwire_path} notify session_closed -s #{{hook_session_name}}"'
+        f'run-shell -b "{agentwire_path} notify session_closed -s #{{hook_session_name}} >/dev/null 2>&1"'
     )
 
     # Presence tracking hooks
     install_hook(
         "client-attached",
-        f'run-shell -b "{agentwire_path} notify client_attached -s #{{session_name}}"'
+        f'run-shell -b "{agentwire_path} notify client_attached -s #{{session_name}} >/dev/null 2>&1"'
     )
     install_hook(
         "client-detached",
-        f'run-shell -b "{agentwire_path} notify client_detached -s #{{session_name}}"'
+        f'run-shell -b "{agentwire_path} notify client_detached -s #{{session_name}} >/dev/null 2>&1"'
     )
 
     # Pane creation hook (global - catches all pane creations)
     install_hook(
         "after-split-window",
-        f'run-shell -b "{agentwire_path} notify pane_created -s #{{session_name}} --pane-id #{{pane_id}}"'
+        f'run-shell -b "{agentwire_path} notify pane_created -s #{{session_name}} --pane-id #{{pane_id}} >/dev/null 2>&1"'
     )
 
     # Session rename hook
     # Note: #{hook_session_name} has new name, we pass old name via #{@_old_session_name} if set
     install_hook(
         "session-renamed",
-        f'run-shell -b "{agentwire_path} notify session_renamed -s #{{session_name}}"'
+        f'run-shell -b "{agentwire_path} notify session_renamed -s #{{session_name}} >/dev/null 2>&1"'
     )
 
     # Activity notification hook (fires when monitor-activity is enabled on a window)
     install_hook(
         "alert-activity",
-        f'run-shell -b "{agentwire_path} notify window_activity -s #{{session_name}}"'
+        f'run-shell -b "{agentwire_path} notify window_activity -s #{{session_name}} >/dev/null 2>&1"'
     )
 
 
@@ -1365,9 +1366,10 @@ def _install_pane_hooks(session_name: str, pane_index: int) -> None:
     existing = result.stdout
 
     # Install after-kill-pane hook on the session
-    # Uses #{hook_pane} to get the pane ID that was killed
+    # Note: #{hook_pane} may be empty when pane is already dead, so we just notify
+    # without pane-id and let the portal refresh its pane list
     if "after-kill-pane" not in existing:
-        hook_cmd = f'run-shell -b "{agentwire_path} notify pane_died -s {session_name} --pane-id #{{hook_pane}}"'
+        hook_cmd = f'run-shell -b "{agentwire_path} notify pane_died -s {session_name} >/dev/null 2>&1"'
         subprocess.run(
             ["tmux", "set-hook", "-t", session_name, "after-kill-pane", hook_cmd],
             capture_output=True,
@@ -1375,8 +1377,9 @@ def _install_pane_hooks(session_name: str, pane_index: int) -> None:
 
     # Install pane-focus-in hook for active pane tracking
     # This fires when a pane gains focus within the session
+    # Suppress output to avoid noise in the terminal
     if "pane-focus-in" not in existing:
-        hook_cmd = f'run-shell -b "{agentwire_path} notify pane_focused -s {session_name} --pane-id #{{pane_id}}"'
+        hook_cmd = f'run-shell -b "{agentwire_path} notify pane_focused -s {session_name} --pane-id #{{pane_id}} >/dev/null 2>&1"'
         subprocess.run(
             ["tmux", "set-hook", "-t", session_name, "pane-focus-in", hook_cmd],
             capture_output=True,
@@ -2830,9 +2833,13 @@ def cmd_spawn(args) -> int:
     if missing:
         return _output_result(False, json_mode, f"Roles not found: {', '.join(missing)}")
 
-    # Workers always use worker session type
-    agent_type = detect_default_agent_type()
-    session_type_str = f"{agent_type}-restricted"
+    # Use provided type or default to {agent_type}-restricted
+    session_type_arg = getattr(args, 'type', None)
+    if session_type_arg:
+        session_type_str = session_type_arg
+    else:
+        agent_type = detect_default_agent_type()
+        session_type_str = f"{agent_type}-restricted"
 
     # Build agent command
     agent = build_agent_command(session_type_str, roles if roles else None)
@@ -4212,9 +4219,9 @@ def cmd_dev(args) -> int:
     # Load agentwire role for dev session
     dev_roles, _ = load_roles(["agentwire"], project_dir)
 
-    # Use worker session type for dev session
+    # Use bypass session type for dev session (full permissions)
     agent_type = detect_default_agent_type()
-    session_type_str = f"{agent_type}-restricted"
+    session_type_str = f"{agent_type}-bypass"
 
     # Build agent command
     agent = build_agent_command(session_type_str, dev_roles if dev_roles else None)
@@ -5961,6 +5968,7 @@ def main() -> int:
     spawn_parser.add_argument("-s", "--session", help="Target session (default: auto-detect)")
     spawn_parser.add_argument("--cwd", help="Working directory (default: current)")
     spawn_parser.add_argument("--branch", "-b", help="Create worktree on this branch for isolated commits")
+    spawn_parser.add_argument("--type", help="Session type (claude-bypass, claude-prompted, claude-restricted, opencode-bypass, opencode-prompted, opencode-restricted)")
     spawn_parser.add_argument("--roles", default="worker", help="Comma-separated roles (default: worker)")
     spawn_parser.add_argument("--json", action="store_true", help="Output as JSON")
     spawn_parser.set_defaults(func=cmd_spawn)
