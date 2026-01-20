@@ -4,864 +4,734 @@
 
 ## Background
 
-AgentWire currently hardcodes Claude Code as the only AI agent. Users want flexibility to choose their preferred coding agent (Claude Code, OpenCode, or future alternatives). OpenCode offers compelling advantages:
+AgentWire currently hardcodes Claude Code as only AI agent. Users want flexibility to choose their preferred coding agent (Claude Code, OpenCode, or future alternatives). OpenCode offers compelling advantages:
 - **Open source** (79k GitHub stars vs proprietary Claude Code)
 - **Provider agnostic** (75+ LLM providers vs Anthropic-only)
 - **Richer architecture** (client/server, HTTP API, TUI, web, mobile)
 - **Plugin system** (30+ event hooks)
 - **Better permission system** (allow/ask/deny with pattern matching)
 
-## Current AgentWire → Claude Code Integration
+## Architecture: Environment Variable Command Building
 
-### 1. Session Types (4 types)
+Instead of complex `AgentInfo` classes and capability detection, we'll use **environment variables** for command building. This is simpler, more maintainable, and easier to extend.
 
-| Type | CLI Flags | Tools | Permissions | Use Case |
-|-------|-------------|--------|-------------|-----------|
-| `bare` | (none) | N/A | N/A | Manual coding, terminal only |
-| `claude-bypass` | `--dangerously-skip-permissions` | All | No prompts | Full automation, voice orchestrator |
-| `claude-prompted` | (none) | All | Yes (via hook) | Semi-automated, approvals needed |
-| `claude-restricted` | `--tools Bash` | Bash only | Auto-deny non-say | Voice-only, read-only access |
+### Key Principle
 
-### 2. Claude Code CLI Flags Used
+Each session type sets environment variables that determine the agent command:
 
-| Flag | Purpose | Session Types |
-|-------|---------|---------------|
-| `--dangerously-skip-permissions` | Bypass all permission prompts | claude-bypass |
-| `--tools tool1,tool2` | Whitelist specific tools | All (except bare) |
-| `--disallowedTools tool1` | Blacklist specific tools | All (except bare) |
-| `--append-system-prompt "text"` | Add role instructions | All (except bare) |
-| `--model sonnet/opus/haiku` | Override model | All (except bare) |
-| `--resume <session-id>` | Resume from history | Fork sessions |
-| `--fork-session` | Fork into new session | Fork sessions |
+```python
+# Example: Claude Code bypass session
+session_type = "claude-bypass"
 
-### 3. Roles System
+# Set environment variables
+os.environ["AGENT_NEW_SESSION_COMMAND"] = "claude"
+os.environ["AGENT_PERMISSIONS_FLAG"] = "--dangerously-skip-permissions"
+os.environ["AGENT_TOOLS_FLAG"] = "--tools Bash,Edit,Write"  # If roles specified
+os.environ["AGENT_DISALLOWED_TOOLS_FLAG"] = "--disallowedTools AskUserQuestion"
+os.environ["AGENT_SYSTEM_PROMPT_FLAG"] = '--append-system-prompt "Role instructions"'
+os.environ["AGENT_MODEL_FLAG"] = "--model sonnet"  # If role specifies
 
-**Format:**
+# Build command
+cmd = " ".join(filter(None, [
+    os.environ.get("AGENT_NEW_SESSION_COMMAND"),
+    os.environ.get("AGENT_PERMISSIONS_FLAG"),
+    os.environ.get("AGENT_TOOLS_FLAG"),
+    os.environ.get("AGENT_DISALLOWED_TOOLS_FLAG"),
+    os.environ.get("AGENT_SYSTEM_PROMPT_FLAG"),
+    os.environ.get("AGENT_MODEL_FLAG"),
+]))
+
+# Result: "claude --dangerously-skip-permissions --tools Bash,Edit,Write --disallowedTools AskUserQuestion --append-system-prompt 'Role instructions' --model sonnet"
+```
+
+### Benefits
+
+- ✅ **Simpler codebase** - No AgentInfo classes, no capability detection
+- ✅ **Easy to extend** - Add new agents by adding session type conditionals
+- ✅ **Clear mapping** - Can see exactly what each agent needs
+- ✅ **Less refactoring** - Don't need to change every function
+- ✅ **Backward compatible** - Claude Code behavior unchanged
+
+---
+
+## Session Type → Flag Mapping
+
+### Claude Code Session Types
+
+| Session Type | AGENT_NEW_SESSION_COMMAND | AGENT_PERMISSIONS_FLAG | AGENT_TOOLS_FLAG | AGENT_DISALLOWED_TOOLS_FLAG | AGENT_SYSTEM_PROMPT_FLAG | AGENT_MODEL_FLAG | Use Case |
+|-------------|-------------------------|------------------------|-------------------|-------------------------------|-------------------------|-----------------|-----------|
+| **bare** | (empty) | N/A | N/A | N/A | N/A | N/A | No agent, tmux only |
+| **claude-bypass** | `claude` | `--dangerously-skip-permissions` | (from roles) | (from roles) | (from roles) | (from roles) | Full automation, voice orchestrator |
+| **claude-prompted** | `claude` | (empty) | (from roles) | (from roles) | (from roles) | (from roles) | Semi-automated, user approval required |
+| **claude-restricted** | `claude` | `--tools Bash` | N/A | N/A | N/A | N/A | Voice-only, Bash/say only |
+
+**Role-based flags (for claude-bypass, claude-prompted):**
+- If role specifies `tools`: `AGENT_TOOLS_FLAG = "--tools Bash,Edit,Write"`
+- If role specifies `disallowedTools`: `AGENT_DISALLOWED_TOOLS_FLAG = "--disallowedTools AskUserQuestion"`
+- If role has instructions: `AGENT_SYSTEM_PROMPT_FLAG = '--append-system-prompt "Role instructions"'`
+- If role specifies model: `AGENT_MODEL_FLAG = "--model sonnet"`
+
+### OpenCode Session Types
+
+| Session Type | AGENT_NEW_SESSION_COMMAND | AGENT_PERMISSIONS_FLAG | OPENCODE_PERMISSION | AGENT_TOOLS_FLAG | AGENT_DISALLOWED_TOOLS_FLAG | AGENT_SYSTEM_PROMPT_FLAG | AGENT_MODEL_FLAG | Role Instructions | Use Case |
+|-------------|-------------------------|------------------------|---------------------|-------------------|-------------------------------|-------------------------|-----------------|-------------------|-----------|
+| **opencode-bypass** | `opencode` | (empty) | `{"*":"allow"}` | (empty) | (empty) | (empty) | (from roles) | Prepend to first message | Full automation |
+| **opencode-prompted** | `opencode` | (empty) | `{"*":"ask"}` | (empty) | (empty) | (empty) | (from roles) | Prepend to first message | Permission prompts |
+| **opencode-restricted** | `opencode` | (empty) | `{"bash":"allow","question":"deny"}` | (empty) | (empty) | (empty) | (from roles) | Prepend to first message | Worker, no questions |
+
+**Key differences from Claude Code:**
+- `AGENT_PERMISSIONS_FLAG` is always **empty** for OpenCode (no flag)
+- Use `OPENCODE_PERMISSION` **environment variable** instead
+- `AGENT_TOOLS_FLAG` and `AGENT_DISALLOWED_TOOLS_FLAG` are always **empty** (no flags)
+- Tool control via **agent config** or **role filtering** in AgentWire CLI
+- `AGENT_SYSTEM_PROMPT_FLAG` is always **empty** (no flag)
+- Role instructions **prepended to first message** instead of using flag
+
+### Universal Session Types (Agent-Agnostic)
+
+To make things simpler for users, we'll also support universal types that work with both agents:
+
+| Universal Type | Claude Code Maps To | OpenCode Maps To | Behavior |
+|----------------|---------------------|-------------------|----------|
+| **bare** | `bare` | `bare` | No agent, tmux only |
+| **standard** | `claude-bypass` | `opencode-bypass` | Full agent capabilities |
+| **worker** | `claude-restricted` | `opencode-restricted` | No AskUserQuestion, no voice |
+| **voice** | `claude-prompted` | `opencode-prompted` | Voice with permission prompts |
+
+**User experience:**
 ```yaml
----
-name: worker
-description: Autonomous code execution, no user interaction
-disallowedTools: AskUserQuestion
-model: inherit
----
+# .agentwire.yml
+type: "standard"  # Works for both Claude Code and OpenCode
 
-Worker agent instructions...
-```
-
-**Merging Logic:**
-- **Tools:** Union of all role tools
-- **Disallowed tools:** Intersection (only block if ALL agree)
-- **Instructions:** Concatenated with newlines
-- **Model:** Last non-None wins
-
-### 4. Hooks Architecture
-
-#### Permission Hooks (`agentwire-permission.sh`)
-- **Hook type:** `PermissionRequest` (Claude Code)
-- **Location:** `~/.claude/settings.json`
-- **Flow:** Claude → Hook → Portal API → User → Portal API → Hook → Claude
-- **Timeout:** 5 minutes
-- **Keystroke mapping:** allow → "1", allow_always → "2", deny → "Escape", custom → "3" + message
-
-#### Damage Control Hooks (3 Python hooks)
-- **Hook type:** `PreToolUse` (Claude Code)
-- **Location:** `~/.agentwire/hooks/damage-control/`
-- **Checks:**
-  - 100+ bash command patterns (destructive ops, cloud platforms, etc.)
-  - 66 zero-access paths (secrets, SSH keys, credentials)
-  - 30+ read-only paths (system dirs, lock files)
-  - 20+ no-delete paths (agentwire config, git data, docs)
-- **Exit codes:** 0 = allow, 2 = block
-
-### 5. Permission Dialog Flow
-
-```
-Claude Code → Permission Hook → Portal API → User Decision → Portal API → Permission Hook → Claude Code
-```
-
-**Endpoints:**
-- `POST /api/permission/{session}` - Hook posts request, waits for response
-- `POST /api/permission/{session}/respond` - Portal posts user decision
-
-**Auto-handling for claude-restricted:**
-- Allow: `AskUserQuestion` tool
-- Allow: `Bash` with `say` command only (regex: `^(?:agentwire\s+)?say\s+(?:-[sv]\s+\S+\s+)*(["\']).*\1\s*&?\s*$`)
-- Deny: Everything else
-
-### 6. History Integration
-
-**Claude Data:**
-- `~/.claude/history.jsonl` - User message history
-- `~/.claude/projects/{encoded-path}/*.jsonl` - Session files
-
-**Path Encoding:** `/home/user/projects/myapp` → `-home-user-projects-myapp`
-
-**Commands:**
-- `agentwire history list` - List sessions for project
-- `agentwire history show <id>` - Show session details
-- `agentwire history resume <id>` - Resume (always forks)
-
----
-
-## OpenCode Capabilities Analysis
-
-### 1. No Direct `--dangerously-skip-permissions` Equivalent
-
-**Problem:** OpenCode lacks Claude's bypass flag.
-
-**Solution:** Use permission config + env var:
-
-```bash
-# Global allow-all
-export OPENCODE_PERMISSION='{"*":"allow"}'
-opencode run "message"
-
-# Per-agent allow-all
-opencode --agent agentwire "message"  # agentwire agent configured with permission: {"*":"allow"}
-```
-
-### 2. Agent System (Primary vs Subagent)
-
-| Type | Description | Tools | Permissions |
-|------|-------------|--------|-------------|
-| **Primary** | Main assistant users interact with | All | Per-agent config |
-| **Subagent** | Specialized, invoked by primary | Configurable | Per-agent config |
-
-**Agent Config (JSON):**
-```json
-{
-  "agent": {
-    "agentwire": {
-      "mode": "primary",
-      "tools": {
-        "write": true,
-        "edit": true,
-        "bash": true,
-        "question": true
-      }
-    },
-    "worker": {
-      "mode": "subagent",
-      "permission": {
-        "question": "deny"
-      }
-    }
-  }
-}
-```
-
-**Agent Config (Markdown):**
-```yaml
-# ~/.config/opencode/agents/worker.md
----
-description: Worker pane (no voice, no questions)
-mode: subagent
-permission:
-  question: deny
-tools:
-  write: true
-  edit: true
-  bash: true
-  question: false
----
-
-Worker agent instructions...
-```
-
-### 3. Permission System (Three States)
-
-| State | Behavior |
-|-------|----------|
-| `allow` | Tool runs without approval |
-| `ask` | User prompted (once/always/reject) |
-| `deny` | Tool is blocked |
-
-**Granular Rules:**
-```json
-{
-  "permission": {
-    "bash": {
-      "*": "ask",
-      "git *": "allow",
-      "rm *": "deny"
-    }
-  }
-}
-```
-
-### 4. Plugin System (30+ Event Hooks)
-
-**Plugin Structure:**
-```javascript
-.opencode/plugins/example.js
-
-export const Plugin = async ({ project, client, $, directory, worktree }) => {
-  return {
-    "tool.execute.before": async (input, output) => {
-      // Intercept before tool execution
-    },
-    "permission.updated": async (input, output) => {
-      // React to permission changes
-    }
-  }
-}
-```
-
-**Available Hooks:**
-- **Tool events:** `tool.execute.before`, `tool.execute.after`
-- **Permission events:** `permission.replied`, `permission.updated`
-- **Session events:** `session.created`, `session.updated`, `session.deleted`
-- **Message events:** `message.updated`, `message.removed`
-- **File events:** `file.edited`, `file.watcher.updated`
-- **Command events:** `command.executed`
-- **Server events:** `server.connected`
-- **Todo events:** `todo.updated`
-
-### 5. HTTP Server API
-
-**Command:** `opencode serve --port 8765`
-
-**Key Endpoints:**
-- `POST /session/{id}/message` - Send prompt to session
-- `GET /session/{id}` - Get session info
-- `POST /session/{id}/fork` - Fork session
-- `POST /session` - Create new session
-- WebSocket connection for real-time updates
-
-**Benefits for AgentWire:**
-- Single OpenCode instance handles all sessions
-- No need to spawn multiple opencode processes
-- Portal sends HTTP requests instead of managing subprocesses
-
-### 6. Claude Code Compatibility
-
-OpenCode reads Claude Code files as fallbacks:
-
-| Claude Code Path | OpenCode Uses | Disable via |
-|------------------|-----------------|---------------|
-| `CLAUDE.md` (project) | If no `AGENTS.md` exists | `OPENCODE_DISABLE_CLAUDE_CODE` |
-| `~/.claude/CLAUDE.md` | If no `~/.config/opencode/AGENTS.md` | `OPENCODE_DISABLE_CLAUDE_CODE_PROMPT` |
-| `~/.claude/skills/` | Loaded as skills | `OPENCODE_DISABLE_CLAUDE_CODE_SKILLS` |
-
-**Migration path is smooth** - existing roles and skills work immediately.
-
----
-
-## Architecture Design
-
-### 1. Agent Detection Strategy
-
-**Configuration-First:**
-```yaml
-# ~/.agentwire/config.yaml
+# User sets agent preference in ~/.agentwire/config.yaml:
 agent:
-  type: "auto"  # "claude", "opencode", or "auto"
-  command: "claude --dangerously-skip-permissions"
-
-  claude:
-    permissions:
-      mode: "bypass"  # "bypass" | "prompted" | "restricted"
-      hooks_enabled: true
-
-  opencode:
-    model: null  # Default model
-    role: null  # Default role name
-
-  fallback:
-    use_agentwire_hooks: true
-    use_agentwire_permissions: true
-    warn_on_missing: true
+  command: "claude --dangerously-skip-permissions"  # or "opencode"
 ```
 
-**Auto-Detection Fallback:**
-```python
-def detect_agent_type(command: str) -> str:
-    if "claude" in command.lower():
-        return "claude"
-    elif "opencode" in command.lower():
-        return "opencode"
-    # Check which command exists
-    if shutil.which("claude"):
-        return "claude"
-    if shutil.which("opencode"):
-        return "opencode"
-    return "claude"  # Default for backward compatibility
-```
+---
 
-### 2. Capability Profiles
+## Flag Reference
 
-```python
-@dataclass
-class AgentCapabilities:
-    """Capabilities discovered for an agent type."""
-    supports_hooks: bool
-    supports_permissions: bool
-    supports_tools_flag: bool
-    supports_disallowed_tools: bool
-    supports_system_prompt: bool
-    supports_session_id: bool
-    supports_fork_session: bool
-    has_builtin_roles: bool
-    supports_model_flag: bool
+### Claude Code Flags
 
-CLAUDE_CAPABILITIES = AgentCapabilities(
-    supports_hooks=True,
-    supports_permissions=True,
-    supports_tools_flag=True,
-    supports_disallowed_tools=True,
-    supports_system_prompt=True,
-    supports_session_id=True,
-    supports_fork_session=True,
-    has_builtin_roles=False,
-    supports_model_flag=True,
-)
+| Flag | Environment Variable | Description | Session Types |
+|------|-------------------|-------------|---------------|
+| `--dangerously-skip-permissions` | `AGENT_PERMISSIONS_FLAG` | Bypass all permission prompts | claude-bypass |
+| `--tools tool1,tool2` | `AGENT_TOOLS_FLAG` | Whitelist specific tools | claude-bypass, claude-prompted |
+| `--disallowedTools tool1` | `AGENT_DISALLOWED_TOOLS_FLAG` | Blacklist specific tools | claude-bypass, claude-prompted |
+| `--append-system-prompt "text"` | `AGENT_SYSTEM_PROMPT_FLAG` | Add role instructions | claude-bypass, claude-prompted |
+| `--model sonnet/opus/haiku` | `AGENT_MODEL_FLAG` | Override model | claude-bypass, claude-prompted |
+| `--resume <session-id>` | (separate handling) | Resume from history | Fork sessions |
+| `--fork-session` | (separate handling) | Fork into new session | Fork sessions |
 
-OPENCODE_CAPABILITIES = AgentCapabilities(
-    supports_hooks=False,  # Plugin system exists, but no permission hooks
-    supports_permissions=False,  # Has permission config, but not hook system
-    supports_tools_flag=False,  # No --tools flag
-    supports_disallowed_tools=False,
-    supports_system_prompt=True,  # Via config
-    supports_session_id=False,
-    supports_fork_session=False,
-    has_builtin_roles=True,  # OpenCode has agent system
-    supports_model_flag=True,
-)
-```
+### OpenCode Environment Variables
 
-### 3. Command Builder Pattern
-
-```python
-class AgentCommandBuilder:
-    """Build agent commands with conditional flags based on capabilities."""
-
-    def __init__(self, agent_type: str, capabilities: AgentCapabilities):
-        self.agent_type = agent_type
-        self.capabilities = capabilities
-        self.parts = []
-
-    def add_permissions(self, mode: str):
-        if self.agent_type == "claude":
-            if mode == "bypass":
-                self.parts.append("--dangerously-skip-permissions")
-        elif self.agent_type == "opencode":
-            # OpenCode doesn't have permission flags
-            pass  # Use AgentWire permission system
-
-    def add_tools(self, tools: list[str]):
-        if self.capabilities.supports_tools_flag:
-            self.parts.extend(["--tools", ",".join(tools)])
-
-    def add_disallowed_tools(self, tools: list[str]):
-        if self.capabilities.supports_disallowed_tools:
-            self.parts.extend(["--disallowedTools", ",".join(tools)])
-
-    def add_system_prompt(self, prompt: str):
-        if self.capabilities.supports_system_prompt:
-            escaped = prompt.replace('"', '\\"')
-            self.parts.append(f'--append-system-prompt "{escaped}"')
-```
-
-### 4. Session Type Mapping
-
-| AgentWire Type | Claude Code Mode | OpenCode Mode | Implementation |
-|----------------|-----------------|---------------|----------------|
-| `bare` | N/A | N/A | No agent, tmux only |
-| `standard` | `claude-bypass` | AgentWire permission system | Universal type |
-| `worker` | `claude-restricted` | OpenCode worker agent | Universal type |
-| `voice` | `claude-prompted` | OpenCode voice agent | Universal type |
-| `claude-bypass` | `--dangerously-skip-permissions` | AgentWire hooks + allow-all | Legacy (maps to standard) |
-| `claude-prompted` | Permission hooks | AgentWire hooks | Legacy (maps to voice) |
-| `claude-restricted` | `--tools Bash` | OpenCode worker | Legacy (maps to worker) |
-
-**Universal Types:**
-New types that work with both agents:
-- `standard` - Full agent capabilities (orchestrator mode)
-- `worker` - No AskUserQuestion, no voice
-- `voice` - Voice-enabled orchestrator with permissions
-
-Legacy `claude-*` types still work for backward compatibility but are mapped to universal equivalents.
-
-### 5. Role System Adaptation
-
-**For Claude Code:**
-```python
-# Build command with flags
-merged = merge_roles(roles)
-if merged.tools:
-    cmd_parts.append(f"--tools {','.join(merged.tools)}")
-if merged.disallowed_tools:
-    cmd_parts.append(f"--disallowedTools {','.join(merged.disallowed_tools)}")
-if merged.instructions:
-    cmd_parts.append(f'--append-system-prompt "{merged.instructions}"')
-```
-
-**For OpenCode:**
-```python
-# Create agent config file
-agent_config = {
-    "mode": "primary",
-    "permission": {
-        "question": "deny" if "AskUserQuestion" in merged.disallowed_tools else "allow"
-    },
-    "tools": {
-        tool.lower(): True for tool in merged.tools
-    }
-}
-
-# Prepend instructions to first message
-if merged.instructions:
-    first_message = f"{merged.instructions}\n\n---\n\n{user_message}"
-```
-
-### 6. Hook Fallback System
-
-**Problem:** OpenCode doesn't have Claude Code's permission hooks.
-
-**Solution:** Multi-tier hook system
-
-```python
-class HookInstaller:
-    """Install hooks for appropriate agent type."""
-
-    def install_session_hooks(self, session_name: str):
-        if self.agent_type == "claude":
-            self._install_claude_hooks(session_name)
-        else:
-            # Use AgentWire hooks at tmux level
-            self._install_agentwire_hooks(session_name)
-
-    def _install_agentwire_hooks(self, session_name: str):
-        # Install tmux hooks that intercept before-send-keys
-        subprocess.run([
-            "tmux", "set-hook", "-t", session_name,
-            "before-send-keys",
-            f"run-shell '{agentwire} validate-command \"#{{command}}\"'"
-        ])
-```
-
-**Hook Locations:**
-1. **Claude Code:** `~/.claude/hooks/` (PreToolUse, PermissionRequest)
-2. **OpenCode:** `~/.agentwire/hooks/` (tmux-level via `before-send-keys`)
-3. **AgentWire Universal:** Cross-agent safety system
-
-### 7. Permission System Fallback
-
-```python
-class PermissionManager:
-    """Manage permissions independently of agent capabilities."""
-
-    def request_permission(self, session_name: str, operation: str) -> bool | None:
-        """Request permission for an operation.
-
-        Returns:
-            - None: Use agent's native permission system
-            - True: Permission granted
-            - False: Permission denied
-        """
-        # Use native system if available (Claude Code with permissions)
-        if self.agent_type == "claude" and not self.bypass_permissions:
-            return None  # Let Claude Code handle it
-
-        # Use AgentWire permission system via portal
-        portal_url = self.config.portal.url
-        response = requests.post(
-            f"{portal_url}/api/permissions/request",
-            json={"session": session_name, "operation": operation},
-            timeout=30
-        )
-        return response.json().get("granted", False)
-```
+| Variable | Description | Session Types |
+|-----------|-------------|---------------|
+| `OPENCODE_PERMISSION` | Permission configuration (JSON) | opencode-bypass, opencode-prompted, opencode-restricted |
+| `OPENCODE_MODEL` | Default model | All types |
+| `OPENCODE_CONFIG_CONTENT` | Inline configuration JSON | All types |
+| `OPENCODE_CONFIG_DIR` | Custom config directory | All types |
+| `ROLE_INSTRUCTIONS_TO_PREPEND_<session>` | Role instructions for first message | All types |
 
 ---
 
 ## Implementation Plan
 
-### Wave 1: Agent Detection & Configuration (BLOCKING)
+### Wave 1: Refactor `cmd_new` to Use Environment Variables (BLOCKING)
 
-**Goal:** Detect which AI agent is configured and load appropriate capabilities.
-
-**Tasks:**
-- [ ] Create `AgentInfo` class with type, capabilities, and config
-- [ ] Update `config.py` to support new agent section structure
-- [ ] Implement `detect_agent_type()` function with auto-detection
-- [ ] Create capability profiles for Claude and OpenCode
-- [ ] Add config migration utility (`agentwire migrate-config`)
-- [ ] Update `agentwire init` to select agent type
-- [ ] Update `agentwire doctor` to check agent configuration
-
-**Files:**
-- `agentwire/config.py` - Add AgentInfo class, parse new agent section
-- `agentwire/utils/migration.py` - New file for config migration
-- `agentwire/__main__.py` - Update init/doctor commands
-
-**Testing:**
-- [ ] Test auto-detection from command string
-- [ ] Test config migration from legacy format
-- [ ] Test manual agent type selection
-
-**Success Criteria:**
-- AgentWire can detect whether user is using Claude or OpenCode
-- Config includes agent type and capabilities
-- Migration command converts legacy configs without data loss
-
----
-
-### Wave 2: Command Builder & Feature Gating
-
-**Goal:** Build agent commands with conditional flags based on capabilities.
+**Goal:** Refactor `agentwire new` command to build agent commands via environment variables.
 
 **Tasks:**
-- [ ] Implement `AgentCommandBuilder` class
-- [ ] Implement `AgentFeatureGate` class
-- [ ] Update `_build_claude_cmd()` to use builder pattern
-- [ ] Add feature checks in all session creation commands
-- [ ] Add warning system for missing features
+- [ ] Create `_build_agent_command_env()` function to set environment variables based on session type
+- [ ] Update `_build_claude_cmd()` to read from environment variables
+- [ ] Add support for `opencode-bypass`, `opencode-prompted`, `opencode-restricted` session types
+- [ ] Implement role instruction prepending for OpenCode (store in env for first message)
+- [ ] Update `SessionType` enum to include OpenCode types
+- [ ] Test all Claude Code session types still work
+- [ ] Test all OpenCode session types
 
-**Files:**
-- `agentwire/__main__.py` - Replace `_build_claude_cmd()` with `_build_agent_command()`
-- `agentwire/agents/base.py` - Add AgentInfo integration
+**Implementation Details:**
 
-**Testing:**
-- [ ] Test building Claude commands with all flags
-- [ ] Test building OpenCode commands (no unsupported flags)
-- [ ] Test warning messages when features are missing
+```python
+# agentwire/__main__.py
 
-**Success Criteria:**
-- AgentWire correctly adds flags only when agent supports them
-- Warnings shown when using features not supported by current agent
+def _build_agent_command_env(session_type: str, roles: list[RoleConfig] | None = None) -> dict[str, str]:
+    """Build environment variables for agent command based on session type.
 
----
+    Returns:
+        Dictionary of environment variables to set
+    """
+    env = {}
 
-### Wave 3: Session Type Normalization
+    # Default: empty (bare session)
+    if session_type == "bare":
+        env["AGENT_NEW_SESSION_COMMAND"] = ""
+        return env
 
-**Goal:** Create universal session types that work with both agents.
+    # === Claude Code Session Types ===
+    if session_type in ["claude-bypass", "claude-prompted", "claude-restricted"]:
+        env["AGENT_NEW_SESSION_COMMAND"] = "claude"
 
-**Tasks:**
-- [ ] Add universal session types (standard, worker, voice) to SessionType enum
-- [ ] Implement type normalization logic (legacy types → universal)
-- [ ] Update `.agentwire.yml` parsing to support universal types
-- [ ] Add backward compatibility layer for legacy `claude-*` types
-- [ ] Update session creation API to handle universal types
+        # Permissions flag
+        if session_type == "claude-bypass":
+            env["AGENT_PERMISSIONS_FLAG"] = "--dangerously-skip-permissions"
+        elif session_type == "claude-prompted":
+            env["AGENT_PERMISSIONS_FLAG"] = ""
+        elif session_type == "claude-restricted":
+            env["AGENT_PERMISSIONS_FLAG"] = "--tools Bash"
 
-**Files:**
-- `agentwire/project_config.py` - Update SessionType enum
-- `agentwire/__main__.py` - Add `normalize_session_type()` function
+        # Role-based flags
+        if roles and session_type != "claude-restricted":
+            merged = merge_roles(roles)
 
-**Testing:**
-- [ ] Test creating sessions with universal types
-- [ ] Test legacy `claude-bypass` sessions still work
-- [ ] Test OpenCode sessions with `standard` type
+            if merged.tools:
+                env["AGENT_TOOLS_FLAG"] = f"--tools {','.join(merged.tools)}"
 
-**Success Criteria:**
-- Users can use universal types regardless of agent
-- Legacy types continue to work for backward compatibility
+            if merged.disallowed_tools:
+                env["AGENT_DISALLOWED_TOOLS_FLAG"] = f"--disallowedTools {','.join(merged.disallowed_tools)}"
 
----
+            if merged.instructions:
+                escaped = merged.instructions.replace('"', '\\"')
+                env["AGENT_SYSTEM_PROMPT_FLAG"] = f'--append-system-prompt "{escaped}"'
 
-### Wave 4: Hook & Permission Fallbacks
+            if merged.model:
+                env["AGENT_MODEL_FLAG"] = f"--model {merged.model}"
 
-**Goal:** Implement AgentWire-level hooks when agent doesn't support them.
+    # === OpenCode Session Types ===
+    elif session_type in ["opencode-bypass", "opencode-prompted", "opencode-restricted"]:
+        env["AGENT_NEW_SESSION_COMMAND"] = "opencode"
 
-**Tasks:**
-- [ ] Implement `HookInstaller` class with agent-specific logic
-- [ ] Implement `PermissionManager` class
-- [ ] Create AgentWire hooks in `~/.agentwire/hooks/`
-- [ ] Implement tmux-level command interception (`before-send-keys`)
-- [ ] Add portal permission API for AgentWire permission system
+        # Permissions via environment variable (not a CLI flag)
+        if session_type == "opencode-bypass":
+            env["AGENT_PERMISSIONS_FLAG"] = ""
+            env["OPENCODE_PERMISSION"] = '{"*":"allow"}'
+        elif session_type == "opencode-prompted":
+            env["AGENT_PERMISSIONS_FLAG"] = ""
+            env["OPENCODE_PERMISSION"] = '{"*":"ask"}'
+        elif session_type == "opencode-restricted":
+            env["AGENT_PERMISSIONS_FLAG"] = ""
+            env["OPENCODE_PERMISSION"] = '{"bash":"allow","question":"deny"}'
 
-**Files:**
-- `agentwire/hooks/__init__.py` - Expand to support AgentWire hooks
-- `agentwire/server.py` - Add permission API endpoints
-- `agentwire/agents/tmux.py` - Integrate hook installation
-- New: `agentwire/permissions.py` - Permission manager
+        # OpenCode doesn't support --tools or --disallowedTools flags
+        env["AGENT_TOOLS_FLAG"] = ""
+        env["AGENT_DISALLOWED_TOOLS_FLAG"] = ""
+        env["AGENT_SYSTEM_PROMPT_FLAG"] = ""
 
-**Testing:**
-- [ ] Test Claude Code hooks still install correctly
-- [ ] Test AgentWire hooks install for OpenCode sessions
-- [ ] Test permission requests via portal for OpenCode
+        # Role-based settings
+        if roles:
+            merged = merge_roles(roles)
 
-**Success Criteria:**
-- Damage control works with both Claude Code and OpenCode
-- Permission dialogs work via AgentWire portal for OpenCode
+            # Store role instructions for prepending to first message
+            if merged.instructions:
+                env["ROLE_INSTRUCTIONS_TO_PREPEND"] = merged.instructions
 
----
+            if merged.model:
+                env["AGENT_MODEL_FLAG"] = f"--model {merged.model}"
 
-### Wave 5: Role Filtering for OpenCode
+    return env
 
-**Goal:** Implement role-based restrictions when agent doesn't support `--tools` flag.
+def _build_agent_command_from_env() -> str:
+    """Build agent command string from environment variables.
 
-**Tasks:**
-- [ ] Implement `RoleFilter` class for output filtering
-- [ ] Add role instruction prepending to first message
-- [ ] Update role loading to work with both agents
-- [ ] Create OpenCode agent configs for agentwire and worker roles
+    Returns:
+        The agent command string to execute
+    """
+    command = os.environ.get("AGENT_NEW_SESSION_COMMAND", "")
+    if not command:
+        return ""  # Bare session
 
-**Files:**
-- `agentwire/roles/__init__.py` - Add RoleFilter class
-- `agentwire/__main__.py` - Integrate role filtering into message sending
-- `agentwire/agents/opencode.py` - New file for OpenCode agent configs
+    parts = [
+        command,
+        os.environ.get("AGENT_PERMISSIONS_FLAG", ""),
+        os.environ.get("AGENT_TOOLS_FLAG", ""),
+        os.environ.get("AGENT_DISALLOWED_TOOLS_FLAG", ""),
+        os.environ.get("AGENT_SYSTEM_PROMPT_FLAG", ""),
+        os.environ.get("AGENT_MODEL_FLAG", ""),
+    ]
 
-**Testing:**
-- [ ] Test worker role with OpenCode (no AskUserQuestion)
-- [ ] Test role instructions are prepended correctly
-- [ ] Test tool whitelist with Claude Code
+    return " ".join(filter(None, parts))
 
-**Success Criteria:**
-- Workers obey role restrictions regardless of agent type
-- Role instructions are applied to both Claude Code and OpenCode
+def cmd_new(args):
+    """Create new session."""
+    session_name = args.name or derive_session_name(args)
+    session_type = args.type or load_session_type(args.path)
+    roles = load_roles(args.roles)
 
----
+    # Build environment variables based on session type
+    env = _build_agent_command_env(session_type, roles)
 
-### Wave 6: Documentation & Testing
+    # Set environment variables
+    for key, value in env.items():
+        os.environ[key] = value
 
-**Goal:** Comprehensive docs and tests for multi-agent support.
+    # Build command from environment variables
+    agent_cmd = _build_agent_command_from_env()
 
-**Tasks:**
-- [ ] Update README with OpenCode requirements and setup
-- [ ] Create OPENCODE_INTEGRATION.md guide
-- [ ] Write unit tests for all new components
-- [ ] Write integration tests for both agents
-- [ ] Test migration from Claude to OpenCode
-- [ ] Update troubleshooting guide
+    # Create session with agent command
+    create_session(session_name, agent_cmd)
 
-**Files:**
-- `README.md` - Update agent requirements section
-- `docs/OPENCODE_INTEGRATION.md` - New guide
-- `docs/CONFIGURATION.md` - New config reference
-- `tests/test_agent_info.py` - New test file
-- `tests/test_command_builder.py` - New test file
-- `tests/test_multi_agent.py` - Integration tests
-
-**Testing:**
-- [ ] All unit tests pass
-- [ ] Integration tests pass for both Claude and OpenCode
-- [ ] Manual testing of all session types with both agents
-- [ ] Migration test from existing Claude Code setup to OpenCode
-
-**Success Criteria:**
-- Users can switch between Claude Code and OpenCode by changing one config value
-- All features work seamlessly with both agents
-- Clear documentation for OpenCode setup
-
----
-
-## Configuration Reference
-
-### Global Config (`~/.agentwire/config.yaml`)
-
-```yaml
-agent:
-  # Agent type: "claude", "opencode", or "auto"
-  type: "auto"
-
-  # Command template (supports placeholders: {name}, {path}, {model})
-  command: "claude --dangerously-skip-permissions"
-
-  claude:
-    # Claude Code specific settings
-    permissions:
-      mode: "bypass"  # "bypass" | "prompted" | "restricted"
-      hooks_enabled: true
-    session_id: null  # Auto-generated if null
-
-  opencode:
-    # OpenCode specific settings
-    model: null  # Default model (sonnet, opus, haiku)
-    role: null  # Default role name
-    config_path: null  # Path to opencode config file
-
-  fallback:
-    # Use AgentWire hooks when agent doesn't support them
-    use_agentwire_hooks: true
-    # Use AgentWire permission system when agent doesn't have one
-    use_agentwire_permissions: true
-    # Implement role filtering in AgentWire CLI when agent doesn't support --tools
-    implement_role_filtering: true
-    # Prepend role instructions to prompts when agent doesn't support system prompts
-    prepend_role_instructions: true
-    # Log warnings when features are unavailable
-    warn_on_missing: true
+    # Store role instructions for first message (OpenCode only)
+    if "ROLE_INSTRUCTIONS_TO_PREPEND" in env:
+        # Store in session metadata for first send
+        store_session_metadata(session_name, {
+            "role_instructions": env["ROLE_INSTRUCTIONS_TO_PREPEND"]
+        })
 ```
 
-### Project Config (`.agentwire.yml`)
+**Files to Modify:**
+- `agentwire/__main__.py` - Add new functions, update cmd_new
+- `agentwire/project_config.py` - Update SessionType enum
+
+**Testing:**
+```bash
+# Test Claude Code session types
+agentwire new -s test-claude-bypass --type claude-bypass
+agentwire new -s test-claude-prompted --type claude-prompted
+agentwire new -s test-claude-restricted --type claude-restricted
+
+# Test OpenCode session types
+agentwire new -s test-opencode-bypass --type opencode-bypass
+agentwire new -s test-opencode-prompted --type opencode-prompted
+agentwire new -s test-opencode-restricted --type opencode-restricted
+
+# Verify commands
+tmux capture-pane -t test-opencode-bypass -p | head -5
+# Should see: "opencode" (no flags)
+```
+
+**Success Criteria:**
+- Claude Code sessions work exactly as before
+- OpenCode sessions create with correct environment variables
+- Role instructions prepended to first OpenCode message
+- All session type flags map correctly
+
+---
+
+### Wave 2: Update `cmd_send` for Role Instructions (BLOCKING)
+
+**Goal:** Handle role instruction prepending for OpenCode first messages.
+
+**Tasks:**
+- [ ] Update `cmd_send` to check for stored role instructions
+- [ ] Prepend role instructions to first message if present
+- [ ] Delete stored instructions after first send
+- [ ] Test first message has role instructions
+- [ ] Test subsequent messages don't have role instructions
+
+**Implementation Details:**
+
+```python
+# agentwire/__main__.py
+
+def cmd_send(args):
+    """Send message to session."""
+    session_name = args.session or get_session_from_env()
+
+    # Check if we need to prepend role instructions (first message for OpenCode)
+    role_instructions = load_session_metadata(session_name).get("role_instructions")
+    if role_instructions:
+        # Prepend instructions to message
+        args.message = f"{role_instructions}\n\n---\n\n{args.message}"
+
+        # Clear stored instructions after use
+        store_session_metadata(session_name, {"role_instructions": None})
+
+    # ... existing send logic ...
+```
+
+**Files to Modify:**
+- `agentwire/__main__.py` - Update cmd_send
+
+**Testing:**
+```bash
+# Create OpenCode session with role
+agentwire new -s test-opencode --type opencode-bypass --roles worker
+
+# Send first message
+agentwire send -s test-opencode "Hello"
+# Check tmux: should see worker role instructions before "Hello"
+
+# Send second message
+agentwire send -s test-opencode "Second message"
+# Check tmux: should NOT see worker role instructions
+```
+
+**Success Criteria:**
+- Role instructions prepended to first OpenCode message
+- Role instructions not prepended to subsequent messages
+- Claude Code sessions unaffected
+
+---
+
+### Wave 3: Update Other Session Creation Commands
+
+**Goal:** Apply environment variable pattern to all session creation commands.
+
+**Commands to Update:**
+- `agentwire recreate`
+- `agentwire fork`
+- `agentwire spawn`
+
+**Implementation Details:**
+
+```python
+# agentwire/__main__.py
+
+def cmd_recreate(args):
+    """Recreate session (destroy and create fresh)."""
+    session_name = args.session
+    session_config = load_session_config(session_name)
+
+    # Use existing session type
+    session_type = session_config.get("type", "claude-bypass")
+    roles = session_config.get("roles")
+
+    # Build environment variables
+    env = _build_agent_command_env(session_type, roles)
+    for key, value in env.items():
+        os.environ[key] = value
+
+    # Build command
+    agent_cmd = _build_agent_command_from_env()
+
+    # ... existing recreate logic ...
+
+def cmd_fork(args):
+    """Fork session into new worktree."""
+    from_session = args.session
+    session_config = load_session_config(from_session)
+
+    # Use same session type
+    session_type = session_config.get("type", "claude-bypass")
+    roles = session_config.get("roles")
+
+    # Build environment variables
+    env = _build_agent_command_env(session_type, roles)
+    for key, value in env.items():
+        os.environ[key] = value
+
+    # ... existing fork logic ...
+
+def cmd_spawn(args):
+    """Spawn worker pane."""
+    parent_session = get_parent_session()
+
+    # Workers always use worker session type
+    if opencode_installed():
+        session_type = "opencode-restricted"
+    else:
+        session_type = "claude-restricted"
+
+    roles = [load_role("worker")]
+
+    # Build environment variables
+    env = _build_agent_command_env(session_type, roles)
+    for key, value in env.items():
+        os.environ[key] = value
+
+    # Build command
+    agent_cmd = _build_agent_command_from_env()
+
+    # ... existing spawn logic ...
+```
+
+**Files to Modify:**
+- `agentwire/__main__.py` - Update cmd_recreate, cmd_fork, cmd_spawn
+
+**Testing:**
+```bash
+# Test fork preserves session type
+agentwire new -s test-opencode --type opencode-bypass
+agentwire fork -s test-opencode -b feature-test
+# Verify feature-test uses opencode-bypass type
+
+# Test spawn uses worker type
+agentwire spawn
+# Verify new pane uses opencode-restricted or claude-restricted
+```
+
+**Success Criteria:**
+- All session creation commands use environment variable pattern
+- Fork preserves session type
+- Spawn uses correct worker type based on agent installed
+
+---
+
+### Wave 4: Add Universal Session Types (NICE-TO-HAVE)
+
+**Goal:** Add agent-agnostic session types for better user experience.
+
+**Tasks:**
+- [ ] Add `standard`, `worker`, `voice` to SessionType enum
+- [ ] Implement session type detection from config (`agent.command`)
+- [ ] Map universal types to agent-specific types
+- [ ] Update docs to recommend universal types
+
+**Implementation Details:**
+
+```python
+# agentwire/project_config.py
+
+class SessionType(str, Enum):
+    """Session types."""
+
+    # Agent-specific types
+    BARE = "bare"
+    CLAUDE_BYPASS = "claude-bypass"
+    CLAUDE_PROMPTED = "claude-prompted"
+    CLAUDE_RESTRICTED = "claude-restricted"
+    OPENCODE_BYPASS = "opencode-bypass"
+    OPENCODE_PROMPTED = "opencode-prompted"
+    OPENCODE_RESTRICTED = "opencode-restricted"
+
+    # Universal types (agent-agnostic)
+    STANDARD = "standard"
+    WORKER = "worker"
+    VOICE = "voice"
+
+# agentwire/__main__.py
+
+def detect_default_agent_type() -> str:
+    """Detect which AI agent is installed."""
+    if shutil.which("claude"):
+        return "claude"
+    elif shutil.which("opencode"):
+        return "opencode"
+    return "claude"  # Default for backward compatibility
+
+def normalize_session_type(session_type: str, agent_type: str) -> str:
+    """Map universal session types to agent-specific types.
+
+    Args:
+        session_type: "standard", "worker", "voice", or agent-specific type
+        agent_type: "claude" or "opencode"
+
+    Returns:
+        Agent-specific session type
+    """
+    # If already agent-specific, return as-is
+    if session_type in [
+        "claude-bypass", "claude-prompted", "claude-restricted",
+        "opencode-bypass", "opencode-prompted", "opencode-restricted",
+    ]:
+        return session_type
+
+    # Map universal types
+    if session_type == "standard":
+        return f"{agent_type}-bypass"
+    elif session_type == "worker":
+        return f"{agent_type}-restricted"
+    elif session_type == "voice":
+        return f"{agent_type}-prompted"
+
+    # Unknown type, default to standard
+    return f"{agent_type}-bypass"
+```
+
+**Files to Modify:**
+- `agentwire/project_config.py` - Add universal session types
+- `agentwire/__main__.py` - Add detection and normalization
+
+**Testing:**
+```bash
+# Test universal types with Claude Code
+echo "agent:\n  command: claude" > ~/.agentwire/config.yaml
+agentwire new -s test-standard --type standard
+# Should use claude-bypass internally
+
+agentwire new -s test-worker --type worker
+# Should use claude-restricted internally
+
+# Test universal types with OpenCode
+echo "agent:\n  command: opencode" > ~/.agentwire/config.yaml
+agentwire new -s test-standard --type standard
+# Should use opencode-bypass internally
+
+agentwire new -s test-worker --type worker
+# Should use opencode-restricted internally
+```
+
+**Success Criteria:**
+- Users can use `--type standard` regardless of agent
+- Universal types map correctly to agent-specific types
+- Backward compatible with agent-specific types
+
+---
+
+### Wave 5: Documentation & Examples
+
+**Goal:** Complete documentation for OpenCode integration.
+
+**Tasks:**
+- [ ] Update README with OpenCode requirements
+- [ ] Create OpenCode setup guide
+- [ ] Document all session types (agent-specific and universal)
+- [ ] Add examples for OpenCode with roles
+- [ ] Update troubleshooting guide
+
+**Documentation Structure:**
+
+```
+docs/
+├── opencode-integration.md          # Complete guide
+├── opencode-quickstart.md          # 5-minute setup
+├── session-types.md                 # All session types reference
+├── examples/
+│   ├── claude-workflow.md         # Claude Code examples
+│   ├── opencode-workflow.md        # OpenCode examples
+│   └── multi-agent-workflow.md    # Using both agents
+└── troubleshooting/
+    ├── opencode-issues.md         # OpenCode-specific issues
+    └── migration.md              # Migrating from Claude to OpenCode
+```
+
+**Content:**
+
+1. **opencode-integration.md**
+   - Quick start
+   - Installation
+   - Session types (both agent-specific and universal)
+   - Configuration
+   - Roles with OpenCode
+   - Migration guide
+
+2. **opencode-quickstart.md**
+   ```bash
+   # 1. Install OpenCode
+   npm install -g @opencode-ai/cli
+
+   # 2. Create session
+   agentwire new -s myproject --type standard
+
+   # 3. Use it
+   agentwire send -s myproject "Build a REST API"
+   ```
+
+3. **session-types.md**
+   - Table of all session types (agent-specific and universal)
+   - Flag mappings
+   - Use cases
+   - Examples
+
+**Success Criteria:**
+- Users can set up OpenCode in 5 minutes
+- All session types documented
+- Migration guide complete
+- Examples for common workflows
+
+---
+
+## Configuration
+
+### Minimal Config
 
 ```yaml
-# Session type (agent-agnostic)
-type: "standard"  # "bare" | "standard" | "worker" | "voice"
-
-# Agent-specific overrides (optional)
+# ~/.agentwire/config.yaml
 agent:
-  claude:
-    permissions:
-      mode: "bypass"  # Override global setting
-  opencode:
-    role: "developer"  # Use specific OpenCode role
+  command: "claude --dangerously-skip-permissions"  # or "opencode"
+```
 
-# Roles (composable, work with both agents)
+### Session Type in Project
+
+```yaml
+# ~/projects/myproject/.agentwire.yml
+type: "standard"  # or "claude-bypass", "opencode-bypass", etc.
 roles:
   - agentwire
   - custom-role
-
-# Voice config
-voice: "dotdev"
 ```
 
----
+## Testing Strategy
 
-## Migration Guide
+### Unit Tests
 
-### For Existing Claude Code Users
+```python
+# tests/test_agent_command_env.py
 
-When upgrading, AgentWire will auto-migrate:
+def test_build_claude_bypass_env():
+    env = _build_agent_command_env("claude-bypass", None)
+    assert env["AGENT_NEW_SESSION_COMMAND"] == "claude"
+    assert env["AGENT_PERMISSIONS_FLAG"] == "--dangerously-skip-permissions"
 
-```bash
-$ agentwire doctor
-⚠️  Configuration migration needed
+def test_build_claude_with_roles():
+    roles = [load_role("worker")]
+    env = _build_agent_command_env("claude-bypass", roles)
+    assert "AskUserQuestion" in env["AGENT_DISALLOWED_TOOLS_FLAG"]
 
-Your configuration uses legacy Claude Code-specific settings.
-AgentWire now supports multiple AI agents.
+def test_build_opencode_bypass_env():
+    env = _build_agent_command_env("opencode-bypass", None)
+    assert env["AGENT_NEW_SESSION_COMMAND"] == "opencode"
+    assert env["OPENCODE_PERMISSION"] == '{"*":"allow"}'
+    assert env["AGENT_TOOLS_FLAG"] == ""
 
-Run: agentwire migrate-config
+def test_role_instructions_stored():
+    roles = [load_role("agentwire")]
+    env = _build_agent_command_env("opencode-bypass", roles)
+    assert "ROLE_INSTRUCTIONS_TO_PREPEND" in env
 ```
 
-```bash
-$ agentwire migrate-config
-✓ Detected agent: claude
-✓ Migrated config to multi-agent format
-✓ Old config backed up to ~/.agentwire/config.yaml.backup
-✓ You can still use Claude Code exactly as before
+### Integration Tests
 
-Changes made:
-- Added agent.type: "claude"
-- Added agent.claude.permissions section
-- Added agent.fallback section
+```python
+# tests/integration/test_session_types.py
 
-Your existing sessions will continue to work without changes.
+@pytest.mark.parametrize("session_type", [
+    "claude-bypass", "claude-prompted", "claude-restricted",
+    "opencode-bypass", "opencode-prompted", "opencode-restricted",
+])
+def test_create_session(session_type):
+    """Test session creation for all session types."""
+    agentwire new -s f"test-{session_type}" --type session_type
+    assert session_exists(f"test-{session_type}")
+
+    # Verify correct command started
+    output = tmux_capture_pane(f"test-{session_type}")
+    if session_type.startswith("claude-"):
+        assert "claude" in output
+    elif session_type.startswith("opencode-"):
+        assert "opencode" in output
+
+def test_opencode_role_instructions():
+    """Test role instructions prepended to first message."""
+    agentwire new -s test-opencode --type opencode-bypass --roles worker
+    agentwire send -s test-opencode "Hello"
+
+    output = tmux_capture_pane("test-opencode")
+    assert "Worker agent" in output  # Role instructions
+    assert "Hello" in output
+
+    # Second message should not have role instructions
+    agentwire send -s test-opencode "Second"
+    output = tmux_capture_pane("test-opencode")
+    assert "Second" in output
+    # Role instructions only appear once
+    assert output.count("Worker agent") == 1
 ```
-
-### Switching to OpenCode
-
-```bash
-# 1. Install OpenCode
-npm install -g @opencode-ai/cli
-
-# 2. Update AgentWire config
-$ cat > ~/.agentwire/config.yaml <<EOF
-agent:
-  type: "opencode"
-  command: "opencode"
-  opencode:
-    model: "sonnet"
-  fallback:
-    use_agentwire_hooks: true
-    use_agentwire_permissions: true
-EOF
-
-# 3. Create OpenCode agent configs
-$ mkdir -p ~/.config/opencode/agents
-
-# Create agentwire agent
-$ cat > ~/.config/opencode/agents/agentwire.md <<'EOF'
----
-description: Main orchestrator for AgentWire voice interface
-mode: primary
-permission:
-  "*": "allow"
-tools:
-  write: true
-  edit: true
-  bash: true
-  question: true
----
-
-You are AgentWire orchestrator. Coordinate tasks and delegate to workers as needed.
-EOF
-
-# Create worker agent
-$ cat > ~/.config/opencode/agents/worker.md <<'EOF'
----
-description: Worker pane (no voice, no questions)
-mode: subagent
-permission:
-  question: deny
-tools:
-  write: true
-  edit: true
-  bash: true
-  question: false
----
-
-Worker agent. Execute tasks delegated by orchestrator without voice or user questions.
-EOF
-
-# 4. Test with a new session
-$ agentwire new -s test-opencode
-ℹ️  Using agent: opencode
-ℹ️  OpenCode doesn't support --tools flag - using AgentWire role filtering
-ℹ️  OpenCode doesn't support permission dialogs - using AgentWire permission system
-✓ Created session 'test-opencode'
-
-# 5. Verify it works
-$ agentwire output -s test-opencode -n 20
-# Should see OpenCode responding
-
-# 6. If happy, update default session type in project
-$ echo 'type: "standard"' >> ~/projects/myproject/.agentwire.yml
-```
-
----
-
-## Feature Comparison
-
-| Feature | Claude Code | OpenCode | AgentWire Support |
-|---------|-------------|----------|-------------------|
-| **CLI** | ✅ | ✅ | Both via agent.type |
-| **Permissions** | Ask/deny | Allow/ask/deny | Both via hooks/config |
-| **Tool Control** | `--tools`, `--disallowedTools` | Agent config | AgentWire role filtering |
-| **System Prompt** | `--append-system-prompt` | Config | Both (prepend or flag) |
-| **Session Types** | Hardcoded | Agent system | Universal types |
-| **Hooks** | PreToolUse, PermissionRequest | Plugin system | Fallbacks + AgentWire hooks |
-| **Permission Dialogs** | Built-in | No | AgentWire portal |
-| **Damage Control** | ✅ (300+ patterns) | ✅ (plugins) | Both via AgentWire hooks |
-| **History** | `~/.claude/history.jsonl` | Session API | Both via AgentWire wrapper |
-| **Fork Session** | `--resume --fork-session` | API call | Both (fork worktree) |
-| **Multiple Agents** | No | Yes (primary/subagent) | Via AgentWire roles |
-| **HTTP API** | No | Yes | Only for OpenCode |
-| **Open Source** | No | Yes (MIT) | N/A |
-
----
 
 ## Success Criteria
 
-- [ ] Users can switch between Claude Code and OpenCode by changing `agent.type` in config
-- [ ] Session types work identically for both agents (standard, worker, voice)
-- [ ] Role system works for both agents (tool restrictions, instructions)
-- [ ] Permission dialogs work via AgentWire portal for OpenCode
-- [ ] Damage control works for both agents (via AgentWire hooks)
-- [ ] History/fork works for both agents
-- [ ] Clear warnings shown when using features not supported by current agent
-- [ ] Existing Claude Code users can migrate without breaking changes
-- [ ] OpenCode users get full feature parity with Claude Code
-- [ ] Documentation covers both Claude Code and OpenCode setup
+- [ ] Claude Code sessions work exactly as before (no regressions)
+- [ ] OpenCode sessions can be created with all types
+- [ ] Environment variables correctly map to flags for each agent
+- [ ] Role instructions work for both agents (prepend for OpenCode, flag for Claude)
+- [ ] Universal session types work seamlessly
+- [ ] Documentation complete for both agents
 - [ ] All tests pass (unit + integration)
-
----
 
 ## Known Limitations
 
-1. **No OpenCode permission hooks** - Permission dialogs will be AgentWire-managed, not native to OpenCode
-2. **No OpenCode `--tools` flag** - Role filtering implemented in AgentWire CLI
-3. **HTTP API only for OpenCode** - Claude Code still uses CLI spawning
-4. **OpenCode server required for best experience** - Can use CLI, but loses session management
-5. **AgentWire hooks limited to tmux-level** - Can't inspect OpenCode internal state like Claude Code hooks
-
----
+1. **OpenCode hooks** - No native permission hooks, rely on AgentWire damage control
+2. **OpenCode tool flags** - No `--tools` flag, use agent config or role filtering
+3. **OpenCode system prompt** - No flag, prepend to first message
+4. **Mixed sessions** - Can't have Claude and OpenCode sessions in same project (different .agentwire.yml)
+5. **Runtime switching** - Can't switch agents mid-session (need to recreate)
 
 ## Future Enhancements
 
-1. **OpenCode plugin for native permission integration** - Use plugin system instead of AgentWire hooks
-2. **OpenCode HTTP API for all agents** - Unify portal communication
-3. **AgentWire hooks system** - Create independent hook system that works with any agent
-4. **Multi-agent session mixing** - Allow Claude Code sessions and OpenCode sessions to coexist
-5. **Runtime agent switching** - Switch agents mid-session (e.g., use Claude for one task, OpenCode for another)
+1. **Agent detection** - Auto-detect which agent is installed
+2. **Config migration** - Auto-migrate from Claude to OpenCode
+3. **Role filtering** - Implement AgentWire-level tool filtering for OpenCode
+4. **Permission fallbacks** - AgentWire permission dialogs for OpenCode
+5. **Mixed sessions** - Support both agents in same project
+6. **Runtime switching** - Switch agents mid-session
