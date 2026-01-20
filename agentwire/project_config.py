@@ -61,7 +61,6 @@ def detect_default_agent_type() -> str:
     Returns:
         "claude" or "opencode"
     """
-    import yaml
 
     # Check config first
     config_path = Path.home() / ".agentwire" / "config.yaml"
