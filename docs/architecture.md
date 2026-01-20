@@ -2,6 +2,8 @@
 
 > Living document. Update this, don't create new versions.
 
+**Note:** This architecture applies to both Claude Code and OpenCode sessions. The examples use Claude Code, but the patterns work identically with OpenCode.
+
 ## System Overview
 
 ```

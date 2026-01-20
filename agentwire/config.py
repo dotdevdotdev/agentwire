@@ -11,6 +11,20 @@ from typing import Optional
 
 import yaml
 
+from agentwire.project_config import detect_default_agent_type
+
+
+def _get_default_agent_command() -> str:
+    """Get the default agent command based on detected agent type.
+
+    Returns:
+        Default command string for the detected agent.
+    """
+    agent_type = detect_default_agent_type()
+    if agent_type == "opencode":
+        return "opencode"  # OpenCode uses env vars for permissions
+    return "claude --dangerously-skip-permissions"
+
 
 def _expand_path(path: str | Path | None) -> Path | None:
     """Expand ~ and resolve path."""
@@ -106,7 +120,7 @@ class STTConfig:
 class AgentConfig:
     """Agent command configuration."""
 
-    command: str = "claude --dangerously-skip-permissions"
+    command: str = field(default_factory=_get_default_agent_command)
 
 
 @dataclass
@@ -288,7 +302,7 @@ def _dict_to_config(data: dict) -> Config:
     # Agent
     agent_data = data.get("agent", {})
     agent = AgentConfig(
-        command=agent_data.get("command", "claude --dangerously-skip-permissions"),
+        command=agent_data.get("command", _get_default_agent_command()),
     )
 
     # Machines

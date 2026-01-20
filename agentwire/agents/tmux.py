@@ -3,6 +3,7 @@
 import json
 import logging
 import os
+import re
 import shlex
 import subprocess
 from pathlib import Path
@@ -11,8 +12,28 @@ from .base import AgentBackend
 
 logger = logging.getLogger(__name__)
 
+# Pattern to match env var prefix: VAR='value' or VAR="value" or VAR=value
+ENV_VAR_PREFIX_PATTERN = re.compile(r'^([A-Z_][A-Z0-9_]*)=([\'"]?)(.+?)\2\s+(.+)$')
+
 # Base command without permission flags - flags added based on bypass_permissions option
 DEFAULT_AGENT_COMMAND = "claude"
+
+
+def parse_env_var_prefix(command: str) -> tuple[str | None, str | None, str]:
+    """Parse env var prefix from a command string.
+
+    Handles commands like: VAR='value' some_command --args
+    Returns: (var_name, var_value, remaining_command)
+
+    If no env var prefix, returns (None, None, original_command)
+    """
+    match = ENV_VAR_PREFIX_PATTERN.match(command)
+    if match:
+        var_name = match.group(1)
+        var_value = match.group(3)  # The value without quotes
+        remaining = match.group(4)
+        return var_name, var_value, remaining
+    return None, None, command
 
 
 def tmux_session_exists(name: str) -> bool:
@@ -207,10 +228,27 @@ class TmuxAgent(AgentBackend):
             projects_dir = machine.get("projects_dir", "~/projects")
             remote_path = f"{projects_dir}/{path.name}" if not str(path).startswith("/") else str(path)
 
-            cmd = (
-                f"tmux new-session -d -s {shlex.quote(session_name)} -c {shlex.quote(remote_path)} && "
-                f"tmux send-keys -t {shlex.quote(session_name)} {shlex.quote(agent_cmd)} Enter"
+            # Parse env var prefix (e.g., OPENCODE_PERMISSION='...' opencode)
+            # Must use tmux set-environment for remote sessions since shlex.quote
+            # would break the env var assignment
+            env_var, env_val, actual_cmd = parse_env_var_prefix(agent_cmd)
+
+            cmd_parts = [
+                f"tmux new-session -d -s {shlex.quote(session_name)} -c {shlex.quote(remote_path)}"
+            ]
+
+            if env_var:
+                # Set env var in tmux session environment
+                cmd_parts.append(
+                    f"tmux set-environment -t {shlex.quote(session_name)} {env_var} {shlex.quote(env_val)}"
+                )
+
+            # Send the actual command (without env var prefix if it was extracted)
+            cmd_parts.append(
+                f"tmux send-keys -t {shlex.quote(session_name)} {shlex.quote(actual_cmd)} Enter"
             )
+
+            cmd = " && ".join(cmd_parts)
             result = self._run_remote(machine, cmd)
         else:
             # Create session

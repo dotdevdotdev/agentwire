@@ -1,6 +1,6 @@
 # AgentWire
 
-Voice interface for AI coding agents. Push-to-talk from any device to tmux sessions running Claude Code.
+Voice interface for AI coding agents. Push-to-talk from any device to tmux sessions running Claude Code or OpenCode.
 
 **No Backwards Compatibility** - Pre-launch, no customers. Change things completely, no legacy fallbacks.
 
@@ -105,8 +105,8 @@ agentwire safety check "cmd"    # test if command would be blocked
 agentwire safety status         # show pattern counts and recent blocks
 agentwire safety logs           # query audit logs
 agentwire safety install        # install damage control hooks
-agentwire hooks install         # install Claude Code permission hook
-agentwire hooks uninstall       # remove Claude Code permission hook
+agentwire hooks install         # install permission hook (Claude Code only)
+agentwire hooks uninstall       # remove permission hook (Claude Code only)
 agentwire hooks status          # check hook installation status
 agentwire network status        # complete network health check
 agentwire doctor                # auto-diagnose and fix issues
@@ -165,7 +165,7 @@ stt:
   timeout: 30
 
 agent:
-  command: "claude --dangerously-skip-permissions"
+  command: "claude --dangerously-skip-permissions"  # or "opencode" for OpenCode
 
 dev:
   source_dir: "~/projects/agentwire-dev"  # agentwire source for TTS/STT venv
@@ -256,6 +256,7 @@ agentwire kill --pane 3
 | Architecture | `docs/architecture.md` |
 | Security hooks | `docs/security/damage-control.md` |
 | Troubleshooting | `docs/TROUBLESHOOTING.md` |
+| Shell escaping | `docs/SHELL_ESCAPING.md` |
 | TTS (RunPod) | `docs/runpod-tts.md` |
 | TTS (self-hosted) | `docs/tts-self-hosted.md` |
 | Remote machines | `docs/remote-machines.md` |

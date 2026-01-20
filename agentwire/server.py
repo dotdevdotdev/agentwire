@@ -1513,7 +1513,8 @@ class AgentWireServer:
             name: Base session/project name (required)
             path: Custom project path (optional, ignored if worktree=true)
             voice: TTS voice for this session
-            type: Session type (claude-bypass | claude-prompted | claude-restricted)
+            type: Session type (claude-bypass | claude-prompted | claude-restricted | opencode-bypass | opencode-prompted | opencode-restricted | bare)
+            roles: Comma-separated list of roles (e.g., "agentwire,worker")
             machine: Machine ID ('local' or remote machine ID)
             worktree: Whether to create a worktree session
             branch: Branch name for worktree sessions
@@ -1529,6 +1530,7 @@ class AgentWireServer:
             custom_path = data.get("path")
             voice = data.get("voice", self.config.tts.default_voice)
             session_type = data.get("type", "claude-bypass")
+            roles = data.get("roles")
             machine = data.get("machine", "local")
             worktree = data.get("worktree", False)
             branch = data.get("branch", "").strip()
@@ -1555,12 +1557,11 @@ class AgentWireServer:
             # Pass -p when provided (CLI uses it to locate repo for worktree creation)
             if custom_path:
                 args.extend(["-p", custom_path])
-            # Set session type via CLI flags
-            if session_type == "claude-restricted":
-                args.append("--restricted")
-            elif session_type == "claude-prompted":
-                args.append("--no-bypass")
-            # claude-bypass is default, no flag needed
+            # Set session type via --type flag
+            args.extend(["--type", session_type])
+            # Set roles if provided
+            if roles:
+                args.extend(["--roles", roles])
 
             # Call CLI
             success, result = await self.run_agentwire_cmd(args)
@@ -2545,7 +2546,11 @@ projects:
         await self._say_to_room(session_name, text)
 
     async def api_recreate_session(self, request: web.Request) -> web.Response:
-        """POST /api/session/{name}/recreate - Destroy session/worktree and create fresh one via CLI."""
+        """POST /api/session/{name}/recreate - Destroy session/worktree and create fresh one via CLI.
+
+        Inherits session type from existing session config.
+        Supported types: claude-bypass | claude-prompted | claude-restricted | opencode-bypass | opencode-prompted | opencode-restricted | bare
+        """
         name = request.match_info["name"]
         try:
             logger.info(f"[{name}] Recreating session...")
@@ -2555,11 +2560,8 @@ projects:
 
             # Build CLI args
             args = ["recreate", "-s", name]
-            if old_config.type == "claude-restricted":
-                args.append("--restricted")
-            elif old_config.type == "claude-prompted":
-                args.append("--no-bypass")
-            # claude-bypass is default, no flag needed
+            # Set session type via --type flag
+            args.extend(["--type", old_config.type])
 
             # Call CLI - handles kill, worktree removal, git pull, new worktree, new session
             success, result = await self.run_agentwire_cmd(args)
@@ -2599,6 +2601,9 @@ projects:
 
         Creates a parallel session in a new worktree without destroying the current one.
         Useful for working on multiple features in the same project simultaneously.
+
+        Inherits session type from existing session config.
+        Supported types: claude-bypass | claude-prompted | claude-restricted | opencode-bypass | opencode-prompted | opencode-restricted | bare
         """
         name = request.match_info["name"]
         try:
@@ -2618,11 +2623,8 @@ projects:
 
             # Build CLI args - use `agentwire new` with the sibling session name
             args = ["new", "-s", new_session_name]
-            if old_config.type == "claude-restricted":
-                args.append("--restricted")
-            elif old_config.type == "claude-prompted":
-                args.append("--no-bypass")
-            # claude-bypass is default, no flag needed
+            # Set session type via --type flag
+            args.extend(["--type", old_config.type])
 
             # Call CLI - handles worktree creation and session setup
             success, result = await self.run_agentwire_cmd(args)
@@ -2652,6 +2654,9 @@ projects:
         """POST /api/session/{name}/fork - Fork the Claude Code session via CLI.
 
         Creates a new session that continues from the current conversation context.
+
+        Inherits session type from existing session config.
+        Supported types: claude-bypass | claude-prompted | claude-restricted | opencode-bypass | opencode-prompted | opencode-restricted | bare
         """
         name = request.match_info["name"]
         try:
@@ -2682,11 +2687,8 @@ projects:
 
             # Build CLI args
             args = ["fork", "-s", name, "-t", target_session]
-            if session_config.type == "claude-restricted":
-                args.append("--restricted")
-            elif session_config.type == "claude-prompted":
-                args.append("--no-bypass")
-            # claude-bypass is default, no flag needed
+            # Set session type via --type flag
+            args.extend(["--type", session_config.type])
 
             # Call CLI - handles worktree creation and session setup
             success, result = await self.run_agentwire_cmd(args)

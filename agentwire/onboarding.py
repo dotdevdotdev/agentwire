@@ -211,6 +211,7 @@ def setup_remote_machine(
     portal_machine_id: str,
     portal_host: str,
     portal_user: str,
+    agent_command: Optional[str] = None,
 ) -> bool:
     """Set up AgentWire on a remote machine: install package, configure, verify.
 
@@ -221,6 +222,9 @@ def setup_remote_machine(
     4. Create config files
     5. Install hooks
     6. Verify say command works
+
+    Args:
+        agent_command: Optional agent command. If None, uses detected default.
 
     Returns:
         True if successful
@@ -325,7 +329,7 @@ def setup_remote_machine(
 
     # Step 4: Create config files
     print("\nCreating configuration files...")
-    if not setup_remote_machine_config(host, user, projects_dir, portal_machine_id, portal_host, portal_user):
+    if not setup_remote_machine_config(host, user, projects_dir, portal_machine_id, portal_host, portal_user, agent_command):
         return False
 
     # Step 5: Install hooks
@@ -503,17 +507,25 @@ def setup_remote_machine_config(
     portal_machine_id: str,
     portal_host: str,
     portal_user: str,
+    agent_command: Optional[str] = None,
 ) -> bool:
     """Set up AgentWire config on a remote machine via SSH.
 
     Creates config.yaml and machines.json on the remote machine,
     configured to connect to this machine as the portal.
 
+    Args:
+        agent_command: Optional agent command. If None, uses detected default.
+
     Returns:
         True if successful
     """
     import socket
     local_hostname = socket.gethostname().lower()
+
+    # Use provided agent command or detect default
+    if agent_command is None:
+        _, agent_command = get_default_agent_command()
 
     # Generate config.yaml for the remote machine
     config_yaml = f'''# AgentWire Configuration
@@ -542,7 +554,7 @@ stt:
   language: "en"
 
 agent:
-  command: "claude --dangerously-skip-permissions"
+  command: "{agent_command}"
 
 # Network service locations - this machine connects to portal elsewhere
 services:
@@ -771,6 +783,50 @@ def get_claude_install_instructions() -> str:
     return "Install from: https://github.com/anthropics/claude-code"
 
 
+def check_opencode() -> tuple[bool, str]:
+    """Check if OpenCode CLI is installed.
+
+    Returns:
+        Tuple of (is_installed, path_or_message)
+    """
+    opencode_path = shutil.which("opencode")
+    if opencode_path:
+        return True, opencode_path
+    return False, "not found"
+
+
+def get_opencode_install_instructions() -> str:
+    """Get OpenCode install instructions."""
+    return "Install from: https://github.com/opencode-ai/opencode"
+
+
+def detect_installed_agents() -> dict[str, tuple[bool, str]]:
+    """Detect which AI agents are installed.
+
+    Returns:
+        Dict with 'claude' and 'opencode' keys, each mapping to (is_installed, path_or_message)
+    """
+    return {
+        "claude": check_claude(),
+        "opencode": check_opencode(),
+    }
+
+
+def get_default_agent_command() -> tuple[str, str]:
+    """Get the default agent command based on what's installed.
+
+    Returns:
+        Tuple of (agent_type, command) - e.g., ("claude", "claude --dangerously-skip-permissions")
+    """
+    from .project_config import detect_default_agent_type
+
+    agent_type = detect_default_agent_type()
+    if agent_type == "opencode":
+        return ("opencode", "opencode")
+    else:
+        return ("claude", "claude --dangerously-skip-permissions")
+
+
 def print_dependency_summary(checks: dict[str, tuple[bool, str]]) -> bool:
     """Print summary of dependency checks.
 
@@ -851,16 +907,31 @@ def run_onboarding(skip_session: bool = False) -> int:
     else:
         print_success(f"ffmpeg: {ffmpeg_path}")
 
-    # Check Claude Code (optional but recommended)
-    claude_installed, claude_path = check_claude()
-    dependency_checks["claude"] = (claude_installed, claude_path)
+    # Check AI agents (at least one recommended)
+    agents = detect_installed_agents()
+    claude_installed, claude_path = agents["claude"]
+    opencode_installed, opencode_path = agents["opencode"]
 
-    if not claude_installed:
-        print_warning("claude not found")
-        print_info(get_claude_install_instructions())
-        print_info("Claude Code is optional - you can use --bare sessions or other agents")
-    else:
+    # Track at least one agent installed
+    any_agent_installed = claude_installed or opencode_installed
+
+    if claude_installed:
+        dependency_checks["claude"] = (True, claude_path)
         print_success(f"claude: {claude_path}")
+    else:
+        dependency_checks["claude"] = (False, "not found")
+
+    if opencode_installed:
+        dependency_checks["opencode"] = (True, opencode_path)
+        print_success(f"opencode: {opencode_path}")
+    else:
+        dependency_checks["opencode"] = (False, "not found")
+
+    if not any_agent_installed:
+        print_warning("No AI agent found (claude or opencode)")
+        print_info(get_claude_install_instructions())
+        print_info(get_opencode_install_instructions())
+        print_info("At least one AI agent is recommended - or use --bare sessions")
 
     print()
 
@@ -918,9 +989,13 @@ def run_onboarding(skip_session: bool = False) -> int:
             existing_machines = None
 
     # Initialize config values with defaults or existing
+    # Detect default agent based on what's installed
+    detected_agent_type, detected_agent_command = get_default_agent_command()
+
     config = {
         "projects_dir": "~/projects",
-        "agent_command": "claude --dangerously-skip-permissions",
+        "agent_command": detected_agent_command,
+        "agent_type": detected_agent_type,  # Track which agent we're using
         "tts_backend": "chatterbox",
         "tts_url": "http://localhost:8100",
         "tts_voice": "default",
@@ -937,7 +1012,13 @@ def run_onboarding(skip_session: bool = False) -> int:
     # Pre-fill from existing config
     if existing_config:
         config["projects_dir"] = existing_config.get("projects", {}).get("dir", config["projects_dir"])
-        config["agent_command"] = existing_config.get("agent", {}).get("command", config["agent_command"])
+        existing_agent_cmd = existing_config.get("agent", {}).get("command", config["agent_command"])
+        config["agent_command"] = existing_agent_cmd
+        # Detect agent type from existing command
+        if "opencode" in existing_agent_cmd:
+            config["agent_type"] = "opencode"
+        elif "claude" in existing_agent_cmd:
+            config["agent_type"] = "claude"
         config["tts_backend"] = existing_config.get("tts", {}).get("backend", config["tts_backend"])
         config["tts_url"] = existing_config.get("tts", {}).get("url", config["tts_url"])
         config["tts_voice"] = existing_config.get("tts", {}).get("default_voice", config["tts_voice"])
@@ -983,25 +1064,54 @@ def run_onboarding(skip_session: bool = False) -> int:
     # ─────────────────────────────────────────────────────────────
     print_header("2. Agent Command")
 
-    print("What command should AgentWire use to start Claude Code sessions?")
+    print("What command should AgentWire use to start AI coding sessions?")
     print()
 
-    agent_choice = prompt_choice(
-        "",
-        [
-            ("skip", "claude --dangerously-skip-permissions (Recommended - full automation)"),
-            ("standard", "claude (Standard - will prompt for permissions)"),
-            ("custom", "Custom command (for Aider, Cursor, or other agents)"),
-        ],
-        default=1 if "--dangerously-skip-permissions" in config["agent_command"] else 2,
-    )
+    # Build options based on what's installed
+    agent_options = []
+    default_option = 1
 
-    if agent_choice == "skip":
+    # Determine default based on current config
+    current_is_claude_skip = "--dangerously-skip-permissions" in config["agent_command"]
+    current_is_opencode = "opencode" in config["agent_command"]
+
+    if claude_installed:
+        agent_options.append(("claude_skip", "claude --dangerously-skip-permissions (Recommended - full automation)"))
+        agent_options.append(("claude_standard", "claude (Standard - will prompt for permissions)"))
+        if current_is_claude_skip:
+            default_option = 1
+        elif "claude" in config["agent_command"] and not current_is_claude_skip:
+            default_option = 2
+
+    if opencode_installed:
+        agent_options.append(("opencode", "opencode (OpenCode AI agent)"))
+        if current_is_opencode:
+            default_option = len(agent_options)
+
+    agent_options.append(("custom", "Custom command (for Aider, Cursor, or other agents)"))
+
+    # If no agents installed, default to custom
+    if not claude_installed and not opencode_installed:
+        default_option = 1
+
+    agent_choice = prompt_choice("", agent_options, default=default_option)
+
+    if agent_choice == "claude_skip":
         config["agent_command"] = "claude --dangerously-skip-permissions"
-    elif agent_choice == "standard":
+        config["agent_type"] = "claude"
+    elif agent_choice == "claude_standard":
         config["agent_command"] = "claude"
+        config["agent_type"] = "claude"
+    elif agent_choice == "opencode":
+        config["agent_command"] = "opencode"
+        config["agent_type"] = "opencode"
     else:
         config["agent_command"] = prompt("Enter custom command", config["agent_command"])
+        # Try to detect agent type from custom command
+        if "opencode" in config["agent_command"]:
+            config["agent_type"] = "opencode"
+        elif "claude" in config["agent_command"]:
+            config["agent_type"] = "claude"
 
     print_success(f"Agent command: {config['agent_command']}")
 
@@ -1281,6 +1391,7 @@ def run_onboarding(skip_session: bool = False) -> int:
                     portal_machine_id=local_hostname,
                     portal_host=local_ip,
                     portal_user=local_user,
+                    agent_command=config["agent_command"],
                 ):
                     # Offer reverse tunnel setup
                     if prompt_yes_no(f"\nCreate reverse SSH tunnel for {machine['id']}?", default=True):

@@ -102,7 +102,7 @@ Multiple windows for the same session work together:
 
 ## Voice Output
 
-Claude (or users) can trigger TTS using the unified `agentwire say` command:
+Agent (or users) can trigger TTS using the unified `agentwire say` command:
 
 ```bash
 agentwire say "Hello world"          # Smart routing to browser or local
@@ -151,7 +151,7 @@ Right-click or use the actions menu on session windows for additional operations
 | Fork Session | Forks Claude Code conversation context into new session |
 | Recreate | Destroys session/worktree, pulls latest, creates fresh |
 
-**Fork Session** uses Claude Code's `--resume <id> --fork-session` to create a new session that inherits the conversation context. Creates sessions named `project-fork-1`, `project-fork-2`, etc.
+**Fork Session** uses Claude Code's `--resume <id> --fork-session` to create a new session that inherits the conversation context. Creates sessions named `project-fork-1`, `project-fork-2`, etc. Note: `--resume` is Claude Code only; OpenCode does not support this feature.
 
 **For system sessions** (portal, TTS, main - names configurable via `services.*.session_name`):
 

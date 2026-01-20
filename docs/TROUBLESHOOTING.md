@@ -381,6 +381,41 @@ agentwire kill -s unused-session
 
 ---
 
+## Session Command Issues
+
+### Agent Command Not Starting (Just Shows Bash Prompt)
+
+**Note:** This section applies to Claude Code sessions only. OpenCode does not use `--append-system-prompt`.
+
+**Symptom:** `agentwire new -s name --type claude-bypass` creates a tmux session but Claude never starts - you just see a bash prompt.
+
+**Cause:** System prompt (from roles) contains characters that break shell escaping when sent via `tmux send-keys`.
+
+**Common triggers:**
+- Newlines in role instructions
+- Unescaped quotes
+- Very long command lines that wrap incorrectly
+
+**How it manifests:**
+```
+% claude --append-system-prompt "line1
+quote> line2"   # Bash waiting for closing quote
+```
+
+**Solution:** This was fixed by writing the system prompt to a temp file instead of embedding it in the command line. If you see this issue:
+
+1. Make sure you're running the latest version: `agentwire rebuild`
+2. Check role files for unusual characters
+3. See `docs/SHELL_ESCAPING.md` for technical details
+
+### Garbled Command Output in tmux
+
+**Cause:** Very long commands wrap in the terminal, making the output hard to read.
+
+**Not actually broken:** If Claude starts (check with `pgrep -f claude`), it's working fine - just display weirdness.
+
+---
+
 ## Getting Help
 
 1. **Run diagnostics:** `agentwire doctor`

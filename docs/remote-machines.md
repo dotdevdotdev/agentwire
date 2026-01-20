@@ -2,7 +2,7 @@
 
 > Living document. Update this, don't create new versions.
 
-AgentWire can manage Claude Code sessions on remote machines via SSH. This guide covers adding, removing, and configuring remote machines.
+AgentWire can manage AI agent sessions (Claude Code or OpenCode) on remote machines via SSH. This guide covers adding, removing, and configuring remote machines.
 
 ---
 
