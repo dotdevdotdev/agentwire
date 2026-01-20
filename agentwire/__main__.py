@@ -3515,8 +3515,9 @@ def cmd_fork(args) -> int:
             if source_project_config.roles:
                 roles, _ = load_roles(source_project_config.roles, fork_path)
         else:
-            # Default to claude-bypass if no config
-            session_type_str = "claude-bypass"
+            # Default to agent-bypass based on detected agent
+            agent_type = detect_default_agent_type()
+            session_type_str = f"{agent_type}-bypass"
             roles = None
 
         # Build agent command
@@ -3608,8 +3609,9 @@ def cmd_fork(args) -> int:
         if source_config.roles:
             roles, _ = load_roles(source_config.roles, source_path if source_path != project_path else project_path)
     else:
-        # Default to claude-bypass if no config
-        session_type_str = "claude-bypass"
+        # Default to agent-bypass based on detected agent
+        agent_type = detect_default_agent_type()
+        session_type_str = f"{agent_type}-bypass"
         roles = None
 
     # Build agent command
@@ -3804,6 +3806,8 @@ def cmd_history_resume(args) -> int:
 
     Creates a new tmux session and runs `claude --resume <session-id> --fork-session`
     with appropriate flags based on the project's .agentwire.yml config.
+
+    Note: Only Claude Code supports --resume. OpenCode sessions cannot be resumed.
     """
     session_id = args.session_id
     name = getattr(args, 'name', None)
@@ -3811,14 +3815,24 @@ def cmd_history_resume(args) -> int:
     project_path_str = args.project
     json_mode = getattr(args, 'json', False)
 
+    # Check if the default agent supports resume
+    agent_type = detect_default_agent_type()
+    if agent_type == "opencode":
+        return _output_result(
+            False,
+            json_mode,
+            "Session resume is not supported for OpenCode. Only Claude Code supports --resume."
+        )
+
     # Resolve project path
     project_path = Path(project_path_str).expanduser().resolve()
 
     # Load project config for type and roles
     project_config = load_project_config(project_path)
     if project_config is None:
-        # Default to bypass if no config found
-        project_config = ProjectConfig(type=SessionType.CLAUDE_BYPASS, roles=["agentwire"])
+        # Default to bypass for detected agent
+        default_type = SessionType.CLAUDE_BYPASS if agent_type == "claude" else SessionType.OPENCODE_BYPASS
+        project_config = ProjectConfig(type=default_type, roles=["agentwire"])
 
     # Generate session name if not provided
     if not name:

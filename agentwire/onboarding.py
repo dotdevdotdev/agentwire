@@ -211,6 +211,7 @@ def setup_remote_machine(
     portal_machine_id: str,
     portal_host: str,
     portal_user: str,
+    agent_command: Optional[str] = None,
 ) -> bool:
     """Set up AgentWire on a remote machine: install package, configure, verify.
 
@@ -221,6 +222,9 @@ def setup_remote_machine(
     4. Create config files
     5. Install hooks
     6. Verify say command works
+
+    Args:
+        agent_command: Optional agent command. If None, uses detected default.
 
     Returns:
         True if successful
@@ -325,7 +329,7 @@ def setup_remote_machine(
 
     # Step 4: Create config files
     print("\nCreating configuration files...")
-    if not setup_remote_machine_config(host, user, projects_dir, portal_machine_id, portal_host, portal_user):
+    if not setup_remote_machine_config(host, user, projects_dir, portal_machine_id, portal_host, portal_user, agent_command):
         return False
 
     # Step 5: Install hooks
@@ -503,17 +507,25 @@ def setup_remote_machine_config(
     portal_machine_id: str,
     portal_host: str,
     portal_user: str,
+    agent_command: Optional[str] = None,
 ) -> bool:
     """Set up AgentWire config on a remote machine via SSH.
 
     Creates config.yaml and machines.json on the remote machine,
     configured to connect to this machine as the portal.
 
+    Args:
+        agent_command: Optional agent command. If None, uses detected default.
+
     Returns:
         True if successful
     """
     import socket
     local_hostname = socket.gethostname().lower()
+
+    # Use provided agent command or detect default
+    if agent_command is None:
+        _, agent_command = get_default_agent_command()
 
     # Generate config.yaml for the remote machine
     config_yaml = f'''# AgentWire Configuration
@@ -542,7 +554,7 @@ stt:
   language: "en"
 
 agent:
-  command: "claude --dangerously-skip-permissions"
+  command: "{agent_command}"
 
 # Network service locations - this machine connects to portal elsewhere
 services:
@@ -1379,6 +1391,7 @@ def run_onboarding(skip_session: bool = False) -> int:
                     portal_machine_id=local_hostname,
                     portal_host=local_ip,
                     portal_user=local_user,
+                    agent_command=config["agent_command"],
                 ):
                     # Offer reverse tunnel setup
                     if prompt_yes_no(f"\nCreate reverse SSH tunnel for {machine['id']}?", default=True):
