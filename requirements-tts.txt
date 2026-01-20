@@ -1,0 +1,21 @@
+# TTS Server Dependencies
+# Install with: pip install -r requirements-tts.txt
+#
+# For GPU support, install PyTorch with CUDA first:
+#   pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu121
+
+# Core ML
+torch>=2.0.0
+torchaudio>=2.0.0
+
+# TTS Engine
+git+https://github.com/resemble-ai/chatterbox.git
+
+# Speech-to-Text (for /transcribe endpoint)
+faster-whisper
+
+# HTTP Server
+fastapi
+uvicorn[standard]
+pydantic
+python-multipart
