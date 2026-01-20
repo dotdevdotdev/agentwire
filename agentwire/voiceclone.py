@@ -1,5 +1,6 @@
 """Voice cloning: record audio and upload to TTS server."""
 
+import base64
 import os
 import signal
 import subprocess
@@ -51,10 +52,103 @@ def load_config() -> dict:
     return load_yaml(config_path(), default={})
 
 
+def get_tts_config() -> dict:
+    """Get TTS configuration."""
+    config = load_config()
+    return config.get("tts", {})
+
+
 def get_tts_url() -> str | None:
     """Get TTS server URL from config."""
-    config = load_config()
-    return config.get("tts", {}).get("url")
+    return get_tts_config().get("url")
+
+
+def is_runpod_backend() -> bool:
+    """Check if using RunPod backend."""
+    return get_tts_config().get("backend") == "runpod"
+
+
+def upload_voice_runpod(voice_name: str, audio_path: Path) -> tuple[bool, str]:
+    """Upload voice clone to RunPod.
+
+    Returns (success, message).
+    """
+    tts_config = get_tts_config()
+    endpoint_id = tts_config.get("runpod_endpoint_id")
+    api_key = tts_config.get("runpod_api_key")
+
+    if not endpoint_id or not api_key:
+        return False, "RunPod endpoint_id or api_key not configured"
+
+    # Read and encode audio
+    with open(audio_path, "rb") as f:
+        audio_base64 = base64.b64encode(f.read()).decode()
+
+    # Upload via RunPod API
+    url = f"https://api.runpod.ai/v2/{endpoint_id}/runsync"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "input": {
+            "action": "upload_voice",
+            "voice_name": voice_name,
+            "audio_base64": audio_base64
+        }
+    }
+
+    try:
+        response = requests.post(url, headers=headers, json=payload, timeout=120)
+        data = response.json()
+
+        if response.status_code == 200:
+            output = data.get("output", {})
+            if output.get("success"):
+                return True, output.get("message", "Voice uploaded")
+            elif output.get("error"):
+                return False, output.get("error")
+            else:
+                return True, "Voice uploaded"
+        else:
+            error = data.get("error", response.text)
+            return False, f"RunPod error: {error}"
+    except requests.RequestException as e:
+        return False, f"Connection failed: {e}"
+
+
+def list_voices_runpod() -> tuple[bool, list | str]:
+    """List voices from RunPod.
+
+    Returns (success, voices_list or error_message).
+    """
+    tts_config = get_tts_config()
+    endpoint_id = tts_config.get("runpod_endpoint_id")
+    api_key = tts_config.get("runpod_api_key")
+
+    if not endpoint_id or not api_key:
+        return False, "RunPod endpoint_id or api_key not configured"
+
+    url = f"https://api.runpod.ai/v2/{endpoint_id}/runsync"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+    payload = {"input": {"action": "list_voices"}}
+
+    try:
+        response = requests.post(url, headers=headers, json=payload, timeout=30)
+        data = response.json()
+
+        if response.status_code == 200:
+            output = data.get("output", {})
+            voices = output.get("voices", [])
+            return True, voices
+        else:
+            error = data.get("error", response.text)
+            return False, f"RunPod error: {error}"
+    except requests.RequestException as e:
+        return False, f"Connection failed: {e}"
 
 
 def get_audio_device() -> str:
@@ -181,46 +275,65 @@ def stop_recording(voice_name: str) -> int:
     notify("Uploading voice clone...")
     print(f"Uploading voice '{voice_name}'...")
 
-    # Upload to TTS server
-    tts_url = get_tts_url()
-    if not tts_url:
-        beep("error")
-        log("ERROR: tts.url not configured")
-        notify("TTS URL not configured")
-        print("Error: tts.url not configured in config.yaml")
-        return 1
-    try:
-        with open(AUDIO_FILE, "rb") as f:
-            response = requests.post(
-                f"{tts_url}/voices/{voice_name}",
-                files={"file": (f"{voice_name}.wav", f, "audio/wav")}
-            )
-
-        if response.status_code == 200:
-            data = response.json()
-            duration = data.get("duration", "?")
+    # Upload based on backend
+    if is_runpod_backend():
+        # Upload to RunPod
+        success, message = upload_voice_runpod(voice_name, AUDIO_FILE)
+        if success:
             beep("done")
-            log(f"SUCCESS: Voice '{voice_name}' created ({duration}s)")
+            log(f"SUCCESS: Voice '{voice_name}' created via RunPod")
             notify(f"Voice '{voice_name}' created!")
-            print(f"Voice '{voice_name}' created successfully ({duration}s)")
+            print(f"Voice '{voice_name}' created successfully")
             AUDIO_FILE.unlink(missing_ok=True)
             return 0
         else:
-            error = response.json().get("detail", response.text)
-            log(f"ERROR: Upload failed - {error}")
-            notify(f"Upload failed: {error}")
             beep("error")
-            print(f"Upload failed: {error}")
+            log(f"ERROR: RunPod upload failed - {message}")
+            notify(f"Upload failed: {message}")
+            print(f"Upload failed: {message}")
             AUDIO_FILE.unlink(missing_ok=True)
             return 1
+    else:
+        # Upload to self-hosted TTS server
+        tts_url = get_tts_url()
+        if not tts_url:
+            beep("error")
+            log("ERROR: tts.url not configured")
+            notify("TTS URL not configured")
+            print("Error: tts.url not configured in config.yaml")
+            return 1
+        try:
+            with open(AUDIO_FILE, "rb") as f:
+                response = requests.post(
+                    f"{tts_url}/voices/{voice_name}",
+                    files={"file": (f"{voice_name}.wav", f, "audio/wav")}
+                )
 
-    except requests.RequestException as e:
-        log(f"ERROR: Connection failed - {e}")
-        notify("Connection to TTS server failed")
-        beep("error")
-        print(f"Connection failed: {e}")
-        AUDIO_FILE.unlink(missing_ok=True)
-        return 1
+            if response.status_code == 200:
+                data = response.json()
+                duration = data.get("duration", "?")
+                beep("done")
+                log(f"SUCCESS: Voice '{voice_name}' created ({duration}s)")
+                notify(f"Voice '{voice_name}' created!")
+                print(f"Voice '{voice_name}' created successfully ({duration}s)")
+                AUDIO_FILE.unlink(missing_ok=True)
+                return 0
+            else:
+                error = response.json().get("detail", response.text)
+                log(f"ERROR: Upload failed - {error}")
+                notify(f"Upload failed: {error}")
+                beep("error")
+                print(f"Upload failed: {error}")
+                AUDIO_FILE.unlink(missing_ok=True)
+                return 1
+
+        except requests.RequestException as e:
+            log(f"ERROR: Connection failed - {e}")
+            notify("Connection to TTS server failed")
+            beep("error")
+            print(f"Connection failed: {e}")
+            AUDIO_FILE.unlink(missing_ok=True)
+            return 1
 
 
 def cancel_recording() -> int:
@@ -251,32 +364,56 @@ def is_recording() -> bool:
 
 def list_voices() -> int:
     """List available voices from TTS server."""
-    tts_url = get_tts_url()
-    if not tts_url:
-        print("Error: tts.url not configured in config.yaml")
-        return 1
-    try:
-        response = requests.get(f"{tts_url}/voices")
-        if response.status_code == 200:
-            data = response.json()
-            voices = data.get("voices", data) if isinstance(data, dict) else data
-
+    if is_runpod_backend():
+        # List from RunPod
+        success, result = list_voices_runpod()
+        if success:
+            voices = result
             if not voices:
                 print("No voices available")
                 return 0
 
             print(f"Available voices ({len(voices)}):")
-            for v in sorted(voices, key=lambda x: x.get("name", "")):
-                name = v.get("name", "?")
-                duration = v.get("duration", "?")
-                print(f"  {name}: {duration}s")
+            for v in sorted(voices):
+                # RunPod returns simple list of voice names
+                if isinstance(v, str):
+                    print(f"  {v}")
+                else:
+                    name = v.get("name", "?")
+                    duration = v.get("duration", "?")
+                    print(f"  {name}: {duration}s")
             return 0
         else:
-            print(f"Failed to list voices: {response.status_code}")
+            print(f"Failed to list voices: {result}")
             return 1
-    except requests.RequestException as e:
-        print(f"Connection failed: {e}")
-        return 1
+    else:
+        # List from self-hosted TTS server
+        tts_url = get_tts_url()
+        if not tts_url:
+            print("Error: tts.url not configured in config.yaml")
+            return 1
+        try:
+            response = requests.get(f"{tts_url}/voices")
+            if response.status_code == 200:
+                data = response.json()
+                voices = data.get("voices", data) if isinstance(data, dict) else data
+
+                if not voices:
+                    print("No voices available")
+                    return 0
+
+                print(f"Available voices ({len(voices)}):")
+                for v in sorted(voices, key=lambda x: x.get("name", "")):
+                    name = v.get("name", "?")
+                    duration = v.get("duration", "?")
+                    print(f"  {name}: {duration}s")
+                return 0
+            else:
+                print(f"Failed to list voices: {response.status_code}")
+                return 1
+        except requests.RequestException as e:
+            print(f"Connection failed: {e}")
+            return 1
 
 
 def delete_voice(voice_name: str) -> int:
