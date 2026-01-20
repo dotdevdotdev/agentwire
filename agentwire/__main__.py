@@ -1255,24 +1255,6 @@ def _install_global_tmux_hooks() -> None:
         )
 
 
-def _install_session_hooks(session_name: str) -> None:
-    """Install tmux hooks to notify portal of session state changes.
-
-    Installs session-closed hook that calls agentwire notify when session closes.
-    Uses hook_session_name because session_name is empty when session closes.
-    Uses run-shell -b for background execution to not block tmux.
-    """
-    agentwire_path = _get_agentwire_path()
-
-    # Install session-closed hook
-    # Note: #{hook_session_name} is used because #{session_name} is empty when session closes
-    hook_cmd = f'run-shell -b "{agentwire_path} notify session_closed -s #{{hook_session_name}}"'
-    subprocess.run(
-        ["tmux", "set-hook", "-t", session_name, "session-closed", hook_cmd],
-        capture_output=True,
-    )
-
-
 def _install_pane_hooks(session_name: str, pane_index: int) -> None:
     """Install tmux hooks to notify portal of pane state changes.
 
@@ -2247,10 +2229,6 @@ def cmd_new(args) -> int:
         ["tmux", "new-session", "-d", "-s", session_name, "-c", str(session_path)],
         check=True
     )
-
-    # Install tmux hook to notify portal when session closes
-    # Uses hook_session_name because session_name is empty when session closes
-    _install_session_hooks(session_name)
 
     # Ensure Claude starts in correct directory
     subprocess.run(
