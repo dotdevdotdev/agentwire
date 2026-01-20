@@ -69,14 +69,14 @@ client JS updates UI (closes window, refreshes list)
 
 ### Wave 5: Cleanup & Edge Cases
 
-- [ ] Handle portal restart (hooks still installed, portal comes back)
-- [ ] Handle remote sessions (notify via SSH tunnel or remote portal)
-- [ ] Add `agentwire hooks status` to show installed hooks
-- [ ] Clean up hooks on session kill
+- [x] Handle portal restart (hooks call agentwire notify which reconnects)
+- [x] Handle remote sessions (uses portal URL from config, tunnels if needed)
+- [x] Add `agentwire hooks status` shows tmux portal sync hooks per session
+- [x] Clean up hooks on session kill (session-scoped hooks auto-removed)
 
 ## Completion Criteria
 
-- [ ] Killing a session via CLI immediately closes its portal window
-- [ ] Killing a session via raw `tmux kill-session` also updates portal
-- [ ] Spawning/killing worker panes updates portal pane counts
-- [ ] Works for both local and remote sessions
+- [x] Killing a session via CLI immediately closes its portal window
+- [x] Killing a session via raw `tmux kill-session` also updates portal
+- [x] Spawning/killing worker panes updates portal pane counts
+- [x] Works for both local and remote sessions (via tunnel/direct)

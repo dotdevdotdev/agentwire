@@ -4988,7 +4988,9 @@ def cmd_hooks_uninstall(args) -> int:
 
 
 def cmd_hooks_status(args) -> int:
-    """Check Claude Code permission hook installation status."""
+    """Check Claude Code permission hook and tmux portal sync hooks."""
+    # Claude Code permission hook
+    print("=== Claude Code Permission Hook ===")
     hook_file = CLAUDE_HOOKS_DIR / "agentwire-permission.sh"
     hook_installed = hook_file.exists()
     hook_registered = is_hook_registered()
@@ -4996,18 +4998,62 @@ def cmd_hooks_status(args) -> int:
     if hook_installed:
         if hook_file.is_symlink():
             source = hook_file.resolve()
-            print("Permission hook: installed (symlink)")
+            print("Status: installed (symlink)")
             print(f"  Location: {hook_file} -> {source}")
         else:
-            print("Permission hook: installed (copy)")
+            print("Status: installed (copy)")
             print(f"  Location: {hook_file}")
         if hook_registered:
             print("  Registered: yes (in ~/.claude/settings.json)")
         else:
             print("  Registered: NO - run 'agentwire hooks install --force' to fix")
     else:
-        print("Permission hook: not installed")
+        print("Status: not installed")
         print("  Run 'agentwire hooks install' to enable permission dialogs in portal")
+
+    # Tmux portal sync hooks
+    print("\n=== Tmux Portal Sync Hooks ===")
+    try:
+        # Get list of sessions
+        result = subprocess.run(
+            ["tmux", "list-sessions", "-F", "#{session_name}"],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            print("No tmux sessions running")
+            return 0 if hook_installed else 1
+
+        sessions = result.stdout.strip().split("\n") if result.stdout.strip() else []
+
+        if not sessions:
+            print("No tmux sessions found")
+            return 0 if hook_installed else 1
+
+        for session in sessions:
+            hooks_result = subprocess.run(
+                ["tmux", "show-hooks", "-t", session],
+                capture_output=True,
+                text=True,
+            )
+            hooks_output = hooks_result.stdout.strip()
+
+            has_session_closed = "session-closed" in hooks_output
+            has_kill_pane = "after-kill-pane" in hooks_output
+
+            status_parts = []
+            if has_session_closed:
+                status_parts.append("session-closed")
+            if has_kill_pane:
+                status_parts.append("after-kill-pane")
+
+            if status_parts:
+                print(f"  {session}: {', '.join(status_parts)}")
+            else:
+                print(f"  {session}: no portal hooks")
+
+    except Exception as e:
+        print(f"Error checking tmux hooks: {e}")
 
     return 0 if hook_installed else 1
 
