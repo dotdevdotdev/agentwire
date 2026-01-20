@@ -2472,21 +2472,29 @@ def cmd_new(args) -> int:
     # Determine agent type and normalize session type
     agent_type = detect_default_agent_type()
 
-    # Determine session type from CLI flags or existing config
-    if getattr(args, 'bare', False):
-        session_type = "bare"
-    elif getattr(args, 'restricted', False):
-        session_type = f"{agent_type}-restricted"
-    elif getattr(args, 'prompted', False):
-        session_type = f"{agent_type}-prompted"
+    # Determine session type from CLI --type flag or existing config
+    type_arg = getattr(args, 'type', None)
+    if type_arg:
+        # CLI flag specified - use it directly and normalize
+        session_type = normalize_session_type(type_arg, agent_type)
+        # Save to .agentwire.yml for future sessions
+        if session_path:
+            existing_config = load_project_config(session_path)
+            project_config = ProjectConfig(
+                type=SessionType.from_str(session_type),
+                roles=role_names if role_names else (existing_config.roles if existing_config else []),
+                voice=existing_config.voice if existing_config else None,
+            )
+            save_project_config(project_config, session_path)
     else:
-        # Check existing .agentwire.yml for type, otherwise default to standard
+        # Check existing .agentwire.yml for type
         existing_config = load_project_config(session_path)
         if existing_config and existing_config.type:
             # Normalize in case it's a universal type
             session_type = normalize_session_type(existing_config.type.value, agent_type)
         else:
-            session_type = f"{agent_type}-bypass"  # Default
+            # Default to standard
+            session_type = f"{agent_type}-bypass"
 
     # Build environment variables based on session type
     env_vars = _build_agent_command_env(session_type, roles if roles else None)
@@ -2518,7 +2526,7 @@ def cmd_new(args) -> int:
         # Preserve existing voice and roles if not overridden by CLI
         project_config = ProjectConfig(
             type=SessionType.from_str(session_type),
-            roles=role_names if role_names else existing_config.roles,
+            roles=role_names if type_arg else existing_config.roles,
             voice=existing_config.voice,
         )
     else:
@@ -5938,11 +5946,8 @@ def main() -> int:
     new_parser.add_argument("-s", "--session", required=True, help="Session name (project, project/branch, or project/branch@machine)")
     new_parser.add_argument("-p", "--path", help="Working directory (default: ~/projects/<name>)")
     new_parser.add_argument("-f", "--force", action="store_true", help="Replace existing session")
-    # Session type flags (mutually exclusive)
-    type_group = new_parser.add_mutually_exclusive_group()
-    type_group.add_argument("--bare", action="store_true", help="No Claude, just tmux session")
-    type_group.add_argument("--prompted", action="store_true", help="Claude with permission hooks (no bypass)")
-    type_group.add_argument("--restricted", action="store_true", help="Claude restricted to say command only")
+    # Session type (supports Claude Code, OpenCode, and universal types)
+    new_parser.add_argument("--type", help="Session type (bare, claude-bypass, claude-prompted, claude-restricted, opencode-bypass, opencode-prompted, opencode-restricted, standard, worker, voice)")
     # Roles
     new_parser.add_argument("--roles", help="Comma-separated list of roles (preserves existing config, defaults to agentwire for new projects)")
     new_parser.add_argument("--json", action="store_true", help="Output as JSON")
@@ -6009,11 +6014,8 @@ def main() -> int:
     # === recreate command (top-level) ===
     recreate_parser = subparsers.add_parser("recreate", help="Destroy and recreate session with fresh worktree")
     recreate_parser.add_argument("-s", "--session", required=True, help="Session name (project/branch or project/branch@machine)")
-    # Session type flags (mutually exclusive)
-    recreate_type_group = recreate_parser.add_mutually_exclusive_group()
-    recreate_type_group.add_argument("--bare", action="store_true", help="No Claude, just tmux session")
-    recreate_type_group.add_argument("--prompted", action="store_true", help="Claude with permission hooks (no bypass)")
-    recreate_type_group.add_argument("--restricted", action="store_true", help="Claude restricted to say command only")
+    # Session type (supports Claude Code, OpenCode, and universal types)
+    recreate_parser.add_argument("--type", help="Session type (bare, claude-bypass, claude-prompted, claude-restricted, opencode-bypass, opencode-prompted, opencode-restricted, standard, worker, voice)")
     recreate_parser.add_argument("--json", action="store_true", help="Output as JSON")
     recreate_parser.set_defaults(func=cmd_recreate)
 
@@ -6021,11 +6023,8 @@ def main() -> int:
     fork_parser = subparsers.add_parser("fork", help="Fork a session into a new worktree")
     fork_parser.add_argument("-s", "--source", required=True, help="Source session (project or project/branch)")
     fork_parser.add_argument("-t", "--target", required=True, help="Target session (must include branch: project/new-branch)")
-    # Session type flags (mutually exclusive)
-    fork_type_group = fork_parser.add_mutually_exclusive_group()
-    fork_type_group.add_argument("--bare", action="store_true", help="No Claude, just tmux session")
-    fork_type_group.add_argument("--prompted", action="store_true", help="Claude with permission hooks (no bypass)")
-    fork_type_group.add_argument("--restricted", action="store_true", help="Claude restricted to say command only")
+    # Session type (supports Claude Code, OpenCode, and universal types)
+    fork_parser.add_argument("--type", help="Session type (bare, claude-bypass, claude-prompted, claude-restricted, opencode-bypass, opencode-prompted, opencode-restricted, standard, worker, voice)")
     fork_parser.add_argument("--json", action="store_true", help="Output as JSON")
     fork_parser.set_defaults(func=cmd_fork)
 
