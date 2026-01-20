@@ -3178,15 +3178,13 @@ def cmd_recreate(args) -> int:
         # Step 5: Create new session
         session_path = worktree_path if branch else project_path
 
-        # Determine session type based on flags
-        restricted = getattr(args, 'restricted', False)
-        no_bypass = getattr(args, 'no_bypass', False)
+        # Determine session type from --type flag or detect default
         agent_type = detect_default_agent_type()
-        if restricted:
-            session_type_str = f"{agent_type}-restricted"
-        elif no_bypass:
-            session_type_str = f"{agent_type}-prompted"
+        type_arg = getattr(args, 'type', None)
+        if type_arg:
+            session_type_str = normalize_session_type(type_arg, agent_type)
         else:
+            # Fall back to agent-bypass
             session_type_str = f"{agent_type}-bypass"
 
         # Build agent command using the standard function
@@ -3269,18 +3267,32 @@ def cmd_recreate(args) -> int:
     if not session_path.exists():
         return _output_result(False, json_mode, f"Path does not exist: {session_path}")
 
-    # Load project config to get session type and roles
+    # Determine session type from CLI --type flag or existing config
+    agent_type = detect_default_agent_type()
+    type_arg = getattr(args, 'type', None)
     project_config = load_project_config(session_path)
-    if project_config:
-        # Normalize universal session types to agent-specific types
-        agent_type = detect_default_agent_type()
+
+    if type_arg:
+        # CLI flag specified - use it directly and normalize
+        session_type_str = normalize_session_type(type_arg, agent_type)
+        # Update .agentwire.yml with new type
+        updated_config = ProjectConfig(
+            type=SessionType.from_str(session_type_str),
+            roles=project_config.roles if project_config else [],
+            voice=project_config.voice if project_config else None,
+        )
+        save_project_config(updated_config, session_path)
+        roles = None
+        if project_config and project_config.roles:
+            roles, _ = load_roles(project_config.roles, session_path)
+    elif project_config:
+        # Use existing config
         session_type_str = normalize_session_type(project_config.type.value, agent_type)
         roles = None
         if project_config.roles:
             roles, _ = load_roles(project_config.roles, session_path)
     else:
         # Default to agent-bypass based on detected agent
-        agent_type = detect_default_agent_type()
         session_type_str = f"{agent_type}-bypass"
         roles = None
 
@@ -3412,18 +3424,25 @@ def cmd_fork(args) -> int:
         if result.returncode != 0:
             return _output_result(False, json_mode, f"Failed to create worktree: {result.stderr}")
 
-        # Create new session - use source project config to preserve session type
+        # Determine session type from --type flag or source config
+        agent_type = detect_default_agent_type()
+        type_arg = getattr(args, 'type', None)
         source_config = load_project_config(Path(source_path))
-        if source_config:
-            # Normalize universal session types to agent-specific types
-            agent_type = detect_default_agent_type()
+
+        if type_arg:
+            # CLI flag specified - use it directly
+            session_type_str = normalize_session_type(type_arg, agent_type)
+            roles = None
+            if source_config and source_config.roles:
+                roles, _ = load_roles(source_config.roles, Path(source_path))
+        elif source_config:
+            # Use source config
             session_type_str = normalize_session_type(source_config.type.value, agent_type)
             roles = None
             if source_config.roles:
                 roles, _ = load_roles(source_config.roles, Path(source_path))
         else:
             # Default to agent-bypass based on detected agent
-            agent_type = detect_default_agent_type()
             session_type_str = f"{agent_type}-bypass"
             roles = None
 
@@ -3505,18 +3524,25 @@ def cmd_fork(args) -> int:
         )
         time.sleep(0.1)
 
-        # Load source session config from .agentwire.yml to preserve settings
+        # Determine session type from --type flag or source config
+        agent_type = detect_default_agent_type()
+        type_arg = getattr(args, 'type', None)
         source_project_config = load_project_config(fork_path)
-        if source_project_config:
-            # Normalize universal session types to agent-specific types
-            agent_type = detect_default_agent_type()
+
+        if type_arg:
+            # CLI flag specified - use it directly
+            session_type_str = normalize_session_type(type_arg, agent_type)
+            roles = None
+            if source_project_config and source_project_config.roles:
+                roles, _ = load_roles(source_project_config.roles, fork_path)
+        elif source_project_config:
+            # Use source config
             session_type_str = normalize_session_type(source_project_config.type.value, agent_type)
             roles = None
             if source_project_config.roles:
                 roles, _ = load_roles(source_project_config.roles, fork_path)
         else:
             # Default to agent-bypass based on detected agent
-            agent_type = detect_default_agent_type()
             session_type_str = f"{agent_type}-bypass"
             roles = None
 
@@ -3599,18 +3625,26 @@ def cmd_fork(args) -> int:
     )
     time.sleep(0.1)
 
-    # Load source project config to preserve session type
-    source_config = load_project_config(source_path if source_path != project_path else project_path)
-    if source_config:
-        # Normalize universal session types to agent-specific types
-        agent_type = detect_default_agent_type()
+    # Determine session type from --type flag or source config
+    agent_type = detect_default_agent_type()
+    type_arg = getattr(args, 'type', None)
+    config_path = source_path if source_path != project_path else project_path
+    source_config = load_project_config(config_path)
+
+    if type_arg:
+        # CLI flag specified - use it directly
+        session_type_str = normalize_session_type(type_arg, agent_type)
+        roles = None
+        if source_config and source_config.roles:
+            roles, _ = load_roles(source_config.roles, config_path)
+    elif source_config:
+        # Use source config
         session_type_str = normalize_session_type(source_config.type.value, agent_type)
         roles = None
         if source_config.roles:
-            roles, _ = load_roles(source_config.roles, source_path if source_path != project_path else project_path)
+            roles, _ = load_roles(source_config.roles, config_path)
     else:
         # Default to agent-bypass based on detected agent
-        agent_type = detect_default_agent_type()
         session_type_str = f"{agent_type}-bypass"
         roles = None
 
