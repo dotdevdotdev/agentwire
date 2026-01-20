@@ -4,6 +4,18 @@
 
 **Branch:** `mission/opencode-full-support`
 **Base:** `investigate-opencode`
+**Status:** ✅ Implementation complete (pending manual testing)
+
+**Completed commits:**
+- `7b6ea5a` - project config defaults to STANDARD type (2.3)
+- `9704b79` - agent-agnostic language in role files (5.1)
+- `a9c1f6d` - init script detects agent type (3.2)
+- `da43a3c` - add OpenCode mentions throughout docs (4.1-4.5)
+- `cccd356` - config defaults detect agent type (2.2)
+- `dfc858d` - OpenCode support in portal API (1.3, 6.1, 6.2)
+- `e040a97` - onboarding supports OpenCode detection (3.1)
+- Tasks 1.1, 1.2, 2.1 already implemented in earlier commit `3c06047`
+- Task 1.4 already implemented with `parse_env_var_prefix()` function
 
 ---
 
@@ -292,14 +304,14 @@ if roles:
 
 ## Completion Criteria
 
-- [ ] All session creation paths detect agent type correctly
-- [ ] Remote sessions work with OpenCode (env vars properly set)
-- [ ] Portal API handles all session types via `--type` flag
-- [ ] Onboarding detects and supports OpenCode
-- [ ] Documentation mentions both agents where appropriate
-- [ ] No hardcoded "claude" strings in command building paths
-- [ ] `agentwire new -s test --type opencode-bypass` creates working OpenCode session
-- [ ] `agentwire new -s test --type claude-bypass` still works (no regression)
+- [x] All session creation paths detect agent type correctly
+- [x] Remote sessions work with OpenCode (env vars properly set)
+- [x] Portal API handles all session types via `--type` flag
+- [x] Onboarding detects and supports OpenCode
+- [x] Documentation mentions both agents where appropriate
+- [x] No hardcoded "claude" strings in command building paths
+- [ ] `agentwire new -s test --type opencode-bypass` creates working OpenCode session (manual test needed)
+- [ ] `agentwire new -s test --type claude-bypass` still works - no regression (manual test needed)
 
 ---
 
