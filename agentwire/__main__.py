@@ -507,6 +507,9 @@ def _start_portal_local(args) -> int:
         "tmux", "send-keys", "-t", session_name, server_cmd, "Enter",
     ])
 
+    # Install global tmux hooks for portal sync
+    _install_global_tmux_hooks()
+
     print("Portal started. Attaching... (Ctrl+B D to detach)")
     subprocess.run(["tmux", "attach-session", "-t", session_name])
     return 0
@@ -1197,6 +1200,89 @@ def _get_portal_url() -> str:
     return direct_url.replace("http://", "https://")
 
 
+def _get_agentwire_path() -> str:
+    """Get the full path to the agentwire executable.
+
+    Checks config first, then falls back to shutil.which() to find it in PATH.
+    This ensures tmux hooks work even when run-shell has a minimal PATH.
+    """
+    import shutil
+
+    config = load_config()
+    configured_path = config.get("executables", {}).get("agentwire")
+
+    if configured_path:
+        return os.path.expanduser(configured_path)
+
+    # Find agentwire in PATH
+    found = shutil.which("agentwire")
+    if found:
+        return found
+
+    # Fallback to common location
+    return os.path.expanduser("~/.local/bin/agentwire")
+
+
+def _install_global_tmux_hooks() -> None:
+    """Install global tmux hooks for portal sync.
+
+    Installs session-created hook globally so the portal is notified
+    when ANY tmux session is created (not just via agentwire new).
+    """
+    agentwire_path = _get_agentwire_path()
+
+    # Check if hook already installed
+    result = subprocess.run(
+        ["tmux", "show-hooks", "-g"],
+        capture_output=True,
+        text=True,
+    )
+
+    # Install session-created hook if not present
+    if "session-created" not in result.stdout or agentwire_path not in result.stdout:
+        hook_cmd = f'run-shell -b "{agentwire_path} notify session_created -s #{{session_name}}"'
+        subprocess.run(
+            ["tmux", "set-hook", "-g", "session-created", hook_cmd],
+            capture_output=True,
+        )
+
+    # Install session-closed hook globally as fallback for sessions without per-session hook
+    if "session-closed" not in result.stdout or agentwire_path not in result.stdout:
+        hook_cmd = f'run-shell -b "{agentwire_path} notify session_closed -s #{{hook_session_name}}"'
+        subprocess.run(
+            ["tmux", "set-hook", "-g", "session-closed", hook_cmd],
+            capture_output=True,
+        )
+
+
+def _install_pane_hooks(session_name: str, pane_index: int) -> None:
+    """Install tmux hooks to notify portal of pane state changes.
+
+    Installs after-kill-pane hook that calls agentwire notify when a pane is killed.
+    Uses run-shell -b for background execution to not block tmux.
+
+    Note: We use after-kill-pane which fires after `tmux kill-pane` command.
+    This is more reliable than pane-exited for our use case.
+    """
+    agentwire_path = _get_agentwire_path()
+
+    # Install after-kill-pane hook on the session
+    # Uses #{hook_pane} to get the pane ID that was killed
+    hook_cmd = f'run-shell -b "{agentwire_path} notify pane_died -s {session_name} --pane-id #{{hook_pane}}"'
+
+    # First check if we already have an after-kill-pane hook
+    result = subprocess.run(
+        ["tmux", "show-hooks", "-t", session_name],
+        capture_output=True,
+        text=True,
+    )
+    if "after-kill-pane" not in result.stdout:
+        subprocess.run(
+            ["tmux", "set-hook", "-t", session_name, "after-kill-pane", hook_cmd],
+            capture_output=True,
+        )
+
+
 def _get_current_tmux_session() -> str | None:
     """Get the current tmux session name, if running inside tmux."""
     # Check if we're in tmux
@@ -1557,6 +1643,70 @@ def _remote_say(text: str, session: str, portal_url: str) -> int:
 
     except Exception as e:
         print(f"Failed to send to portal: {e}", file=sys.stderr)
+        return 1
+
+
+def cmd_notify(args) -> int:
+    """Send a notification to the portal about session/pane state changes.
+
+    Called by tmux hooks to notify the portal when sessions are created/closed
+    or panes are created/killed. The portal broadcasts these events to connected
+    dashboard clients for real-time UI updates.
+    """
+    event = args.event
+    session = getattr(args, 'session', None)
+    pane = getattr(args, 'pane', None)
+    pane_id = getattr(args, 'pane_id', None)
+    json_mode = getattr(args, 'json', False)
+
+    if not event:
+        return _output_result(False, json_mode, "Event is required")
+
+    portal_url = _get_portal_url()
+    if not portal_url:
+        return _output_result(False, json_mode, "Portal URL not configured")
+
+    # Build payload
+    payload = {"event": event}
+    if session:
+        payload["session"] = session
+    if pane is not None:
+        payload["pane"] = pane
+    if pane_id is not None:
+        payload["pane_id"] = pane_id
+
+    try:
+        # Use urllib to avoid requests dependency in core CLI
+        import urllib.request
+
+        data = json.dumps(payload).encode()
+        req = urllib.request.Request(
+            f"{portal_url}/api/notify",
+            data=data,
+            headers={"Content-Type": "application/json"},
+            method="POST"
+        )
+
+        # Disable SSL verification for self-signed certs
+        import ssl
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+
+        with urllib.request.urlopen(req, timeout=5, context=ctx) as response:
+            result = json.loads(response.read().decode())
+
+        if result.get("success"):
+            if json_mode:
+                _output_json({"success": True, "event": event, "session": session})
+            return 0
+        else:
+            return _output_result(False, json_mode, result.get("error", "Unknown error"))
+
+    except Exception as e:
+        # Don't fail loudly - hooks run in background and shouldn't block tmux
+        if json_mode:
+            _output_json({"success": False, "error": str(e)})
         return 1
 
 
@@ -2480,6 +2630,10 @@ def cmd_spawn(args) -> int:
             cwd=cwd,
             cmd=claude_cmd
         )
+
+        # Install pane hook to notify portal when pane exits
+        actual_session = session or pane_manager.get_current_session()
+        _install_pane_hooks(actual_session, pane_index)
 
         if json_mode:
             result = {
@@ -4864,7 +5018,9 @@ def cmd_hooks_uninstall(args) -> int:
 
 
 def cmd_hooks_status(args) -> int:
-    """Check Claude Code permission hook installation status."""
+    """Check Claude Code permission hook and tmux portal sync hooks."""
+    # Claude Code permission hook
+    print("=== Claude Code Permission Hook ===")
     hook_file = CLAUDE_HOOKS_DIR / "agentwire-permission.sh"
     hook_installed = hook_file.exists()
     hook_registered = is_hook_registered()
@@ -4872,18 +5028,82 @@ def cmd_hooks_status(args) -> int:
     if hook_installed:
         if hook_file.is_symlink():
             source = hook_file.resolve()
-            print("Permission hook: installed (symlink)")
+            print("Status: installed (symlink)")
             print(f"  Location: {hook_file} -> {source}")
         else:
-            print("Permission hook: installed (copy)")
+            print("Status: installed (copy)")
             print(f"  Location: {hook_file}")
         if hook_registered:
             print("  Registered: yes (in ~/.claude/settings.json)")
         else:
             print("  Registered: NO - run 'agentwire hooks install --force' to fix")
     else:
-        print("Permission hook: not installed")
+        print("Status: not installed")
         print("  Run 'agentwire hooks install' to enable permission dialogs in portal")
+
+    # Tmux portal sync hooks
+    print("\n=== Tmux Portal Sync Hooks ===")
+    try:
+        # Check global hooks first
+        global_result = subprocess.run(
+            ["tmux", "show-hooks", "-g"],
+            capture_output=True,
+            text=True,
+        )
+        global_hooks = global_result.stdout.strip()
+
+        print("Global hooks:")
+        has_global_created = "session-created" in global_hooks
+        has_global_closed = "session-closed" in global_hooks
+
+        if has_global_created or has_global_closed:
+            parts = []
+            if has_global_created:
+                parts.append("session-created")
+            if has_global_closed:
+                parts.append("session-closed")
+            print(f"  {', '.join(parts)}")
+        else:
+            print("  none (run 'agentwire portal restart' to install)")
+
+        # Get list of sessions for per-session hooks
+        result = subprocess.run(
+            ["tmux", "list-sessions", "-F", "#{session_name}"],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            print("\nNo tmux sessions running")
+            return 0 if hook_installed else 1
+
+        sessions = result.stdout.strip().split("\n") if result.stdout.strip() else []
+
+        if sessions:
+            print("\nPer-session hooks:")
+            for session in sessions:
+                hooks_result = subprocess.run(
+                    ["tmux", "show-hooks", "-t", session],
+                    capture_output=True,
+                    text=True,
+                )
+                hooks_output = hooks_result.stdout.strip()
+
+                has_session_closed = "session-closed" in hooks_output
+                has_kill_pane = "after-kill-pane" in hooks_output
+
+                status_parts = []
+                if has_session_closed:
+                    status_parts.append("session-closed")
+                if has_kill_pane:
+                    status_parts.append("after-kill-pane")
+
+                if status_parts:
+                    print(f"  {session}: {', '.join(status_parts)}")
+                else:
+                    print(f"  {session}: none")
+
+    except Exception as e:
+        print(f"Error checking tmux hooks: {e}")
 
     return 0 if hook_installed else 1
 
@@ -5292,6 +5512,15 @@ def main() -> int:
     say_parser.add_argument("--exaggeration", type=float, help="Voice exaggeration (0-1)")
     say_parser.add_argument("--cfg", type=float, help="CFG weight (0-1)")
     say_parser.set_defaults(func=cmd_say)
+
+    # === notify command ===
+    notify_parser = subparsers.add_parser("notify", help="Notify portal of session/pane state changes")
+    notify_parser.add_argument("event", help="Event type (session_closed, session_created, pane_died, pane_created)")
+    notify_parser.add_argument("-s", "--session", help="Session name")
+    notify_parser.add_argument("--pane", type=int, help="Pane index (for pane events)")
+    notify_parser.add_argument("--pane-id", help="Pane ID from tmux (for pane events via hooks)")
+    notify_parser.add_argument("--json", action="store_true", help="Output as JSON")
+    notify_parser.set_defaults(func=cmd_notify)
 
     # === send command ===
     send_parser = subparsers.add_parser("send", help="Send prompt to a session or pane (adds Enter)")

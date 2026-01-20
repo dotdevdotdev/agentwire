@@ -188,6 +188,8 @@ class AgentWireServer:
         self.app.router.add_get("/api/history", self.api_history_list)
         self.app.router.add_get("/api/history/{session_id}", self.api_history_detail)
         self.app.router.add_post("/api/history/{session_id}/resume", self.api_history_resume)
+        # Tmux hook notifications
+        self.app.router.add_post("/api/notify", self.api_notify)
         self.app.router.add_static("/static", Path(__file__).parent / "static")
 
     async def init_backends(self):
@@ -2919,6 +2921,71 @@ projects:
 
         except Exception as e:
             logger.error(f"History resume API failed: {e}")
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def api_notify(self, request: web.Request) -> web.Response:
+        """POST /api/notify - Receive tmux hook notifications.
+
+        Called by tmux hooks (via agentwire notify) when sessions/panes change.
+        Broadcasts the event to all connected dashboard clients.
+
+        Request body:
+            event: Event type (session_closed, session_created, pane_died, pane_created)
+            session: Session name
+            pane: Pane index (optional, for pane events)
+
+        Response:
+            {success: true}
+        """
+        try:
+            data = await request.json()
+            event = data.get("event")
+            session = data.get("session")
+
+            if not event:
+                return web.json_response(
+                    {"error": "event is required"},
+                    status=400
+                )
+
+            logger.info(f"Received notify: event={event}, session={session}")
+
+            # Broadcast to dashboard clients based on event type
+            if event == "session_closed":
+                await self.broadcast_dashboard("session_closed", {"session": session})
+                # Also send sessions_update with refreshed list
+                sessions_data = await self._get_sessions_data()
+                await self.broadcast_dashboard("sessions_update", {"sessions": sessions_data})
+
+            elif event == "session_created":
+                await self.broadcast_dashboard("session_created", {"session": session})
+                sessions_data = await self._get_sessions_data()
+                await self.broadcast_dashboard("sessions_update", {"sessions": sessions_data})
+
+            elif event == "pane_died":
+                pane = data.get("pane")
+                pane_id = data.get("pane_id")
+                await self.broadcast_dashboard("pane_died", {"session": session, "pane": pane, "pane_id": pane_id})
+                # Also send sessions_update to refresh pane counts
+                sessions_data = await self._get_sessions_data()
+                await self.broadcast_dashboard("sessions_update", {"sessions": sessions_data})
+
+            elif event == "pane_created":
+                pane = data.get("pane")
+                pane_id = data.get("pane_id")
+                await self.broadcast_dashboard("pane_created", {"session": session, "pane": pane, "pane_id": pane_id})
+                # Also send sessions_update to refresh pane counts
+                sessions_data = await self._get_sessions_data()
+                await self.broadcast_dashboard("sessions_update", {"sessions": sessions_data})
+
+            else:
+                # Generic event - just broadcast it
+                await self.broadcast_dashboard(event, data)
+
+            return web.json_response({"success": True})
+
+        except Exception as e:
+            logger.error(f"Notify API failed: {e}")
             return web.json_response({"error": str(e)}, status=500)
 
     async def speak(self, session_name: str, text: str) -> bool:

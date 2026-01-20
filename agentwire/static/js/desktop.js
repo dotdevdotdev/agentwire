@@ -47,11 +47,53 @@ async function init() {
     desktop.on('disconnect', () => updateConnectionStatus(false));
     desktop.on('connect', () => updateConnectionStatus(true));
 
+    // Handle tmux hook notifications
+    desktop.on('session_closed', handleSessionClosed);
+    desktop.on('session_created', handleSessionCreated);
+    desktop.on('pane_died', handlePaneDied);
+
     await desktop.connect();
     updateConnectionStatus(true);
 
     // Fetch initial data (will emit events to listeners above)
     await desktop.fetchSessions();
+}
+
+/**
+ * Handle session_closed event from tmux hook.
+ * Closes the session window if open and refreshes the sessions list.
+ */
+function handleSessionClosed({ session }) {
+    console.log('[Desktop] Session closed:', session);
+
+    // Close the session window if it's open
+    if (sessionWindows.has(session)) {
+        const sw = sessionWindows.get(session);
+        sw.close();
+        sessionWindows.delete(session);
+        removeTaskbarButton(session);
+    }
+
+    // Sessions list will be updated by the sessions_update event
+    // that the portal sends along with session_closed
+}
+
+/**
+ * Handle session_created event from tmux hook.
+ * Sessions list will be updated automatically via sessions_update.
+ */
+function handleSessionCreated({ session }) {
+    console.log('[Desktop] Session created:', session);
+    // Sessions list will be updated by the sessions_update event
+}
+
+/**
+ * Handle pane_died event from tmux hook.
+ * Refreshes session info to update pane counts.
+ */
+function handlePaneDied({ session, pane_id }) {
+    console.log('[Desktop] Pane died:', session, pane_id);
+    // Sessions list (with pane counts) will be updated by sessions_update event
 }
 
 // Clean up on page unload
