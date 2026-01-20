@@ -977,9 +977,13 @@ def run_onboarding(skip_session: bool = False) -> int:
             existing_machines = None
 
     # Initialize config values with defaults or existing
+    # Detect default agent based on what's installed
+    detected_agent_type, detected_agent_command = get_default_agent_command()
+
     config = {
         "projects_dir": "~/projects",
-        "agent_command": "claude --dangerously-skip-permissions",
+        "agent_command": detected_agent_command,
+        "agent_type": detected_agent_type,  # Track which agent we're using
         "tts_backend": "chatterbox",
         "tts_url": "http://localhost:8100",
         "tts_voice": "default",
@@ -996,7 +1000,13 @@ def run_onboarding(skip_session: bool = False) -> int:
     # Pre-fill from existing config
     if existing_config:
         config["projects_dir"] = existing_config.get("projects", {}).get("dir", config["projects_dir"])
-        config["agent_command"] = existing_config.get("agent", {}).get("command", config["agent_command"])
+        existing_agent_cmd = existing_config.get("agent", {}).get("command", config["agent_command"])
+        config["agent_command"] = existing_agent_cmd
+        # Detect agent type from existing command
+        if "opencode" in existing_agent_cmd:
+            config["agent_type"] = "opencode"
+        elif "claude" in existing_agent_cmd:
+            config["agent_type"] = "claude"
         config["tts_backend"] = existing_config.get("tts", {}).get("backend", config["tts_backend"])
         config["tts_url"] = existing_config.get("tts", {}).get("url", config["tts_url"])
         config["tts_voice"] = existing_config.get("tts", {}).get("default_voice", config["tts_voice"])

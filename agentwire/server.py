@@ -2601,6 +2601,9 @@ projects:
 
         Creates a parallel session in a new worktree without destroying the current one.
         Useful for working on multiple features in the same project simultaneously.
+
+        Inherits session type from existing session config.
+        Supported types: claude-bypass | claude-prompted | claude-restricted | opencode-bypass | opencode-prompted | opencode-restricted | bare
         """
         name = request.match_info["name"]
         try:
@@ -2620,11 +2623,8 @@ projects:
 
             # Build CLI args - use `agentwire new` with the sibling session name
             args = ["new", "-s", new_session_name]
-            if old_config.type == "claude-restricted":
-                args.append("--restricted")
-            elif old_config.type == "claude-prompted":
-                args.append("--no-bypass")
-            # claude-bypass is default, no flag needed
+            # Set session type via --type flag
+            args.extend(["--type", old_config.type])
 
             # Call CLI - handles worktree creation and session setup
             success, result = await self.run_agentwire_cmd(args)
