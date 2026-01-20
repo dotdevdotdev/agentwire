@@ -507,6 +507,9 @@ def _start_portal_local(args) -> int:
         "tmux", "send-keys", "-t", session_name, server_cmd, "Enter",
     ])
 
+    # Install global tmux hooks for portal sync
+    _install_global_tmux_hooks()
+
     print("Portal started. Attaching... (Ctrl+B D to detach)")
     subprocess.run(["tmux", "attach-session", "-t", session_name])
     return 0
@@ -1218,6 +1221,38 @@ def _get_agentwire_path() -> str:
 
     # Fallback to common location
     return os.path.expanduser("~/.local/bin/agentwire")
+
+
+def _install_global_tmux_hooks() -> None:
+    """Install global tmux hooks for portal sync.
+
+    Installs session-created hook globally so the portal is notified
+    when ANY tmux session is created (not just via agentwire new).
+    """
+    agentwire_path = _get_agentwire_path()
+
+    # Check if hook already installed
+    result = subprocess.run(
+        ["tmux", "show-hooks", "-g"],
+        capture_output=True,
+        text=True,
+    )
+
+    # Install session-created hook if not present
+    if "session-created" not in result.stdout or agentwire_path not in result.stdout:
+        hook_cmd = f'run-shell -b "{agentwire_path} notify session_created -s #{{session_name}}"'
+        subprocess.run(
+            ["tmux", "set-hook", "-g", "session-created", hook_cmd],
+            capture_output=True,
+        )
+
+    # Install session-closed hook globally as fallback for sessions without per-session hook
+    if "session-closed" not in result.stdout or agentwire_path not in result.stdout:
+        hook_cmd = f'run-shell -b "{agentwire_path} notify session_closed -s #{{hook_session_name}}"'
+        subprocess.run(
+            ["tmux", "set-hook", "-g", "session-closed", hook_cmd],
+            capture_output=True,
+        )
 
 
 def _install_session_hooks(session_name: str) -> None:
@@ -5031,43 +5066,63 @@ def cmd_hooks_status(args) -> int:
     # Tmux portal sync hooks
     print("\n=== Tmux Portal Sync Hooks ===")
     try:
-        # Get list of sessions
+        # Check global hooks first
+        global_result = subprocess.run(
+            ["tmux", "show-hooks", "-g"],
+            capture_output=True,
+            text=True,
+        )
+        global_hooks = global_result.stdout.strip()
+
+        print("Global hooks:")
+        has_global_created = "session-created" in global_hooks
+        has_global_closed = "session-closed" in global_hooks
+
+        if has_global_created or has_global_closed:
+            parts = []
+            if has_global_created:
+                parts.append("session-created")
+            if has_global_closed:
+                parts.append("session-closed")
+            print(f"  {', '.join(parts)}")
+        else:
+            print("  none (run 'agentwire portal restart' to install)")
+
+        # Get list of sessions for per-session hooks
         result = subprocess.run(
             ["tmux", "list-sessions", "-F", "#{session_name}"],
             capture_output=True,
             text=True,
         )
         if result.returncode != 0:
-            print("No tmux sessions running")
+            print("\nNo tmux sessions running")
             return 0 if hook_installed else 1
 
         sessions = result.stdout.strip().split("\n") if result.stdout.strip() else []
 
-        if not sessions:
-            print("No tmux sessions found")
-            return 0 if hook_installed else 1
+        if sessions:
+            print("\nPer-session hooks:")
+            for session in sessions:
+                hooks_result = subprocess.run(
+                    ["tmux", "show-hooks", "-t", session],
+                    capture_output=True,
+                    text=True,
+                )
+                hooks_output = hooks_result.stdout.strip()
 
-        for session in sessions:
-            hooks_result = subprocess.run(
-                ["tmux", "show-hooks", "-t", session],
-                capture_output=True,
-                text=True,
-            )
-            hooks_output = hooks_result.stdout.strip()
+                has_session_closed = "session-closed" in hooks_output
+                has_kill_pane = "after-kill-pane" in hooks_output
 
-            has_session_closed = "session-closed" in hooks_output
-            has_kill_pane = "after-kill-pane" in hooks_output
+                status_parts = []
+                if has_session_closed:
+                    status_parts.append("session-closed")
+                if has_kill_pane:
+                    status_parts.append("after-kill-pane")
 
-            status_parts = []
-            if has_session_closed:
-                status_parts.append("session-closed")
-            if has_kill_pane:
-                status_parts.append("after-kill-pane")
-
-            if status_parts:
-                print(f"  {session}: {', '.join(status_parts)}")
-            else:
-                print(f"  {session}: no portal hooks")
+                if status_parts:
+                    print(f"  {session}: {', '.join(status_parts)}")
+                else:
+                    print(f"  {session}: none")
 
     except Exception as e:
         print(f"Error checking tmux hooks: {e}")
