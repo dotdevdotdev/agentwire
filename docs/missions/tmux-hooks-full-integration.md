@@ -14,31 +14,30 @@ Now we can expand to cover all useful tmux hooks.
 
 ## Hook Inventory
 
-| Hook | Fires When | Use Case |
-|------|------------|----------|
-| `client-attached` | Client attaches to session | Show presence indicator (who's viewing) |
-| `client-detached` | Client detaches from session | Update presence, detect orphaned sessions |
-| `after-split-window` | New pane created | Track pane creation (complement to after-kill-pane) |
-| `session-renamed` | Session renamed | Update UI, maintain session tracking |
-| `alert-activity` | Activity in monitored window | Desktop notifications for background sessions |
-| `pane-focus-in` | Pane gains focus | Track active pane, highlight in UI |
-| `window-renamed` | Window renamed | Update window/pane labels in UI |
+| Hook | Fires When | Scope | Use Case |
+|------|------------|-------|----------|
+| `client-attached` | Client attaches to session | Global | Show presence indicator |
+| `client-detached` | Client detaches from session | Global | Update presence count |
+| `after-split-window` | New pane created | Global | Track pane creation |
+| `session-renamed` | Session renamed | Global | Update UI, maintain tracking |
+| `alert-activity` | Activity in monitored window | Global | Desktop notifications |
+| `pane-focus-in` | Pane gains focus | Per-session | Track active pane, highlight in UI |
 
 ## Waves
 
 ### Wave 1: Human Actions (BLOCKING)
 
-- [ ] Review hook priority - confirm order of implementation
-- [ ] Decide on presence indicator UX (avatar, dot, tooltip?)
+- [x] Review hook priority - confirmed order (presence → panes → rename → notifications → focus)
+- [x] Decide on presence indicator UX - **user icon with count badge** (not tracking who, just count)
 
 ### Wave 2: Presence Tracking (client-attached/detached)
 
-**Goal:** Show who's attached to each session in the portal.
+**Goal:** Show attachment count per session with user icon + badge.
 
 - [ ] Add `client_attached` and `client_detached` event types to notify endpoint
 - [ ] Install global hooks for client-attached and client-detached
-- [ ] Track attached clients per session in server state
-- [ ] Add presence indicator to sessions list UI
+- [ ] Track attached client count per session in server state
+- [ ] Add user icon with count badge to sessions list UI
 - [ ] Handle edge case: multiple clients attached to same session
 
 ### Wave 3: Pane Creation (after-split-window)
@@ -46,7 +45,7 @@ Now we can expand to cover all useful tmux hooks.
 **Goal:** Complete pane lifecycle tracking (we already have after-kill-pane).
 
 - [ ] Add `pane_created` handling for after-split-window hook
-- [ ] Install hook in `cmd_spawn` and `cmd_split`
+- [ ] Install global hook for after-split-window (catches all pane creations)
 - [ ] Update sessions list pane counts in real-time
 - [ ] Show new pane indicator/animation in UI
 
