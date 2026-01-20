@@ -228,10 +228,27 @@ class TmuxAgent(AgentBackend):
             projects_dir = machine.get("projects_dir", "~/projects")
             remote_path = f"{projects_dir}/{path.name}" if not str(path).startswith("/") else str(path)
 
-            cmd = (
-                f"tmux new-session -d -s {shlex.quote(session_name)} -c {shlex.quote(remote_path)} && "
-                f"tmux send-keys -t {shlex.quote(session_name)} {shlex.quote(agent_cmd)} Enter"
+            # Parse env var prefix (e.g., OPENCODE_PERMISSION='...' opencode)
+            # Must use tmux set-environment for remote sessions since shlex.quote
+            # would break the env var assignment
+            env_var, env_val, actual_cmd = parse_env_var_prefix(agent_cmd)
+
+            cmd_parts = [
+                f"tmux new-session -d -s {shlex.quote(session_name)} -c {shlex.quote(remote_path)}"
+            ]
+
+            if env_var:
+                # Set env var in tmux session environment
+                cmd_parts.append(
+                    f"tmux set-environment -t {shlex.quote(session_name)} {env_var} {shlex.quote(env_val)}"
+                )
+
+            # Send the actual command (without env var prefix if it was extracted)
+            cmd_parts.append(
+                f"tmux send-keys -t {shlex.quote(session_name)} {shlex.quote(actual_cmd)} Enter"
             )
+
+            cmd = " && ".join(cmd_parts)
             result = self._run_remote(machine, cmd)
         else:
             # Create session

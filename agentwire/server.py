@@ -2546,7 +2546,11 @@ projects:
         await self._say_to_room(session_name, text)
 
     async def api_recreate_session(self, request: web.Request) -> web.Response:
-        """POST /api/session/{name}/recreate - Destroy session/worktree and create fresh one via CLI."""
+        """POST /api/session/{name}/recreate - Destroy session/worktree and create fresh one via CLI.
+
+        Inherits session type from existing session config.
+        Supported types: claude-bypass | claude-prompted | claude-restricted | opencode-bypass | opencode-prompted | opencode-restricted | bare
+        """
         name = request.match_info["name"]
         try:
             logger.info(f"[{name}] Recreating session...")
@@ -2556,11 +2560,8 @@ projects:
 
             # Build CLI args
             args = ["recreate", "-s", name]
-            if old_config.type == "claude-restricted":
-                args.append("--restricted")
-            elif old_config.type == "claude-prompted":
-                args.append("--no-bypass")
-            # claude-bypass is default, no flag needed
+            # Set session type via --type flag
+            args.extend(["--type", old_config.type])
 
             # Call CLI - handles kill, worktree removal, git pull, new worktree, new session
             success, result = await self.run_agentwire_cmd(args)
