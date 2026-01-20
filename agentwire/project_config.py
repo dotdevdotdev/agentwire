@@ -35,7 +35,7 @@ class SessionType(str, Enum):
         try:
             return cls(value)
         except ValueError:
-            return cls.CLAUDE_BYPASS  # Default for unknown types
+            return cls.STANDARD  # Default for unknown types
 
     def to_cli_flags(self) -> list[str]:
         """Convert to CLI flags for Claude."""
@@ -131,7 +131,7 @@ class ProjectConfig:
     Shared by all sessions running in this project folder.
     Session name is NOT stored here - it's runtime context from environment.
     """
-    type: SessionType = SessionType.CLAUDE_BYPASS
+    type: SessionType = SessionType.STANDARD
     roles: list[str] = field(default_factory=list)  # Composable roles
     voice: Optional[str] = None  # TTS voice
 
@@ -149,7 +149,7 @@ class ProjectConfig:
     @classmethod
     def from_dict(cls, data: dict) -> "ProjectConfig":
         """Create ProjectConfig from dictionary."""
-        type_value = data.get("type", "claude-bypass")
+        type_value = data.get("type", "standard")
         roles = data.get("roles", [])
         voice = data.get("voice")
 

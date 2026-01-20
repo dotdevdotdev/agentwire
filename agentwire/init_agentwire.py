@@ -5,6 +5,8 @@ import subprocess
 import time
 from pathlib import Path
 
+from .project_config import detect_default_agent_type
+
 # ANSI colors (matching onboarding.py)
 BOLD = "\033[1m"
 GREEN = "\033[92m"
@@ -148,13 +150,19 @@ def spawn_init_session() -> int:
 
     print_success("Created tmux session")
 
-    # Start Claude with --dangerously-skip-permissions
+    # Detect which agent to use and start it
+    agent_type = detect_default_agent_type()
+    if agent_type == "opencode":
+        agent_command = "opencode"
+    else:
+        agent_command = "claude --dangerously-skip-permissions"
+
     subprocess.run([
         "tmux", "send-keys", "-t", session_name,
-        "claude --dangerously-skip-permissions", "Enter"
+        agent_command, "Enter"
     ])
 
-    print("Waiting for Claude to start...")
+    print(f"Waiting for {agent_type} to start...")
 
     # Wait for Claude to be ready (check for prompt)
     # Claude typically takes 2-4 seconds to initialize

@@ -17,7 +17,7 @@ You're executing a task autonomously. Report results factually to the main sessi
 
 ## Capabilities
 
-You have full Claude Code access: Edit, Write, Read, Bash, Task (for sub-agents), Glob, Grep, TodoWrite, everything.
+You have full tool access: Edit, Write, Read, Bash, Task (for sub-agents), Glob, Grep, TodoWrite, and more.
 
 For complex multi-file work, spawn sub-agents via Task tool. Respect the 8-10 agent limit - group related files.
 

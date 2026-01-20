@@ -3,6 +3,7 @@
 import json
 import logging
 import os
+import re
 import shlex
 import subprocess
 from pathlib import Path
@@ -10,6 +11,9 @@ from pathlib import Path
 from .base import AgentBackend
 
 logger = logging.getLogger(__name__)
+
+# Pattern to match env var prefix: VAR='value' or VAR="value" or VAR=value
+ENV_VAR_PREFIX_PATTERN = re.compile(r'^([A-Z_][A-Z0-9_]*)=([\'"]?)(.+?)\2\s+(.+)$')
 
 # Base command without permission flags - flags added based on bypass_permissions option
 DEFAULT_AGENT_COMMAND = "claude"
