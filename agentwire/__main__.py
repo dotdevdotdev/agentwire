@@ -2737,15 +2737,15 @@ def cmd_split(args) -> int:
     # Add panes
     for _ in range(count):
         subprocess.run([
-            "tmux", "split-window", "-h", "-t", session, "-c", cwd
+            "tmux", "split-window", "-v", "-t", session, "-c", cwd
         ], capture_output=True)
 
-    # Even vertical layout and focus pane 0
-    subprocess.run(["tmux", "select-layout", "-t", session, "even-horizontal"], capture_output=True)
+    # Apply main-top layout: orchestrator (pane 0) at top with 60%, workers below
+    pane_manager._apply_main_top_layout(session)
     subprocess.run(["tmux", "select-pane", "-t", f"{session}:0.0"], capture_output=True)
 
     pane_count = 1 + count  # original + new
-    print(f"Added {count} pane(s) - now {pane_count} even vertical panes")
+    print(f"Added {count} pane(s) - now {pane_count} panes")
     return 0
 
 
@@ -2790,8 +2790,8 @@ def cmd_detach(args) -> int:
             "tmux", "break-pane", "-d", "-s", f"{source_session}:{pane_index}", "-t", f"{new_session}:"
         ], capture_output=True)
 
-    # Re-align remaining panes in source session
-    subprocess.run(["tmux", "select-layout", "-t", source_session, "even-horizontal"], capture_output=True)
+    # Re-align remaining panes with main-top layout
+    pane_manager._apply_main_top_layout(source_session)
     subprocess.run(["tmux", "select-pane", "-t", f"{source_session}:0.0"], capture_output=True)
 
     print(f"Moved pane {pane_index} to session '{new_session}'")

@@ -143,12 +143,49 @@ def spawn_worker_pane(
     if cmd:
         send_to_pane(session, pane_index, cmd)
 
-    # Rebalance panes - use layout matching split direction
-    # even-vertical = stacked (for -v), even-horizontal = side by side (for -h)
-    layout = "even-horizontal" if split_flag == "-h" else "even-vertical"
-    run_command(["tmux", "select-layout", "-t", f"{session}:0", layout], timeout=5)
+    # Apply main-top layout: orchestrator (pane 0) at top, workers below
+    _apply_main_top_layout(session)
 
     return pane_index
+
+
+def _apply_main_top_layout(session: str) -> None:
+    """Apply layout with orchestrator (pane 0) at top, workers tiled below.
+
+    This layout maintains stable, predictable indexing:
+    - pane 0 is always the orchestrator (at top, 60% height)
+    - panes 1+ are workers in spawn order (below, sharing 40%)
+
+    Layout (2 panes):
+        [  orchestrator  ]  <- top 60% (pane 0)
+        [    worker 1    ]  <- bottom 40% (pane 1)
+
+    Layout (3+ panes):
+        [   orchestrator  ]  <- top 60% (pane 0)
+        [worker1][worker2]  <- bottom 40%, stacked vertically (panes 1+)
+
+    Args:
+        session: Tmux session name.
+    """
+    panes = list_panes(session)
+    num_panes = len(panes)
+    if num_panes <= 1:
+        return  # No layout needed for single pane
+
+    # Get window dimensions
+    result = run_command(
+        ["tmux", "display", "-t", f"{session}:0", "-p", "#{window_height}"],
+        timeout=5,
+    )
+    if not result.success:
+        return
+
+    window_height = int(result.stdout.strip())
+    main_height = int(window_height * 0.6)  # Orchestrator gets 60%
+
+    # Resize pane 0 (orchestrator) to 60% - workers naturally get the rest
+    # Note: tmux distributes space to adjacent panes, so worker sizes may vary
+    run_command(["tmux", "resize-pane", "-t", f"{session}:0.0", "-y", str(main_height)], timeout=5)
 
 
 def list_panes(session: str | None = None) -> list[PaneInfo]:
