@@ -18,8 +18,10 @@ from . import __version__, cli_safety, pane_manager
 from .project_config import (
     ProjectConfig,
     SessionType,
+    detect_default_agent_type,
     get_voice_from_config,
     load_project_config,
+    normalize_session_type,
     save_project_config,
 )
 from .roles import RoleConfig, load_roles, merge_roles
@@ -108,6 +110,108 @@ def _build_claude_cmd(
             parts.append(f"--model {merged.model}")
 
     return " ".join(parts)
+
+
+def _build_agent_command_env(session_type: str, roles: list[RoleConfig] | None = None) -> dict[str, str]:
+    """Build environment variables for agent command based on session type.
+
+    Args:
+        session_type: Session type string (e.g., "claude-bypass", "opencode-bypass")
+        roles: List of RoleConfig objects to apply
+
+    Returns:
+        Dictionary of environment variables to set
+    """
+    env = {}
+
+    # Default: empty (bare session)
+    if session_type == "bare":
+        env["AGENT_NEW_SESSION_COMMAND"] = ""
+        return env
+
+    # === Claude Code Session Types ===
+    if session_type in ["claude-bypass", "claude-prompted", "claude-restricted"]:
+        env["AGENT_NEW_SESSION_COMMAND"] = "claude"
+
+        # Permissions flag
+        if session_type == "claude-bypass":
+            env["AGENT_PERMISSIONS_FLAG"] = "--dangerously-skip-permissions"
+        elif session_type == "claude-prompted":
+            env["AGENT_PERMISSIONS_FLAG"] = ""
+        elif session_type == "claude-restricted":
+            env["AGENT_PERMISSIONS_FLAG"] = "--tools Bash"
+
+        # Role-based flags
+        if roles and session_type != "claude-restricted":
+            merged = merge_roles(roles)
+
+            if merged.tools:
+                env["AGENT_TOOLS_FLAG"] = f"--tools {','.join(merged.tools)}"
+
+            if merged.disallowed_tools:
+                env["AGENT_DISALLOWED_TOOLS_FLAG"] = f"--disallowedTools {','.join(merged.disallowed_tools)}"
+
+            if merged.instructions:
+                escaped = merged.instructions.replace('"', '\\"')
+                env["AGENT_SYSTEM_PROMPT_FLAG"] = f'--append-system-prompt "{escaped}"'
+
+            if merged.model:
+                env["AGENT_MODEL_FLAG"] = f"--model {merged.model}"
+
+    # === OpenCode Session Types ===
+    elif session_type in ["opencode-bypass", "opencode-prompted", "opencode-restricted"]:
+        env["AGENT_NEW_SESSION_COMMAND"] = "opencode"
+
+        # Permissions via environment variable (not a CLI flag)
+        if session_type == "opencode-bypass":
+            env["AGENT_PERMISSIONS_FLAG"] = ""
+            env["OPENCODE_PERMISSION"] = '{"*":"allow"}'
+        elif session_type == "opencode-prompted":
+            env["AGENT_PERMISSIONS_FLAG"] = ""
+            env["OPENCODE_PERMISSION"] = '{"*":"ask"}'
+        elif session_type == "opencode-restricted":
+            env["AGENT_PERMISSIONS_FLAG"] = ""
+            env["OPENCODE_PERMISSION"] = '{"bash":"allow","question":"deny"}'
+
+        # OpenCode doesn't support --tools or --disallowedTools flags
+        env["AGENT_TOOLS_FLAG"] = ""
+        env["AGENT_DISALLOWED_TOOLS_FLAG"] = ""
+        env["AGENT_SYSTEM_PROMPT_FLAG"] = ""
+
+        # Role-based settings
+        if roles:
+            merged = merge_roles(roles)
+
+            # Store role instructions for prepending to first message
+            if merged.instructions:
+                env["ROLE_INSTRUCTIONS_TO_PREPEND"] = merged.instructions
+
+            if merged.model:
+                env["AGENT_MODEL_FLAG"] = f"--model {merged.model}"
+
+    return env
+
+
+def _build_agent_command_from_env() -> str:
+    """Build agent command string from environment variables.
+
+    Returns:
+        The agent command string to execute
+    """
+    command = os.environ.get("AGENT_NEW_SESSION_COMMAND", "")
+    if not command:
+        return ""  # Bare session
+
+    parts = [
+        command,
+        os.environ.get("AGENT_PERMISSIONS_FLAG", ""),
+        os.environ.get("AGENT_TOOLS_FLAG", ""),
+        os.environ.get("AGENT_DISALLOWED_TOOLS_FLAG", ""),
+        os.environ.get("AGENT_SYSTEM_PROMPT_FLAG", ""),
+        os.environ.get("AGENT_MODEL_FLAG", ""),
+    ]
+
+    return " ".join(filter(None, parts))
 
 
 def check_python_version() -> bool:
@@ -1694,6 +1798,52 @@ def _remote_say(text: str, session: str, portal_url: str) -> int:
         return 1
 
 
+def load_session_metadata(session_name: str) -> dict:
+    """Load session metadata from storage.
+
+    Args:
+        session_name: The session name (without @machine suffix if present)
+
+    Returns:
+        Dictionary of metadata (empty dict if not found)
+    """
+    # Parse session name to extract just the name part (remove @machine)
+    clean_name = session_name.split("@")[0]
+
+    metadata_file = CONFIG_DIR / "sessions" / clean_name / "metadata.json"
+
+    if not metadata_file.exists():
+        return {}
+
+    try:
+        with open(metadata_file) as f:
+            return json.load(f) or {}
+    except (json.JSONDecodeError, IOError):
+        return {}
+
+
+def store_session_metadata(session_name: str, metadata: dict) -> None:
+    """Store session metadata to disk.
+
+    Args:
+        session_name: The session name (without @machine suffix if present)
+        metadata: Dictionary of metadata to store
+    """
+    # Parse session name to extract just the name part (remove @machine)
+    clean_name = session_name.split("@")[0]
+
+    metadata_dir = CONFIG_DIR / "sessions" / clean_name
+    metadata_dir.mkdir(parents=True, exist_ok=True)
+
+    metadata_file = metadata_dir / "metadata.json"
+
+    try:
+        with open(metadata_file, "w") as f:
+            json.dump(metadata, f, indent=2)
+    except (IOError, TypeError):
+        pass
+
+
 def cmd_notify(args) -> int:
     """Send a notification to the portal about session/pane state changes.
 
@@ -1816,6 +1966,17 @@ def cmd_send(args) -> int:
 
     # Parse session@machine format
     session, machine_id = _parse_session_target(session_full)
+
+    # Check if we need to prepend role instructions (first message for OpenCode)
+    metadata = load_session_metadata(session)
+    role_instructions = metadata.get("role_instructions")
+
+    if role_instructions:
+        # Prepend instructions to message with separator
+        prompt = f"{role_instructions}\n\n---\n\n{prompt}"
+
+        # Clear stored instructions after use (only prepend once)
+        store_session_metadata(session, {"role_instructions": None})
 
     if machine_id:
         # Remote: SSH and run tmux commands
@@ -2168,25 +2329,41 @@ def cmd_new(args) -> int:
                 return _output_result(False, json_mode, f"Session '{session_name}' already exists on {machine_id}. Use -f to replace.")
 
         # Create remote tmux session
-        # Determine session type from CLI flags
-        if getattr(args, 'bare', False):
-            session_type = SessionType.BARE
-        elif getattr(args, 'restricted', False):
-            session_type = SessionType.CLAUDE_RESTRICTED
-        elif getattr(args, 'prompted', False):
-            session_type = SessionType.CLAUDE_PROMPTED
-        else:
-            session_type = SessionType.CLAUDE_BYPASS
+        # Determine agent type and session type from CLI flags
+        agent_type = detect_default_agent_type()
 
-        # Build claude command with roles
-        claude_cmd = _build_claude_cmd(session_type, roles if roles else None)
-        # Create session - Claude starts immediately if not bare
-        if claude_cmd:
+        if getattr(args, 'bare', False):
+            session_type = "bare"
+        elif getattr(args, 'restricted', False):
+            session_type = f"{agent_type}-restricted"
+        elif getattr(args, 'prompted', False):
+            session_type = f"{agent_type}-prompted"
+        else:
+            session_type = f"{agent_type}-bypass"
+
+        # Build environment variables based on session type
+        env_vars = _build_agent_command_env(session_type, roles if roles else None)
+
+        # Set environment variables
+        for key, value in env_vars.items():
+            os.environ[key] = value
+
+        # Store role instructions for first message (OpenCode only)
+        if "ROLE_INSTRUCTIONS_TO_PREPEND" in env_vars:
+            store_session_metadata(session_name, {
+                "role_instructions": env_vars["ROLE_INSTRUCTIONS_TO_PREPEND"]
+            })
+
+        # Build agent command from environment variables
+        agent_cmd = _build_agent_command_from_env()
+
+        # Create session - Agent starts immediately if not bare
+        if agent_cmd:
             create_cmd = (
                 f"tmux new-session -d -s {shlex.quote(session_name)} -c {shlex.quote(remote_path)} && "
                 f"tmux send-keys -t {shlex.quote(session_name)} 'cd {shlex.quote(remote_path)}' Enter && "
                 f"sleep 0.1 && "
-                f"tmux send-keys -t {shlex.quote(session_name)} {shlex.quote(claude_cmd)} Enter"
+                f"tmux send-keys -t {shlex.quote(session_name)} {shlex.quote(agent_cmd)} Enter"
             )
         else:
             # Bare session - just create tmux
@@ -2292,26 +2469,45 @@ def cmd_new(args) -> int:
     )
     time.sleep(0.1)
 
+    # Determine agent type and normalize session type
+    agent_type = detect_default_agent_type()
+
     # Determine session type from CLI flags or existing config
     if getattr(args, 'bare', False):
-        session_type = SessionType.BARE
+        session_type = "bare"
     elif getattr(args, 'restricted', False):
-        session_type = SessionType.CLAUDE_RESTRICTED
+        session_type = f"{agent_type}-restricted"
     elif getattr(args, 'prompted', False):
-        session_type = SessionType.CLAUDE_PROMPTED
+        session_type = f"{agent_type}-prompted"
     else:
-        # Check existing .agentwire.yml for type, otherwise default to bypass
+        # Check existing .agentwire.yml for type, otherwise default to standard
         existing_config = load_project_config(session_path)
         if existing_config and existing_config.type:
-            session_type = existing_config.type
+            # Normalize in case it's a universal type
+            session_type = normalize_session_type(existing_config.type.value, agent_type)
         else:
-            session_type = SessionType.CLAUDE_BYPASS  # Default
+            session_type = f"{agent_type}-bypass"  # Default
 
-    # Build and start Claude command
-    claude_cmd = _build_claude_cmd(session_type, roles if roles else None)
-    if claude_cmd:
+    # Build environment variables based on session type
+    env_vars = _build_agent_command_env(session_type, roles if roles else None)
+
+    # Set environment variables
+    for key, value in env_vars.items():
+        os.environ[key] = value
+
+    # Store role instructions for first message (OpenCode only)
+    if "ROLE_INSTRUCTIONS_TO_PREPEND" in env_vars:
+        store_session_metadata(session_name, {
+            "role_instructions": env_vars["ROLE_INSTRUCTIONS_TO_PREPEND"]
+        })
+
+    # Build agent command from environment variables
+    agent_cmd = _build_agent_command_from_env()
+
+    # Start agent command if not bare
+    if agent_cmd:
         subprocess.run(
-            ["tmux", "send-keys", "-t", session_name, claude_cmd, "Enter"],
+            ["tmux", "send-keys", "-t", session_name, agent_cmd, "Enter"],
             check=True
         )
 
@@ -2321,14 +2517,14 @@ def cmd_new(args) -> int:
     if existing_config:
         # Preserve existing voice and roles if not overridden by CLI
         project_config = ProjectConfig(
-            type=session_type,
+            type=SessionType.from_str(session_type),
             roles=role_names if role_names else existing_config.roles,
             voice=existing_config.voice,
         )
     else:
         # Create new config
         project_config = ProjectConfig(
-            type=session_type,
+            type=SessionType.from_str(session_type),
             roles=role_names if role_names else [],
             voice=None,
         )
@@ -2688,15 +2884,31 @@ def cmd_spawn(args) -> int:
     if missing:
         return _output_result(False, json_mode, f"Roles not found: {', '.join(missing)}")
 
-    # Build claude command with roles
-    claude_cmd = _build_claude_cmd(SessionType.CLAUDE_BYPASS, roles if roles else None)
+    # Workers always use worker session type
+    agent_type = detect_default_agent_type()
+    session_type_str = f"{agent_type}-restricted"
+
+    # Build environment variables based on session type
+    env = _build_agent_command_env(session_type_str, roles if roles else None)
+    for key, value in env.items():
+        os.environ[key] = value
+
+    # Store role instructions for first message (OpenCode only)
+    parent_session = session or pane_manager.get_current_session()
+    if parent_session and "ROLE_INSTRUCTIONS_TO_PREPEND" in env:
+        store_session_metadata(parent_session, {
+            "role_instructions": env["ROLE_INSTRUCTIONS_TO_PREPEND"]
+        })
+
+    # Build command from environment variables
+    agent_cmd = _build_agent_command_from_env()
 
     try:
         # Spawn pane
         pane_index = pane_manager.spawn_worker_pane(
             session=session,
             cwd=cwd,
-            cmd=claude_cmd
+            cmd=agent_cmd
         )
 
         # Install pane hook to notify portal when pane exits
@@ -3103,31 +3315,53 @@ def cmd_recreate(args) -> int:
     if not session_path.exists():
         return _output_result(False, json_mode, f"Path does not exist: {session_path}")
 
+    # Load project config to get session type and roles
+    project_config = load_project_config(session_path)
+    if project_config:
+        # Normalize universal session types to agent-specific types
+        agent_type = detect_default_agent_type()
+        session_type_str = normalize_session_type(project_config.type.value, agent_type)
+        roles = None
+        if project_config.roles:
+            roles, _ = load_roles(project_config.roles, session_path)
+    else:
+        # Default to claude-bypass if no config
+        session_type_str = "claude-bypass"
+        roles = None
+
+    # Build environment variables based on session type
+    env = _build_agent_command_env(session_type_str, roles)
+    for key, value in env.items():
+        os.environ[key] = value
+
+    # Store role instructions for first message (OpenCode only)
+    if "ROLE_INSTRUCTIONS_TO_PREPEND" in env:
+        store_session_metadata(session_name, {
+            "role_instructions": env["ROLE_INSTRUCTIONS_TO_PREPEND"]
+        })
+
+    # Build command from environment variables
+    agent_cmd = _build_agent_command_from_env()
+
     # Step 5: Create new session
     subprocess.run(
         ["tmux", "new-session", "-d", "-s", session_name, "-c", str(session_path)],
         check=True
     )
 
-    # Ensure Claude starts in correct directory
+    # Ensure agent starts in correct directory
     subprocess.run(
         ["tmux", "send-keys", "-t", session_name, f"cd {shlex.quote(str(session_path))}", "Enter"],
         check=True
     )
     time.sleep(0.1)
 
-    restricted = getattr(args, 'restricted', False)
-    no_bypass = getattr(args, 'no_bypass', False)
-    # Restricted mode implies no bypass (uses hook for permission handling)
-    if restricted or no_bypass:
-        claude_cmd = "claude"
-    else:
-        claude_cmd = "claude --dangerously-skip-permissions"
-
-    subprocess.run(
-        ["tmux", "send-keys", "-t", session_name, claude_cmd, "Enter"],
-        check=True
-    )
+    # Start the agent with appropriate command
+    if agent_cmd:
+        subprocess.run(
+            ["tmux", "send-keys", "-t", session_name, agent_cmd, "Enter"],
+            check=True
+        )
 
     if json_mode:
         _output_json({
@@ -3226,16 +3460,39 @@ def cmd_fork(args) -> int:
         if result.returncode != 0:
             return _output_result(False, json_mode, f"Failed to create worktree: {result.stderr}")
 
-        # Create new session
-        restricted = getattr(args, 'restricted', False)
-        no_bypass = getattr(args, 'no_bypass', False)
-        # Restricted mode implies no bypass (uses hook for permission handling)
-        bypass_flag = "" if (restricted or no_bypass) else " --dangerously-skip-permissions"
+        # Create new session - use source project config to preserve session type
+        source_config = load_project_config(Path(source_path))
+        if source_config:
+            # Normalize universal session types to agent-specific types
+            agent_type = detect_default_agent_type()
+            session_type_str = normalize_session_type(source_config.type.value, agent_type)
+            roles = None
+            if source_config.roles:
+                roles, _ = load_roles(source_config.roles, Path(source_path))
+        else:
+            # Default to claude-bypass if no config
+            session_type_str = "claude-bypass"
+            roles = None
+
+        # Build environment variables based on session type
+        env = _build_agent_command_env(session_type_str, roles)
+        for key, value in env.items():
+            os.environ[key] = value
+
+        # Store role instructions for first message (OpenCode only)
+        if "ROLE_INSTRUCTIONS_TO_PREPEND" in env:
+            store_session_metadata(target_session, {
+                "role_instructions": env["ROLE_INSTRUCTIONS_TO_PREPEND"]
+            })
+
+        # Build command from environment variables
+        agent_cmd = _build_agent_command_from_env()
+
         create_session_cmd = (
             f"tmux new-session -d -s {shlex.quote(target_session)} -c {shlex.quote(target_path)} && "
             f"tmux send-keys -t {shlex.quote(target_session)} 'cd {shlex.quote(target_path)}' Enter && "
             f"sleep 0.1 && "
-            f"tmux send-keys -t {shlex.quote(target_session)} 'claude{bypass_flag}' Enter"
+            f"tmux send-keys -t {shlex.quote(target_session)} {shlex.quote(agent_cmd)} Enter"
         )
 
         result = _run_remote(machine_id, create_session_cmd)
@@ -3301,15 +3558,33 @@ def cmd_fork(args) -> int:
         # Load source session config from .agentwire.yml to preserve settings
         source_project_config = load_project_config(fork_path)
         if source_project_config:
-            session_type = source_project_config.type
+            # Normalize universal session types to agent-specific types
+            agent_type = detect_default_agent_type()
+            session_type_str = normalize_session_type(source_project_config.type.value, agent_type)
+            roles = None
+            if source_project_config.roles:
+                roles, _ = load_roles(source_project_config.roles, fork_path)
         else:
-            session_type = SessionType.CLAUDE_BYPASS  # Default
+            # Default to claude-bypass if no config
+            session_type_str = "claude-bypass"
+            roles = None
 
-        # Build Claude command based on session type
-        claude_cmd = _build_claude_cmd(session_type, None)
-        if claude_cmd:
+        # Build environment variables based on session type
+        env = _build_agent_command_env(session_type_str, roles)
+        for key, value in env.items():
+            os.environ[key] = value
+
+        # Store role instructions for first message (OpenCode only)
+        if "ROLE_INSTRUCTIONS_TO_PREPEND" in env:
+            store_session_metadata(target_session, {
+                "role_instructions": env["ROLE_INSTRUCTIONS_TO_PREPEND"]
+            })
+
+        # Build command from environment variables
+        agent_cmd = _build_agent_command_from_env()
+        if agent_cmd:
             subprocess.run(
-                ["tmux", "send-keys", "-t", target_session, claude_cmd, "Enter"],
+                ["tmux", "send-keys", "-t", target_session, agent_cmd, "Enter"],
                 check=True
             )
 
@@ -3369,25 +3644,45 @@ def cmd_fork(args) -> int:
         check=True
     )
 
-    # Ensure Claude starts in correct directory
+    # Ensure agent starts in correct directory
     subprocess.run(
         ["tmux", "send-keys", "-t", target_session, f"cd {shlex.quote(str(target_path))}", "Enter"],
         check=True
     )
     time.sleep(0.1)
 
-    restricted = getattr(args, 'restricted', False)
-    no_bypass = getattr(args, 'no_bypass', False)
-    # Restricted mode implies no bypass (uses hook for permission handling)
-    if restricted or no_bypass:
-        claude_cmd = "claude"
+    # Load source project config to preserve session type
+    source_config = load_project_config(source_path if source_path != project_path else project_path)
+    if source_config:
+        # Normalize universal session types to agent-specific types
+        agent_type = detect_default_agent_type()
+        session_type_str = normalize_session_type(source_config.type.value, agent_type)
+        roles = None
+        if source_config.roles:
+            roles, _ = load_roles(source_config.roles, source_path if source_path != project_path else project_path)
     else:
-        claude_cmd = "claude --dangerously-skip-permissions"
+        # Default to claude-bypass if no config
+        session_type_str = "claude-bypass"
+        roles = None
 
-    subprocess.run(
-        ["tmux", "send-keys", "-t", target_session, claude_cmd, "Enter"],
-        check=True
-    )
+    # Build environment variables based on session type
+    env = _build_agent_command_env(session_type_str, roles)
+    for key, value in env.items():
+        os.environ[key] = value
+
+    # Store role instructions for first message (OpenCode only)
+    if "ROLE_INSTRUCTIONS_TO_PREPEND" in env:
+        store_session_metadata(target_session, {
+            "role_instructions": env["ROLE_INSTRUCTIONS_TO_PREPEND"]
+        })
+
+    # Build command from environment variables
+    agent_cmd = _build_agent_command_from_env()
+    if agent_cmd:
+        subprocess.run(
+            ["tmux", "send-keys", "-t", target_session, agent_cmd, "Enter"],
+            check=True
+        )
 
     if json_mode:
         _output_json({
@@ -3924,7 +4219,24 @@ def cmd_dev(args) -> int:
 
     # Load agentwire role for dev session
     dev_roles, _ = load_roles(["agentwire"], project_dir)
-    claude_cmd = _build_claude_cmd(SessionType.CLAUDE_BYPASS, roles=dev_roles if dev_roles else None)
+
+    # Use worker session type for dev session
+    agent_type = detect_default_agent_type()
+    session_type_str = f"{agent_type}-restricted"
+
+    # Build environment variables based on session type
+    env = _build_agent_command_env(session_type_str, dev_roles if dev_roles else None)
+    for key, value in env.items():
+        os.environ[key] = value
+
+    # Store role instructions for first message (OpenCode only)
+    if "ROLE_INSTRUCTIONS_TO_PREPEND" in env:
+        store_session_metadata(session_name, {
+            "role_instructions": env["ROLE_INSTRUCTIONS_TO_PREPEND"]
+        })
+
+    # Build command from environment variables
+    agent_cmd = _build_agent_command_from_env()
 
     # Create session
     print(f"Creating dev session '{session_name}' in {project_dir}...")
@@ -3932,10 +4244,11 @@ def cmd_dev(args) -> int:
         "tmux", "new-session", "-d", "-s", session_name, "-c", str(project_dir),
     ])
 
-    # Start Claude with agentwire config
-    subprocess.run([
-        "tmux", "send-keys", "-t", session_name, claude_cmd, "Enter",
-    ])
+    # Start agent with agentwire config
+    if agent_cmd:
+        subprocess.run([
+            "tmux", "send-keys", "-t", session_name, agent_cmd, "Enter",
+        ])
 
     print("Attaching... (Ctrl+B D to detach)")
     subprocess.run(["tmux", "attach-session", "-t", session_name])

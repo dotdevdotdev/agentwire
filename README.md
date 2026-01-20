@@ -49,12 +49,14 @@ Before installing, ensure you have:
 
 | Requirement | Minimum | Check |
 |-------------|---------|-------|
-| **Claude Code** | Any recent | `claude --version` |
+| **Claude Code OR OpenCode** | Any recent | `claude --version` or `opencode --version` |
 | **Python** | 3.10+ | `python3 --version` |
 | **tmux** | Any recent | `tmux -V` |
 | **ffmpeg** | Any recent | `ffmpeg -version` |
 
 **Important for Ubuntu 24.04+ users:** Ubuntu's externally-managed Python requires using a virtual environment. See the Ubuntu installation instructions below.
+
+**Quick Start with OpenCode:** See [OpenCode Quick Start Guide](docs/OPENCODE_QUICKSTART.md) for 5-minute setup.
 
 ### Platform-Specific Installation
 
@@ -116,6 +118,21 @@ agentwire portal start
 # Open in browser
 # https://localhost:8765
 ```
+
+**Optional:** Configure OpenCode as your AI agent:
+
+```bash
+# Install OpenCode
+npm install -g @opencode-ai/cli
+
+# Configure AgentWire to use OpenCode
+cat > ~/.agentwire/config.yaml << 'EOF'
+agent:
+  command: "opencode"
+EOF
+```
+
+See [OpenCode Quick Start](docs/OPENCODE_QUICKSTART.md) for complete setup guide.
 
 **Expected Install Time:**
 - **First time:** 20-30 minutes (including dependency installation, configuration)
@@ -240,10 +257,34 @@ tts:
   runpod_api_key: "your-api-key"
 
 agent:
-  command: "claude --dangerously-skip-permissions"
+  command: "claude --dangerously-skip-permissions"  # or "opencode"
 ```
 
+**Project configuration:** Create `.agentwire.yml` in your project directory:
+
+```yaml
+type: "standard"  # Universal session type
+roles:
+  - agentwire
+```
+
+See [OpenCode Quick Start](docs/OPENCODE_QUICKSTART.md) and [SESSION_TYPES.md](docs/SESSION_TYPES.md) for more details.
+
 ## Session Types
+
+AgentWire supports multiple AI agents and session types:
+
+### Universal Types (Recommended)
+- **standard** - Full automation, no permission prompts
+- **worker** - No AskUserQuestion, no voice, focused execution
+- **voice** - Voice with permission prompts, user approval
+- **bare** - Terminal only, no agent
+
+### Agent-Specific Types
+- **Claude Code:** `claude-bypass`, `claude-prompted`, `claude-restricted`
+- **OpenCode:** `opencode-bypass`, `opencode-prompted`, `opencode-restricted`
+
+See [SESSION_TYPES.md](docs/SESSION_TYPES.md) for complete reference.
 
 ### Simple Session
 ```
@@ -265,7 +306,7 @@ Agent running on a remote machine.
 
 ## Safety & Security
 
-AgentWire includes damage control hooks that protect against dangerous operations across all Claude Code sessions.
+AgentWire includes damage control hooks that protect against dangerous operations across all sessions (both Claude Code and OpenCode).
 
 ### What's Protected
 
@@ -397,6 +438,17 @@ Contributions welcome! Please open an issue first to discuss changes.
 
 - [Report bugs](https://github.com/dotdevdotdev/agentwire-dev/issues)
 - [Request features](https://github.com/dotdevdotdev/agentwire-dev/issues)
+
+## Documentation
+
+- [OpenCode Quick Start](docs/OPENCODE_QUICKSTART.md) - 5-minute setup guide
+- [Session Types Reference](docs/SESSION_TYPES.md) - Complete session types reference
+- [OpenCode Role Guide](docs/OPENCODE_ROLES.md) - Using roles with OpenCode
+- [Migration Guide](docs/MIGRATION_GUIDE.md) - Migrate from Claude Code to OpenCode
+- [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) - Common issues and solutions
+- [ARCHITECTURE.md](docs/architecture.md) - System architecture
+- [PORTAL.md](docs/PORTAL.md) - Portal modes and API
+- [Remote Machines](docs/remote-machines.md) - Multi-machine setup
 
 ## License
 
