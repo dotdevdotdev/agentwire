@@ -3422,8 +3422,9 @@ def cmd_fork(args) -> int:
             if source_config.roles:
                 roles, _ = load_roles(source_config.roles, Path(source_path))
         else:
-            # Default to claude-bypass if no config
-            session_type_str = "claude-bypass"
+            # Default to agent-bypass based on detected agent
+            agent_type = detect_default_agent_type()
+            session_type_str = f"{agent_type}-bypass"
             roles = None
 
         # Build agent command

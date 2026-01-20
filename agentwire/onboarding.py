@@ -1052,25 +1052,54 @@ def run_onboarding(skip_session: bool = False) -> int:
     # ─────────────────────────────────────────────────────────────
     print_header("2. Agent Command")
 
-    print("What command should AgentWire use to start Claude Code sessions?")
+    print("What command should AgentWire use to start AI coding sessions?")
     print()
 
-    agent_choice = prompt_choice(
-        "",
-        [
-            ("skip", "claude --dangerously-skip-permissions (Recommended - full automation)"),
-            ("standard", "claude (Standard - will prompt for permissions)"),
-            ("custom", "Custom command (for Aider, Cursor, or other agents)"),
-        ],
-        default=1 if "--dangerously-skip-permissions" in config["agent_command"] else 2,
-    )
+    # Build options based on what's installed
+    agent_options = []
+    default_option = 1
 
-    if agent_choice == "skip":
+    # Determine default based on current config
+    current_is_claude_skip = "--dangerously-skip-permissions" in config["agent_command"]
+    current_is_opencode = "opencode" in config["agent_command"]
+
+    if claude_installed:
+        agent_options.append(("claude_skip", "claude --dangerously-skip-permissions (Recommended - full automation)"))
+        agent_options.append(("claude_standard", "claude (Standard - will prompt for permissions)"))
+        if current_is_claude_skip:
+            default_option = 1
+        elif "claude" in config["agent_command"] and not current_is_claude_skip:
+            default_option = 2
+
+    if opencode_installed:
+        agent_options.append(("opencode", "opencode (OpenCode AI agent)"))
+        if current_is_opencode:
+            default_option = len(agent_options)
+
+    agent_options.append(("custom", "Custom command (for Aider, Cursor, or other agents)"))
+
+    # If no agents installed, default to custom
+    if not claude_installed and not opencode_installed:
+        default_option = 1
+
+    agent_choice = prompt_choice("", agent_options, default=default_option)
+
+    if agent_choice == "claude_skip":
         config["agent_command"] = "claude --dangerously-skip-permissions"
-    elif agent_choice == "standard":
+        config["agent_type"] = "claude"
+    elif agent_choice == "claude_standard":
         config["agent_command"] = "claude"
+        config["agent_type"] = "claude"
+    elif agent_choice == "opencode":
+        config["agent_command"] = "opencode"
+        config["agent_type"] = "opencode"
     else:
         config["agent_command"] = prompt("Enter custom command", config["agent_command"])
+        # Try to detect agent type from custom command
+        if "opencode" in config["agent_command"]:
+            config["agent_type"] = "opencode"
+        elif "claude" in config["agent_command"]:
+            config["agent_type"] = "claude"
 
     print_success(f"Agent command: {config['agent_command']}")
 
