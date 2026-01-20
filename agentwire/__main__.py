@@ -142,7 +142,7 @@ def _build_agent_command_env(session_type: str, roles: list[RoleConfig] | None =
             env["AGENT_PERMISSIONS_FLAG"] = "--tools Bash"
 
         # Role-based flags for Claude Code sessions
-        if roles and session_type != "claude-restricted" and not session_type.startswith("opencode"):
+        if roles and session_type.startswith("claude-") and session_type != "claude-restricted":
             merged = merge_roles(roles)
 
             if merged.tools:
