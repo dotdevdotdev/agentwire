@@ -310,8 +310,10 @@ if roles:
 - [x] Onboarding detects and supports OpenCode
 - [x] Documentation mentions both agents where appropriate
 - [x] No hardcoded "claude" strings in command building paths
-- [ ] `agentwire new -s test --type opencode-bypass` creates working OpenCode session (manual test needed)
-- [ ] `agentwire new -s test --type claude-bypass` still works - no regression (manual test needed)
+- [x] `agentwire new -s test --type opencode-bypass` creates working OpenCode session
+- [x] `agentwire new -s test --type claude-bypass` still works - no regression
+- [x] `agentwire recreate --type` correctly switches agent type and updates config
+- [x] `agentwire fork --type` correctly uses specified type for forked session
 
 ---
 
