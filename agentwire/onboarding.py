@@ -771,6 +771,50 @@ def get_claude_install_instructions() -> str:
     return "Install from: https://github.com/anthropics/claude-code"
 
 
+def check_opencode() -> tuple[bool, str]:
+    """Check if OpenCode CLI is installed.
+
+    Returns:
+        Tuple of (is_installed, path_or_message)
+    """
+    opencode_path = shutil.which("opencode")
+    if opencode_path:
+        return True, opencode_path
+    return False, "not found"
+
+
+def get_opencode_install_instructions() -> str:
+    """Get OpenCode install instructions."""
+    return "Install from: https://github.com/opencode-ai/opencode"
+
+
+def detect_installed_agents() -> dict[str, tuple[bool, str]]:
+    """Detect which AI agents are installed.
+
+    Returns:
+        Dict with 'claude' and 'opencode' keys, each mapping to (is_installed, path_or_message)
+    """
+    return {
+        "claude": check_claude(),
+        "opencode": check_opencode(),
+    }
+
+
+def get_default_agent_command() -> tuple[str, str]:
+    """Get the default agent command based on what's installed.
+
+    Returns:
+        Tuple of (agent_type, command) - e.g., ("claude", "claude --dangerously-skip-permissions")
+    """
+    from .project_config import detect_default_agent_type
+
+    agent_type = detect_default_agent_type()
+    if agent_type == "opencode":
+        return ("opencode", "opencode")
+    else:
+        return ("claude", "claude --dangerously-skip-permissions")
+
+
 def print_dependency_summary(checks: dict[str, tuple[bool, str]]) -> bool:
     """Print summary of dependency checks.
 

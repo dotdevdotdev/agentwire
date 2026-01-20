@@ -164,8 +164,8 @@ def spawn_init_session() -> int:
 
     print(f"Waiting for {agent_type} to start...")
 
-    # Wait for Claude to be ready (check for prompt)
-    # Claude typically takes 2-4 seconds to initialize
+    # Wait for agent to be ready (check for prompt)
+    # Agents typically take 2-4 seconds to initialize
     time.sleep(3)
 
     # Load and send the init prompt
