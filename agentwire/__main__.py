@@ -3,6 +3,7 @@
 import argparse
 import base64
 import datetime
+from dataclasses import dataclass
 import importlib.resources
 import json
 import os
@@ -65,153 +66,100 @@ def _check_config_exists() -> bool:
     return True
 
 
-def _build_claude_cmd(
-    session_type: SessionType,
-    roles: list[RoleConfig] | None = None,
-) -> str:
-    """Build the claude command with appropriate flags.
+@dataclass
+class AgentCommand:
+    """Result of building an agent command."""
+    command: str  # The shell command to execute
+    role_instructions: str | None = None  # For OpenCode: prepend to first message
+    temp_file: str | None = None  # Temp file to clean up after agent starts
+
+
+def build_agent_command(session_type: str, roles: list[RoleConfig] | None = None) -> AgentCommand:
+    """Build the agent command for a session.
+
+    Supports both Claude Code and OpenCode with appropriate flags/env vars.
 
     Args:
-        session_type: Session execution mode (bare, claude-bypass, etc.)
-        roles: List of RoleConfig objects to apply (merged for tools/instructions)
+        session_type: Session type (e.g., "claude-bypass", "opencode-bypass", "bare")
+        roles: Optional list of roles to apply
 
     Returns:
-        The claude command string to execute, or empty string for bare sessions
+        AgentCommand with the command string and metadata
     """
-    if session_type == SessionType.BARE:
-        return ""  # No Claude for bare sessions
+    import tempfile
 
-    parts = ["claude"]
-
-    # Add session type flags
-    parts.extend(session_type.to_cli_flags())
-
-    if roles:
-        # Merge all roles
-        merged = merge_roles(roles)
-
-        # Add tools whitelist if any role specifies tools
-        if merged.tools:
-            parts.append("--tools " + " ".join(sorted(merged.tools)))
-
-        # Add disallowed tools (intersection - only block if ALL roles agree)
-        if merged.disallowed_tools:
-            parts.append("--disallowedTools " + " ".join(sorted(merged.disallowed_tools)))
-
-        # Concatenate all instructions via --append-system-prompt
-        if merged.instructions:
-            # Write merged instructions to a temp approach - use heredoc
-            # Escape any double quotes and dollar signs in instructions
-            escaped = merged.instructions.replace('\\', '\\\\').replace('"', '\\"').replace('$', '\\$').replace('`', '\\`')
-            parts.append(f'--append-system-prompt "{escaped}"')
-
-        # Model override (last non-None wins)
-        if merged.model:
-            parts.append(f"--model {merged.model}")
-
-    return " ".join(parts)
-
-
-def _build_agent_command_env(session_type: str, roles: list[RoleConfig] | None = None) -> dict[str, str]:
-    """Build environment variables for agent command based on session type.
-
-    Args:
-        session_type: Session type string (e.g., "claude-bypass", "opencode-bypass")
-        roles: List of RoleConfig objects to apply
-
-    Returns:
-        Dictionary of environment variables to set
-    """
-    env = {}
-
-    # Default: empty (bare session)
     if session_type == "bare":
-        env["AGENT_NEW_SESSION_COMMAND"] = ""
-        return env
+        return AgentCommand(command="")
 
-    # === Claude Code Session Types ===
-    if session_type in ["claude-bypass", "claude-prompted", "claude-restricted"]:
-        env["AGENT_NEW_SESSION_COMMAND"] = "claude"
+    # Merge roles if provided
+    merged = merge_roles(roles) if roles else None
 
-        # Permissions flag
+    # === Claude Code ===
+    if session_type.startswith("claude"):
+        parts = ["claude"]
+
+        # Permission flags
         if session_type == "claude-bypass":
-            env["AGENT_PERMISSIONS_FLAG"] = "--dangerously-skip-permissions"
-        elif session_type == "claude-prompted":
-            env["AGENT_PERMISSIONS_FLAG"] = ""
+            parts.append("--dangerously-skip-permissions")
         elif session_type == "claude-restricted":
-            env["AGENT_PERMISSIONS_FLAG"] = "--tools Bash"
+            parts.append("--tools Bash")
+        # claude-prompted has no special flags
 
-    # Role-based flags for Claude Code sessions
-        if roles and session_type.startswith("claude") and session_type != "claude-restricted":
-            merged = merge_roles(roles)
-
+        # Role-based flags (not for restricted mode)
+        temp_file = None
+        if merged and session_type != "claude-restricted":
             if merged.tools:
-                env["AGENT_TOOLS_FLAG"] = f"--tools {','.join(merged.tools)}"
+                parts.append(f"--tools {','.join(merged.tools)}")
 
             if merged.disallowed_tools:
-                env["AGENT_DISALLOWED_TOOLS_FLAG"] = f"--disallowedTools {','.join(merged.disallowed_tools)}"
+                parts.append(f"--disallowedTools {','.join(merged.disallowed_tools)}")
 
             if merged.instructions:
-                escaped = merged.instructions.replace('"', '\\"')
-                env["AGENT_SYSTEM_PROMPT_FLAG"] = f'--append-system-prompt "{escaped}"'
+                # Write to temp file to avoid shell escaping issues
+                # See docs/SHELL_ESCAPING.md for details
+                f = tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False)
+                f.write(merged.instructions)
+                f.close()
+                temp_file = f.name
+                parts.append(f'--append-system-prompt "$(<{temp_file})"')
 
             if merged.model:
-                env["AGENT_MODEL_FLAG"] = f"--model {merged.model}"
+                parts.append(f"--model {merged.model}")
 
-    # === OpenCode Session Types ===
-    elif session_type in ["opencode-bypass", "opencode-prompted", "opencode-restricted"]:
-        env["AGENT_NEW_SESSION_COMMAND"] = "opencode"
+        return AgentCommand(
+            command=" ".join(parts),
+            temp_file=temp_file,
+        )
 
-        # Permissions via environment variable (not a CLI flag)
+    # === OpenCode ===
+    if session_type.startswith("opencode"):
+        parts = []
+
+        # OpenCode uses env var for permissions, prefix the command
         if session_type == "opencode-bypass":
-            env["AGENT_PERMISSIONS_FLAG"] = ""
-            env["OPENCODE_PERMISSION"] = '{"*":"allow"}'
+            parts.append('OPENCODE_PERMISSION=\'{"*":"allow"}\'')
         elif session_type == "opencode-prompted":
-            env["AGENT_PERMISSIONS_FLAG"] = ""
-            env["OPENCODE_PERMISSION"] = '{"*":"ask"}'
+            parts.append('OPENCODE_PERMISSION=\'{"*":"ask"}\'')
         elif session_type == "opencode-restricted":
-            env["AGENT_PERMISSIONS_FLAG"] = ""
-            env["OPENCODE_PERMISSION"] = '{"bash":"allow","question":"deny"}'
+            parts.append('OPENCODE_PERMISSION=\'{"bash":"allow","question":"deny"}\'')
 
-        # OpenCode doesn't support --tools or --disallowedTools flags
-        env["AGENT_TOOLS_FLAG"] = ""
-        env["AGENT_DISALLOWED_TOOLS_FLAG"] = ""
-        env["AGENT_SYSTEM_PROMPT_FLAG"] = ""
+        parts.append("opencode")
 
-        # Role-based settings for OpenCode only
-        if roles:
-            merged = merge_roles(roles)
+        # Model flag (OpenCode supports this)
+        if merged and merged.model:
+            parts.append(f"--model {merged.model}")
 
-            # Store role instructions for prepending to first message
-            if merged.instructions:
-                env["ROLE_INSTRUCTIONS_TO_PREPEND"] = merged.instructions
+        # OpenCode doesn't support --append-system-prompt, so we store
+        # role instructions to prepend to the first user message
+        role_instructions = merged.instructions if merged else None
 
-            if merged.model:
-                env["AGENT_MODEL_FLAG"] = f"--model {merged.model}"
+        return AgentCommand(
+            command=" ".join(parts),
+            role_instructions=role_instructions,
+        )
 
-    return env
-
-
-def _build_agent_command_from_env() -> str:
-    """Build agent command string from environment variables.
-
-    Returns:
-        The agent command string to execute
-    """
-    command = os.environ.get("AGENT_NEW_SESSION_COMMAND", "")
-    if not command:
-        return ""  # Bare session
-
-    parts = [
-        command,
-        os.environ.get("AGENT_PERMISSIONS_FLAG", ""),
-        os.environ.get("AGENT_TOOLS_FLAG", ""),
-        os.environ.get("AGENT_DISALLOWED_TOOLS_FLAG", ""),
-        os.environ.get("AGENT_SYSTEM_PROMPT_FLAG", ""),
-        os.environ.get("AGENT_MODEL_FLAG", ""),
-    ]
-
-    return " ".join(filter(None, parts))
+    # Unknown session type - return empty
+    return AgentCommand(command="")
 
 
 def check_python_version() -> bool:
@@ -2341,21 +2289,16 @@ def cmd_new(args) -> int:
         else:
             session_type = f"{agent_type}-bypass"
 
-        # Build environment variables based on session type
-        env_vars = _build_agent_command_env(session_type, roles if roles else None)
-
-        # Set environment variables
-        for key, value in env_vars.items():
-            os.environ[key] = value
+        # Build agent command
+        agent = build_agent_command(session_type, roles if roles else None)
 
         # Store role instructions for first message (OpenCode only)
-        if "ROLE_INSTRUCTIONS_TO_PREPEND" in env_vars:
+        if agent.role_instructions:
             store_session_metadata(session_name, {
-                "role_instructions": env_vars["ROLE_INSTRUCTIONS_TO_PREPEND"]
+                "role_instructions": agent.role_instructions
             })
 
-        # Build agent command from environment variables
-        agent_cmd = _build_agent_command_from_env()
+        agent_cmd = agent.command
 
         # Create session - Agent starts immediately if not bare
         if agent_cmd:
@@ -2496,21 +2439,16 @@ def cmd_new(args) -> int:
             # Default to standard
             session_type = f"{agent_type}-bypass"
 
-    # Build environment variables based on session type
-    env_vars = _build_agent_command_env(session_type, roles if roles else None)
-
-    # Set environment variables
-    for key, value in env_vars.items():
-        os.environ[key] = value
+    # Build agent command
+    agent = build_agent_command(session_type, roles if roles else None)
 
     # Store role instructions for first message (OpenCode only)
-    if "ROLE_INSTRUCTIONS_TO_PREPEND" in env_vars:
+    if agent.role_instructions:
         store_session_metadata(session_name, {
-            "role_instructions": env_vars["ROLE_INSTRUCTIONS_TO_PREPEND"]
+            "role_instructions": agent.role_instructions
         })
 
-    # Build agent command from environment variables
-    agent_cmd = _build_agent_command_from_env()
+    agent_cmd = agent.command
 
     # Start agent command if not bare
     if agent_cmd:
@@ -2896,20 +2834,17 @@ def cmd_spawn(args) -> int:
     agent_type = detect_default_agent_type()
     session_type_str = f"{agent_type}-restricted"
 
-    # Build environment variables based on session type
-    env = _build_agent_command_env(session_type_str, roles if roles else None)
-    for key, value in env.items():
-        os.environ[key] = value
+    # Build agent command
+    agent = build_agent_command(session_type_str, roles if roles else None)
 
     # Store role instructions for first message (OpenCode only)
     parent_session = session or pane_manager.get_current_session()
-    if parent_session and "ROLE_INSTRUCTIONS_TO_PREPEND" in env:
+    if parent_session and agent.role_instructions:
         store_session_metadata(parent_session, {
-            "role_instructions": env["ROLE_INSTRUCTIONS_TO_PREPEND"]
+            "role_instructions": agent.role_instructions
         })
 
-    # Build command from environment variables
-    agent_cmd = _build_agent_command_from_env()
+    agent_cmd = agent.command
 
     try:
         # Spawn pane
@@ -3337,19 +3272,16 @@ def cmd_recreate(args) -> int:
         session_type_str = "claude-bypass"
         roles = None
 
-    # Build environment variables based on session type
-    env = _build_agent_command_env(session_type_str, roles)
-    for key, value in env.items():
-        os.environ[key] = value
+    # Build agent command
+    agent = build_agent_command(session_type_str, roles)
 
     # Store role instructions for first message (OpenCode only)
-    if "ROLE_INSTRUCTIONS_TO_PREPEND" in env:
+    if agent.role_instructions:
         store_session_metadata(session_name, {
-            "role_instructions": env["ROLE_INSTRUCTIONS_TO_PREPEND"]
+            "role_instructions": agent.role_instructions
         })
 
-    # Build command from environment variables
-    agent_cmd = _build_agent_command_from_env()
+    agent_cmd = agent.command
 
     # Step 5: Create new session
     subprocess.run(
@@ -3482,19 +3414,16 @@ def cmd_fork(args) -> int:
             session_type_str = "claude-bypass"
             roles = None
 
-        # Build environment variables based on session type
-        env = _build_agent_command_env(session_type_str, roles)
-        for key, value in env.items():
-            os.environ[key] = value
+        # Build agent command
+        agent = build_agent_command(session_type_str, roles)
 
         # Store role instructions for first message (OpenCode only)
-        if "ROLE_INSTRUCTIONS_TO_PREPEND" in env:
+        if agent.role_instructions:
             store_session_metadata(target_session, {
-                "role_instructions": env["ROLE_INSTRUCTIONS_TO_PREPEND"]
+                "role_instructions": agent.role_instructions
             })
 
-        # Build command from environment variables
-        agent_cmd = _build_agent_command_from_env()
+        agent_cmd = agent.command
 
         create_session_cmd = (
             f"tmux new-session -d -s {shlex.quote(target_session)} -c {shlex.quote(target_path)} && "
@@ -3577,19 +3506,16 @@ def cmd_fork(args) -> int:
             session_type_str = "claude-bypass"
             roles = None
 
-        # Build environment variables based on session type
-        env = _build_agent_command_env(session_type_str, roles)
-        for key, value in env.items():
-            os.environ[key] = value
+        # Build agent command
+        agent = build_agent_command(session_type_str, roles)
 
         # Store role instructions for first message (OpenCode only)
-        if "ROLE_INSTRUCTIONS_TO_PREPEND" in env:
+        if agent.role_instructions:
             store_session_metadata(target_session, {
-                "role_instructions": env["ROLE_INSTRUCTIONS_TO_PREPEND"]
+                "role_instructions": agent.role_instructions
             })
 
-        # Build command from environment variables
-        agent_cmd = _build_agent_command_from_env()
+        agent_cmd = agent.command
         if agent_cmd:
             subprocess.run(
                 ["tmux", "send-keys", "-t", target_session, agent_cmd, "Enter"],
@@ -3673,19 +3599,16 @@ def cmd_fork(args) -> int:
         session_type_str = "claude-bypass"
         roles = None
 
-    # Build environment variables based on session type
-    env = _build_agent_command_env(session_type_str, roles)
-    for key, value in env.items():
-        os.environ[key] = value
+    # Build agent command
+    agent = build_agent_command(session_type_str, roles)
 
     # Store role instructions for first message (OpenCode only)
-    if "ROLE_INSTRUCTIONS_TO_PREPEND" in env:
+    if agent.role_instructions:
         store_session_metadata(target_session, {
-            "role_instructions": env["ROLE_INSTRUCTIONS_TO_PREPEND"]
+            "role_instructions": agent.role_instructions
         })
 
-    # Build command from environment variables
-    agent_cmd = _build_agent_command_from_env()
+    agent_cmd = agent.command
     if agent_cmd:
         subprocess.run(
             ["tmux", "send-keys", "-t", target_session, agent_cmd, "Enter"],
@@ -4232,19 +4155,16 @@ def cmd_dev(args) -> int:
     agent_type = detect_default_agent_type()
     session_type_str = f"{agent_type}-restricted"
 
-    # Build environment variables based on session type
-    env = _build_agent_command_env(session_type_str, dev_roles if dev_roles else None)
-    for key, value in env.items():
-        os.environ[key] = value
+    # Build agent command
+    agent = build_agent_command(session_type_str, dev_roles if dev_roles else None)
 
     # Store role instructions for first message (OpenCode only)
-    if "ROLE_INSTRUCTIONS_TO_PREPEND" in env:
+    if agent.role_instructions:
         store_session_metadata(session_name, {
-            "role_instructions": env["ROLE_INSTRUCTIONS_TO_PREPEND"]
+            "role_instructions": agent.role_instructions
         })
 
-    # Build command from environment variables
-    agent_cmd = _build_agent_command_from_env()
+    agent_cmd = agent.command
 
     # Create session
     print(f"Creating dev session '{session_name}' in {project_dir}...")

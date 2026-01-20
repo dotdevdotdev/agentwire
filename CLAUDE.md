@@ -256,6 +256,7 @@ agentwire kill --pane 3
 | Architecture | `docs/architecture.md` |
 | Security hooks | `docs/security/damage-control.md` |
 | Troubleshooting | `docs/TROUBLESHOOTING.md` |
+| Shell escaping | `docs/SHELL_ESCAPING.md` |
 | TTS (RunPod) | `docs/runpod-tts.md` |
 | TTS (self-hosted) | `docs/tts-self-hosted.md` |
 | Remote machines | `docs/remote-machines.md` |
