@@ -3176,17 +3176,28 @@ def cmd_recreate(args) -> int:
                 return _output_result(False, json_mode, f"Failed to create worktree: {result.stderr}")
 
         # Step 5: Create new session
+        session_path = worktree_path if branch else project_path
+
+        # Determine session type based on flags
         restricted = getattr(args, 'restricted', False)
         no_bypass = getattr(args, 'no_bypass', False)
-        # Restricted mode implies no bypass (uses hook for permission handling)
-        bypass_flag = "" if (restricted or no_bypass) else " --dangerously-skip-permissions"
-        session_path = worktree_path if branch else project_path
+        agent_type = detect_default_agent_type()
+        if restricted:
+            session_type_str = f"{agent_type}-restricted"
+        elif no_bypass:
+            session_type_str = f"{agent_type}-prompted"
+        else:
+            session_type_str = f"{agent_type}-bypass"
+
+        # Build agent command using the standard function
+        agent = build_agent_command(session_type_str)
+        agent_cmd = agent.command
 
         create_cmd = (
             f"tmux new-session -d -s {shlex.quote(session_name)} -c {shlex.quote(session_path)} && "
             f"tmux send-keys -t {shlex.quote(session_name)} 'cd {shlex.quote(session_path)}' Enter && "
             f"sleep 0.1 && "
-            f"tmux send-keys -t {shlex.quote(session_name)} 'claude{bypass_flag}' Enter"
+            f"tmux send-keys -t {shlex.quote(session_name)} {shlex.quote(agent_cmd)} Enter"
         )
 
         result = _run_remote(machine_id, create_cmd)

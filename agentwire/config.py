@@ -302,7 +302,7 @@ def _dict_to_config(data: dict) -> Config:
     # Agent
     agent_data = data.get("agent", {})
     agent = AgentConfig(
-        command=agent_data.get("command", "claude --dangerously-skip-permissions"),
+        command=agent_data.get("command", _get_default_agent_command()),
     )
 
     # Machines

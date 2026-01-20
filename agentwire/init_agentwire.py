@@ -178,7 +178,7 @@ def spawn_init_session() -> int:
 
         # Use agentwire send which handles multiline prompts properly
         if send_to_session(session_name, init_prompt):
-            print_success("Sent init instructions to Claude")
+            print_success(f"Sent init instructions to {agent_type}")
         else:
             print_warning("Could not send via agentwire, trying direct tmux...")
             # Fallback: send a shorter intro if agentwire send fails

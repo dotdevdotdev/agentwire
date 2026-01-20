@@ -19,6 +19,23 @@ ENV_VAR_PREFIX_PATTERN = re.compile(r'^([A-Z_][A-Z0-9_]*)=([\'"]?)(.+?)\2\s+(.+)
 DEFAULT_AGENT_COMMAND = "claude"
 
 
+def parse_env_var_prefix(command: str) -> tuple[str | None, str | None, str]:
+    """Parse env var prefix from a command string.
+
+    Handles commands like: VAR='value' some_command --args
+    Returns: (var_name, var_value, remaining_command)
+
+    If no env var prefix, returns (None, None, original_command)
+    """
+    match = ENV_VAR_PREFIX_PATTERN.match(command)
+    if match:
+        var_name = match.group(1)
+        var_value = match.group(3)  # The value without quotes
+        remaining = match.group(4)
+        return var_name, var_value, remaining
+    return None, None, command
+
+
 def tmux_session_exists(name: str) -> bool:
     """Check if a local tmux session exists (exact match).
 

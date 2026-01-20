@@ -895,16 +895,31 @@ def run_onboarding(skip_session: bool = False) -> int:
     else:
         print_success(f"ffmpeg: {ffmpeg_path}")
 
-    # Check Claude Code (optional but recommended)
-    claude_installed, claude_path = check_claude()
-    dependency_checks["claude"] = (claude_installed, claude_path)
+    # Check AI agents (at least one recommended)
+    agents = detect_installed_agents()
+    claude_installed, claude_path = agents["claude"]
+    opencode_installed, opencode_path = agents["opencode"]
 
-    if not claude_installed:
-        print_warning("claude not found")
-        print_info(get_claude_install_instructions())
-        print_info("Claude Code is optional - you can use --bare sessions or other agents")
-    else:
+    # Track at least one agent installed
+    any_agent_installed = claude_installed or opencode_installed
+
+    if claude_installed:
+        dependency_checks["claude"] = (True, claude_path)
         print_success(f"claude: {claude_path}")
+    else:
+        dependency_checks["claude"] = (False, "not found")
+
+    if opencode_installed:
+        dependency_checks["opencode"] = (True, opencode_path)
+        print_success(f"opencode: {opencode_path}")
+    else:
+        dependency_checks["opencode"] = (False, "not found")
+
+    if not any_agent_installed:
+        print_warning("No AI agent found (claude or opencode)")
+        print_info(get_claude_install_instructions())
+        print_info(get_opencode_install_instructions())
+        print_info("At least one AI agent is recommended - or use --bare sessions")
 
     print()
 
