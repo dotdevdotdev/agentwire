@@ -2,9 +2,7 @@
 # Run on any machine with NVIDIA GPU + Docker
 #
 # Build:
-#   docker build -f Dockerfile.local -t agentwire-tts-local \
-#     --build-arg HF_TOKEN=$HF_TOKEN \
-#     --build-context voices=$HOME/.agentwire/voices .
+#   docker build -f Dockerfile.local -t agentwire-tts-local --build-arg HF_TOKEN=$HF_TOKEN .
 #
 # Run:
 #   docker run --gpus all -p 8100:8100 -v ~/.agentwire/voices:/voices agentwire-tts-local
@@ -62,8 +60,8 @@ RUN python3 -c "from chatterbox.tts_turbo import ChatterboxTurboTTS; ChatterboxT
 RUN python3 -c "from faster_whisper import WhisperModel; WhisperModel('large-v3', device='cpu', compute_type='int8')" || \
     echo "Warning: Whisper download failed, will retry at runtime"
 
-# Create voices directory (mount your voices at runtime with -v)
-RUN mkdir -p /voices
+# Copy bundled voices (can override at runtime with -v mount)
+COPY voices/ /voices/
 
 # Environment
 ENV PYTHONUNBUFFERED=1

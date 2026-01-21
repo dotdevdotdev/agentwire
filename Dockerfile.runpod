@@ -47,10 +47,9 @@ ENV HF_HOME=/app/.cache/huggingface
 RUN python3 -c "from chatterbox.tts_turbo import ChatterboxTurboTTS; ChatterboxTurboTTS.from_pretrained(device='cpu')" || \
     echo "Warning: Model download failed, will retry at runtime"
 
-# Copy custom voices directory (bundled into image)
-# This should contain WAV files from ~/.agentwire/voices/
-# Build with: docker build --build-context voices=$HOME/.agentwire/voices -f Dockerfile.runpod -t agentwire-tts .
-COPY --from=voices . /voices/
+# Copy bundled voices (included in repo)
+# Default voice (dotdev.wav) is committed to voices/ directory
+COPY voices/ /voices/
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1

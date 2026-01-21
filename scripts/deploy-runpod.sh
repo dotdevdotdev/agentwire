@@ -4,7 +4,6 @@
 # Prerequisites:
 # - Docker Hub account
 # - docker login completed
-# - ~/.agentwire/voices/ directory with voice clones
 #
 # Usage:
 #   DOCKER_USERNAME=yourname ./scripts/deploy-runpod.sh
@@ -35,17 +34,9 @@ if ! docker info > /dev/null 2>&1; then
   exit 1
 fi
 
-# Verify voices directory exists
-VOICES_DIR="$HOME/.agentwire/voices"
-if [[ ! -d "$VOICES_DIR" ]]; then
-  echo "WARNING: Voices directory not found: ${VOICES_DIR}"
-  echo "Creating empty directory..."
-  mkdir -p "$VOICES_DIR"
-fi
-
-echo "==> Building Docker image..."
+echo "==> Building Docker image (linux/amd64 for RunPod)..."
 docker build \
-  --build-context voices="$VOICES_DIR" \
+  --platform linux/amd64 \
   -f Dockerfile.runpod \
   -t "$FULL_IMAGE" \
   .

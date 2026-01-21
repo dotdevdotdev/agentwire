@@ -150,6 +150,46 @@ def upload_voice(voice_name: str, audio_base64: str) -> dict:
         }
 
 
+def download_voice(voice_name: str) -> dict:
+    """Download a voice clone as base64.
+
+    Args:
+        voice_name: Name of the voice (without .wav extension)
+
+    Returns:
+        {"success": bool, "voice_name": str, "audio_base64": str, "size_bytes": int}
+    """
+    try:
+        voice_path = find_voice(voice_name)
+        if not voice_path:
+            available_voices = list_all_voices()
+            return {
+                "success": False,
+                "error": f"Voice '{voice_name}' not found. Available voices: {available_voices}"
+            }
+
+        audio_bytes = voice_path.read_bytes()
+        audio_b64 = base64.b64encode(audio_bytes).decode('utf-8')
+
+        print(f"Voice '{voice_name}' downloaded ({len(audio_bytes)} bytes)")
+
+        return {
+            "success": True,
+            "voice_name": voice_name,
+            "audio_base64": audio_b64,
+            "size_bytes": len(audio_bytes)
+        }
+
+    except Exception as e:
+        print(f"ERROR downloading voice '{voice_name}': {e}")
+        import traceback
+        traceback.print_exc()
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
 def handler(job):
     """
     RunPod serverless handler function.
@@ -174,7 +214,13 @@ def handler(job):
                 "audio_base64": str       # Required: base64-encoded WAV
             }
 
-        3. List voices:
+        3. Download voice:
+            {
+                "action": "download_voice",
+                "voice_name": str         # Required
+            }
+
+        4. List voices:
             {
                 "action": "list_voices"
             }
@@ -182,6 +228,7 @@ def handler(job):
     Returns:
         For generate: {"audio": str, "sample_rate": int, "voice": str}
         For upload: {"success": bool, "message": str, "voice_name": str}
+        For download: {"success": bool, "voice_name": str, "audio_base64": str}
         For list: {"voices": List[str]}
     """
     job_input = job["input"]
@@ -206,6 +253,15 @@ def handler(job):
             return {"error": "audio_base64 is required"}
 
         return upload_voice(voice_name, audio_base64)
+
+    # Handle download_voice action
+    if action == "download_voice":
+        voice_name = job_input.get("voice_name")
+
+        if not voice_name:
+            return {"error": "voice_name is required"}
+
+        return download_voice(voice_name)
 
     # Handle generate action (default)
     text = job_input.get("text")
