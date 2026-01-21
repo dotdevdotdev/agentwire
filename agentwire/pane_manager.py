@@ -234,12 +234,17 @@ def list_panes(session: str | None = None) -> list[PaneInfo]:
 def send_to_pane(session: str | None, pane_index: int, text: str, enter: bool = True) -> None:
     """Send text to a specific pane.
 
+    Uses tmux load-buffer + paste-buffer for multi-line text to ensure
+    proper paste handling (avoids newlines being interpreted as Enter keys).
+
     Args:
         session: Target session (default: auto-detect from $TMUX_PANE)
         pane_index: Target pane index
         text: Text to send
         enter: Whether to send Enter key after text
     """
+    import tempfile
+
     if session is None:
         session = get_current_session()
         if session is None:
@@ -247,20 +252,29 @@ def send_to_pane(session: str | None, pane_index: int, text: str, enter: bool = 
 
     target = f"{session}:0.{pane_index}"
 
-    # Send text first
-    run_command(["tmux", "send-keys", "-t", target, text], timeout=5)
+    # For multi-line or long text, use load-buffer + paste-buffer
+    # This ensures text is pasted as a single unit, not character-by-character
+    if "\n" in text or len(text) > 200:
+        # Write text to temp file, load into tmux buffer, paste
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
+            f.write(text)
+            temp_path = f.name
+
+        try:
+            run_command(["tmux", "load-buffer", temp_path], timeout=5)
+            run_command(["tmux", "paste-buffer", "-t", target], timeout=5)
+        finally:
+            import os
+            os.unlink(temp_path)
+    else:
+        # Short single-line text: send-keys is fine
+        run_command(["tmux", "send-keys", "-t", target, text], timeout=5)
 
     if enter:
         # Wait for text to be displayed before sending Enter
-        # Longer text needs more time (Claude Code shows "[Pasted text...]")
         wait_time = 0.5 if len(text) < 200 else 1.0
         time.sleep(wait_time)
         run_command(["tmux", "send-keys", "-t", target, "Enter"], timeout=5)
-
-        # For multi-line text, send another Enter to confirm paste
-        if "\n" in text or len(text) > 200:
-            time.sleep(0.5)
-            run_command(["tmux", "send-keys", "-t", target, "Enter"], timeout=5)
 
 
 def capture_pane(

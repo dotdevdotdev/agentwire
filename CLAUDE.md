@@ -4,6 +4,8 @@ Voice interface for AI coding agents. Push-to-talk from any device to tmux sessi
 
 **No Backwards Compatibility** - Pre-launch, no customers. Change things completely, no legacy fallbacks.
 
+**Hierarchical Delegation** - Before editing files in OTHER projects (e.g., `~/projects/agentwire-website/`), check `agentwire list`. If a session exists for that project, send instructions there instead of editing directly. See `~/.claude/rules/delegation.md`.
+
 ## Dev Workflow
 
 `uv tool install` caches builds and ignores source changes.
@@ -197,20 +199,96 @@ portal:
   url: "https://localhost:8765"
 ```
 
+### .agentwire.yml (Project Config)
+
+Each project can have a `.agentwire.yml` in its root directory. This configures session type, roles, voice, and parent for that project.
+
+**Format is FLAT (no nesting):**
+
+```yaml
+# Voice-orchestrator session (project level)
+type: claude-bypass
+roles:
+  - voice-orchestrator
+  - glm-orchestration
+voice: worker3
+parent: agentwire  # Notify main orchestrator when idle
+```
+
+```yaml
+# WRONG - don't nest under "session:"
+session:
+  type: claude
+  roles: [...]  # This won't be loaded!
+```
+
+| Field | Values | Description |
+|-------|--------|-------------|
+| `type` | `claude-bypass`, `claude-prompted`, `opencode-bypass`, etc. | Session permission level |
+| `roles` | List of role names | Roles to load (from bundled or `~/.agentwire/roles/`) |
+| `voice` | Voice name | TTS voice for this project |
+| `parent` | Session name | Parent session for hierarchical notifications |
+
+### Hierarchical Idle Notifications
+
+When a session goes idle, it notifies up the hierarchy via `agentwire say`:
+
+```
+agentwire (main orchestrator) ← receives "[VOICE from project] ..."
+    ↑ --notify agentwire
+voice-orch (project session)  ← receives "[VOICE] worker (pane N): ..."
+    ↑ auto-notify pane 0
+worker panes
+```
+
+**Auto-notification:**
+- Worker panes (index > 0) automatically notify pane 0 (orchestrator)
+- Use `parent: agentwire` in `.agentwire.yml` for voice-orch → main notifications
+
+**Both Claude Code and OpenCode** support idle notifications:
+- Claude Code: via `~/.claude/hooks/suppress-bg-notifications.sh`
+- OpenCode: via `~/.config/opencode/plugin/agentwire-notify.ts`
+
+**Creating a project with roles:**
+
+```bash
+# Option 1: Create .agentwire.yml first, then create session
+echo "type: claude-bypass
+roles:
+  - voice-orchestrator
+  - glm-orchestration" > ~/projects/myproject/.agentwire.yml
+
+agentwire new -s myproject -p ~/projects/myproject
+
+# Option 2: Specify roles on command line (saves to .agentwire.yml)
+agentwire new -s myproject -p ~/projects/myproject --roles voice-orchestrator,glm-orchestration
+```
+
 ### Built-in Roles
 
 Roles are bundled in the `agentwire/roles/` package directory:
-- `agentwire.md` - Main orchestrator role
-- `worker.md` - Worker pane role (no voice, no AskUserQuestion)
+- `agentwire.md` - Main orchestrator role (coordinates projects, uses dotdev voice)
+- `voice-orchestrator.md` - Project orchestrator (picks worker voice, spawns workers)
+- `glm-orchestration.md` - GLM worker management (explicit task templates)
+- `voice-worker.md` - Worker that signals completion via output
+- `worker.md` - Basic worker pane role
 - `chatbot.md` - Chatbot personality
 - `voice.md` - Voice input handling
 
 ## Session Roles
 
-| Role | Created With | Restrictions |
-|------|--------------|--------------|
-| agentwire | `agentwire new -s name` or `--roles agentwire` | None (guided by role instructions) |
-| worker | `agentwire spawn` or `--roles worker` | No voice, no AskUserQuestion |
+| Role | Use Case | Key Behavior |
+|------|----------|--------------|
+| `agentwire` | Main orchestrator | Uses `dotdev` voice, coordinates multiple projects |
+| `voice-orchestrator` | Project orchestrator | Picks `worker1-8` voice, spawns GLM workers |
+| `glm-orchestration` | Supplement for GLM workers | Task templates, Chrome testing protocol |
+| `voice-worker` | Worker pane | Signals completion via output, no AskUserQuestion |
+| `worker` | Basic worker | No voice, no AskUserQuestion |
+
+**Combining roles for GLM orchestration:**
+```bash
+agentwire new -s myproject --roles voice-orchestrator,glm-orchestration
+```
 
 ## Key Patterns
 

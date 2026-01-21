@@ -70,8 +70,41 @@ def _check_config_exists() -> bool:
 class AgentCommand:
     """Result of building an agent command."""
     command: str  # The shell command to execute
-    role_instructions: str | None = None  # For OpenCode: prepend to first message
+    role_instructions: str | None = None  # For OpenCode: prepend to first message (legacy)
     temp_file: str | None = None  # Temp file to clean up after agent starts
+    opencode_agent: str | None = None  # OpenCode agent name (if using --agent)
+
+
+def _create_opencode_agent_file(role_names: list[str], instructions: str) -> str:
+    """Create an OpenCode agent file with role instructions.
+
+    Args:
+        role_names: List of role names (for generating consistent filename)
+        instructions: The merged role instructions
+
+    Returns:
+        Agent name to use with --agent flag
+    """
+    import hashlib
+
+    # Create agents directory if needed
+    agents_dir = Path.home() / ".config" / "opencode" / "agents"
+    agents_dir.mkdir(parents=True, exist_ok=True)
+
+    # Generate name from sorted role names + content hash
+    # Content hash ensures regeneration if instructions change
+    sorted_roles = sorted(role_names)
+    role_key = ",".join(sorted_roles)
+    content_hash = hashlib.sha256(instructions.encode()).hexdigest()[:8]
+    name_hash = hashlib.sha256(role_key.encode()).hexdigest()[:8]
+    agent_name = f"agentwire-{name_hash}-{content_hash}"
+
+    # Only write if file doesn't exist (content hash guarantees correctness)
+    agent_file = agents_dir / f"{agent_name}.md"
+    if not agent_file.exists():
+        agent_file.write_text(instructions)
+
+    return agent_name
 
 
 def build_agent_command(session_type: str, roles: list[RoleConfig] | None = None) -> AgentCommand:
@@ -149,13 +182,16 @@ def build_agent_command(session_type: str, roles: list[RoleConfig] | None = None
         if merged and merged.model:
             parts.append(f"--model {merged.model}")
 
-        # OpenCode doesn't support --append-system-prompt, so we store
-        # role instructions to prepend to the first user message
-        role_instructions = merged.instructions if merged else None
+        # Create agent file with role instructions for proper system prompt injection
+        opencode_agent = None
+        if roles and merged and merged.instructions:
+            role_names = [r.name for r in roles]
+            opencode_agent = _create_opencode_agent_file(role_names, merged.instructions)
+            parts.append(f"--agent {opencode_agent}")
 
         return AgentCommand(
             command=" ".join(parts),
-            role_instructions=role_instructions,
+            opencode_agent=opencode_agent,
         )
 
     # Unknown session type - return empty
@@ -1631,6 +1667,11 @@ def cmd_say(args) -> int:
     2. Check if portal has browser connections for that session
     3. If connections exist → send to portal (plays on browser/tablet)
     4. If no connections → generate locally and play via system audio
+
+    Voice notification:
+    - If in a worker pane (pane > 0), auto-notifies pane 0 (orchestrator)
+    - Use --notify SESSION to also notify a parent session
+    - Use --no-auto-notify to disable worker->orchestrator notification
     """
     text = " ".join(args.text) if args.text else ""
 
@@ -1649,6 +1690,9 @@ def cmd_say(args) -> int:
     # Tmux session is more accurate than path for forked/named sessions like "anna-fork-1"
     session = args.session or _get_current_tmux_session() or _infer_session_from_path()
 
+    # Handle voice notifications
+    _handle_voice_notifications(text, voice, args, session)
+
     # Try portal first if we have a session
     if session:
         portal_url = _get_portal_url()
@@ -1660,6 +1704,45 @@ def cmd_say(args) -> int:
 
     # No portal connections (or no session) - generate locally
     return _local_say_runpod(text, voice, exaggeration, cfg_weight, tts_config)
+
+
+def _handle_voice_notifications(text: str, voice: str, args, session: str | None) -> None:
+    """Handle voice notification to parent orchestrators.
+
+    Auto-notify rules:
+    - If in worker pane (pane > 0), notify pane 0 (local orchestrator)
+    - If --notify SESSION specified, notify that session
+
+    Args:
+        text: The spoken text
+        voice: Voice being used
+        args: Command args (for --notify and --no-auto-notify flags)
+        session: Current session name
+    """
+    notify_session = getattr(args, 'notify', None)
+    no_auto_notify = getattr(args, 'no_auto_notify', False)
+
+    # Get current pane index
+    current_pane = pane_manager.get_current_pane_index()
+    current_session = pane_manager.get_current_session()
+
+    # Auto-notify pane 0 if we're in a worker pane (pane > 0)
+    if not no_auto_notify and current_pane is not None and current_pane > 0 and current_session:
+        notification = f"[VOICE] {voice} (pane {current_pane}): \"{text}\""
+        try:
+            pane_manager.send_to_pane(current_session, 0, notification)
+        except Exception:
+            pass  # Don't fail the say command if notification fails
+
+    # Explicit --notify to another session
+    if notify_session and notify_session != current_session:
+        # Format: [VOICE from session] voice: "text"
+        source = current_session or "unknown"
+        notification = f"[VOICE from {source}] {voice}: \"{text}\""
+        try:
+            pane_manager.send_to_pane(notify_session, 0, notification)
+        except Exception:
+            pass  # Don't fail the say command if notification fails
 
 
 def _local_say(text: str, voice: str, exaggeration: float, cfg_weight: float, tts_url: str) -> int:
@@ -1885,12 +1968,16 @@ def cmd_send(args) -> int:
             return _output_result(False, json_mode, "Usage: agentwire send --pane N <prompt>")
 
         try:
+            target_session = session_full or pane_manager.get_current_session()
+            # Note: OpenCode role instructions are now injected via --agent flag (agent files)
+            # so no need to prepend instructions here
+
             pane_manager.send_to_pane(session_full, pane_index, prompt)
             if json_mode:
                 _output_json({
                     "success": True,
                     "pane": pane_index,
-                    "session": session_full or pane_manager.get_current_session(),
+                    "session": target_session,
                     "message": "Prompt sent"
                 })
             else:
@@ -1917,17 +2004,9 @@ def cmd_send(args) -> int:
 
     # Parse session@machine format
     session, machine_id = _parse_session_target(session_full)
-
-    # Check if we need to prepend role instructions (first message for OpenCode)
-    metadata = load_session_metadata(session)
-    role_instructions = metadata.get("role_instructions")
-
-    if role_instructions:
-        # Prepend instructions to message with separator
-        prompt = f"{role_instructions}\n\n---\n\n{prompt}"
-
-        # Clear stored instructions after use (only prepend once)
-        store_session_metadata(session, {"role_instructions": None})
+    # Note: Role instructions are now injected at session/pane start:
+    # - Claude: via --append-system-prompt
+    # - OpenCode: via --agent (agent files in ~/.config/opencode/agents/)
 
     if machine_id:
         # Remote: SSH and run tmux commands
@@ -2848,17 +2927,10 @@ def cmd_spawn(args) -> int:
     # Build agent command
     agent = build_agent_command(session_type_str, roles if roles else None)
 
-    # Store role instructions for first message (OpenCode only)
-    parent_session = session or pane_manager.get_current_session()
-    if parent_session and agent.role_instructions:
-        store_session_metadata(parent_session, {
-            "role_instructions": agent.role_instructions
-        })
-
     agent_cmd = agent.command
 
     try:
-        # Spawn pane
+        # Spawn pane first to get the pane index
         pane_index = pane_manager.spawn_worker_pane(
             session=session,
             cwd=cwd,
@@ -2866,6 +2938,8 @@ def cmd_spawn(args) -> int:
         )
 
         # Install pane hook to notify portal when pane exits
+        # Note: OpenCode role instructions are now injected via --agent flag (agent files)
+        # so no need to store role_instructions in metadata
         actual_session = session or pane_manager.get_current_session()
         _install_pane_hooks(actual_session, pane_index)
 
@@ -5892,6 +5966,8 @@ def main() -> int:
     say_parser.add_argument("-s", "--session", type=str, help="Session name (auto-detected from .agentwire.yml or tmux)")
     say_parser.add_argument("--exaggeration", type=float, help="Voice exaggeration (0-1)")
     say_parser.add_argument("--cfg", type=float, help="CFG weight (0-1)")
+    say_parser.add_argument("--notify", type=str, metavar="SESSION", help="Also notify this session (sends message as input)")
+    say_parser.add_argument("--no-auto-notify", action="store_true", help="Disable auto-notify to pane 0 when in worker pane")
     say_parser.set_defaults(func=cmd_say)
 
     # === notify command ===

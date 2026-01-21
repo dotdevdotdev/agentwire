@@ -134,6 +134,7 @@ class ProjectConfig:
     type: SessionType = SessionType.STANDARD
     roles: list[str] = field(default_factory=list)  # Composable roles
     voice: Optional[str] = None  # TTS voice
+    parent: Optional[str] = None  # Parent session for hierarchical notifications
 
     def to_dict(self) -> dict:
         """Convert to dictionary for YAML serialization."""
@@ -144,6 +145,8 @@ class ProjectConfig:
             d["roles"] = self.roles
         if self.voice:
             d["voice"] = self.voice
+        if self.parent:
+            d["parent"] = self.parent
         return d
 
     @classmethod
@@ -152,11 +155,13 @@ class ProjectConfig:
         type_value = data.get("type", "standard")
         roles = data.get("roles", [])
         voice = data.get("voice")
+        parent = data.get("parent")
 
         return cls(
             type=SessionType.from_str(type_value) if isinstance(type_value, str) else type_value,
             roles=roles if isinstance(roles, list) else [roles] if roles else [],
             voice=voice,
+            parent=parent,
         )
 
 
@@ -251,3 +256,19 @@ def get_voice_from_config(project_path: Optional[Path] = None) -> Optional[str]:
     """
     config = load_project_config(project_path)
     return config.voice if config else None
+
+
+def get_parent_from_config(project_path: Optional[Path] = None) -> Optional[str]:
+    """Get parent session from project config.
+
+    Used for hierarchical notifications - voice-orch sessions
+    notify their parent (typically 'agentwire' main session).
+
+    Args:
+        project_path: Path to search from. Defaults to cwd.
+
+    Returns:
+        Parent session name if config found and has parent, None otherwise.
+    """
+    config = load_project_config(project_path)
+    return config.parent if config else None
