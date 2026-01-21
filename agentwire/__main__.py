@@ -1706,6 +1706,66 @@ def cmd_say(args) -> int:
     return _local_say_runpod(text, voice, exaggeration, cfg_weight, tts_config)
 
 
+def cmd_alert(args) -> int:
+    """Send a text notification to parent session (no audio).
+
+    Used by idle hooks and workers to notify orchestrators without playing audio.
+    Unlike 'say', this only sends text - no TTS generation.
+
+    Notification targets (in priority order):
+    1. --to SESSION if specified
+    2. parent from .agentwire.yml if exists
+    3. pane 0 of current session (if in worker pane)
+
+    Examples:
+        agentwire alert "Worker 1 completed task"
+        agentwire alert --to agentwire "Build finished"
+    """
+    text = " ".join(args.text) if args.text else ""
+
+    if not text:
+        print("Usage: agentwire alert <message>", file=sys.stderr)
+        return 1
+
+    # Determine target session
+    target_session = getattr(args, 'to', None)
+    current_session = pane_manager.get_current_session()
+    current_pane = pane_manager.get_current_pane_index()
+
+    # If no explicit target, try parent from config
+    if not target_session:
+        parent = get_parent_from_config()
+        if parent:
+            target_session = parent
+
+    # Build notification message
+    source = current_session or "unknown"
+    if current_pane is not None and current_pane > 0:
+        notification = f"[ALERT from {source} pane {current_pane}] {text}"
+    else:
+        notification = f"[ALERT from {source}] {text}"
+
+    # Send to target session or pane 0 of current session
+    try:
+        if target_session and target_session != current_session:
+            pane_manager.send_to_pane(target_session, 0, notification)
+            if not getattr(args, 'quiet', False):
+                print(f"Notified {target_session}")
+        elif current_pane is not None and current_pane > 0 and current_session:
+            # Worker pane - notify pane 0 (orchestrator)
+            pane_manager.send_to_pane(current_session, 0, notification)
+            if not getattr(args, 'quiet', False):
+                print(f"Notified {current_session} pane 0")
+        else:
+            print("No target session (set 'parent' in .agentwire.yml or use --to)", file=sys.stderr)
+            return 1
+    except Exception as e:
+        print(f"Failed to send notification: {e}", file=sys.stderr)
+        return 1
+
+    return 0
+
+
 def _handle_voice_notifications(text: str, voice: str, args, session: str | None) -> None:
     """Handle voice notification to parent orchestrators.
 
@@ -5969,6 +6029,13 @@ def main() -> int:
     say_parser.add_argument("--notify", type=str, metavar="SESSION", help="Also notify this session (sends message as input)")
     say_parser.add_argument("--no-auto-notify", action="store_true", help="Disable auto-notify to pane 0 when in worker pane")
     say_parser.set_defaults(func=cmd_say)
+
+    # === alert command ===
+    alert_parser = subparsers.add_parser("alert", help="Send text notification to parent (no audio)")
+    alert_parser.add_argument("text", nargs="*", help="Message to send")
+    alert_parser.add_argument("--to", type=str, metavar="SESSION", help="Target session (default: parent from .agentwire.yml)")
+    alert_parser.add_argument("-q", "--quiet", action="store_true", help="Suppress output")
+    alert_parser.set_defaults(func=cmd_alert)
 
     # === notify command ===
     notify_parser = subparsers.add_parser("notify", help="Notify portal of session/pane state changes")

@@ -57,6 +57,22 @@ SUCCESS: [testable outcome]
 agentwire output --pane N | grep -i "complete\|error\|fail"
 ```
 
+### API Concurrency Limits (CRITICAL)
+
+**GLM/Z.ai supports max 3 concurrent requests, but quality degrades at 3.**
+
+| Workers | Quality | Recommendation |
+|---------|---------|----------------|
+| 1 | Best | Complex multi-step tasks |
+| 2 | Good | **Standard tasks (use this)** |
+| 3 | ~50% degraded | Avoid |
+
+**Rule: Spawn max 2 GLM workers at a time.**
+
+If you need more parallelism, mix worker types:
+- 2 GLM workers for execution tasks
+- Claude workers for judgment-heavy tasks (no limit)
+
 ---
 
 ## Core Philosophy
@@ -109,12 +125,25 @@ Worker 3: Add API call to LoginForm (submit handler)
 
 ### Sizing Tasks
 
-| Task Size | Worker Count | Example |
-|-----------|--------------|---------|
-| One function | 1 worker | "Add formatDate utility" |
-| One component | 1 worker | "Create Button component" |
-| One feature | 3-5 workers | "Add user settings page" |
-| Full page | 5-8 workers | "Build dashboard with 4 widgets" |
+**Remember: Max 2 GLM workers due to API limits.** Batch related work into fewer workers.
+
+| Task Size | Workers | Strategy |
+|-----------|---------|----------|
+| One function | 1 | Single worker |
+| One component | 1 | Single worker |
+| One feature | 2 | Parallel workers, batch related files |
+| Full page | 3 waves | Sequential waves of 2 workers each |
+
+**Example - Building 6 components:**
+```
+# WRONG - exceeds limit
+agentwire spawn x6  # Too many concurrent
+
+# RIGHT - batch into 3 waves of 2
+Wave 1: 2 workers (Hero + Features)
+Wave 2: 2 workers (Pricing + Footer)
+Wave 3: 2 workers (Nav + CTA)
+```
 
 ### Dependencies
 

@@ -80,6 +80,8 @@ Check the existing patterns in src/api/ for consistency."
 
 Good for explicit, well-defined tasks. **GLM is a literal executor - tell it exactly what to do.**
 
+**API Limit: Max 2 concurrent GLM workers.** Quality degrades at 3.
+
 ```bash
 # --roles injects system instructions via OpenCode agent files
 agentwire spawn --type opencode-bypass --roles voice-worker

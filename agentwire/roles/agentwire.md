@@ -134,6 +134,9 @@ agentwire spawn --type opencode-bypass --roles voice-worker
 | Ambiguous requirements | Explicit requirements |
 | Needs to infer from context | Can specify everything upfront |
 | Complex refactoring | Structured implementation |
+| No concurrency limit | **Max 2 concurrent** (API limit) |
+
+**GLM API Limit:** Z.ai allows max 3 concurrent requests but quality degrades at 3. **Spawn max 2 OpenCode workers at a time.** For more parallelism, mix Claude and GLM workers.
 
 ### Communicating with Claude Workers
 

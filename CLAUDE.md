@@ -71,6 +71,8 @@ agentwire stt start|stop|status # STT server management
 # Voice
 agentwire say "text"            # speak (auto-routes to browser or local)
 agentwire say -s name "text"    # speak to specific session
+agentwire alert "text"          # text notification to parent (no audio)
+agentwire alert --to name "text" # text notification to specific session
 agentwire listen start|stop     # voice recording
 
 # Voice cloning
