@@ -311,7 +311,7 @@ type: "claude-bypass"
 type: "standard"
 ```
 
-See [Migration Guide](migration-guide.md) for complete migration steps.
+See [Migration Guide](MIGRATION_GUIDE.md) for complete migration steps.
 
 ---
 
@@ -327,4 +327,4 @@ See [Migration Guide](migration-guide.md) for complete migration steps.
 For more information:
 - [OpenCode Quick Start](OPENCODE_QUICKSTART.md)
 - [OpenCode Integration Guide](opencode-integration.md)
-- [Migration Guide](migration-guide.md)
+- [Migration Guide](MIGRATION_GUIDE.md)

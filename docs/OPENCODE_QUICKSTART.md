@@ -189,7 +189,7 @@ agentwire output -s myproject
 - **Full session types reference:** See [SESSION_TYPES.md](SESSION_TYPES.md)
 - **Configuration guide:** See [OpenCode Integration](opencode-integration.md)
 - **Troubleshooting:** See [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
-- **Migration from Claude Code:** See [Migration Guide](migration-guide.md)
+- **Migration from Claude Code:** See [Migration Guide](MIGRATION_GUIDE.md)
 
 ## Example Workflows
 
@@ -234,4 +234,4 @@ A: Use **standard** for most automation workflows, **voice** for voice-first dev
 
 **Q: How do I switch from Claude Code to OpenCode?**
 
-A: Update `agent.command` in `~/.agentwire/config.yaml` from `claude --dangerously-skip-permissions` to `opencode`. See [Migration Guide](migration-guide.md) for details.
+A: Update `agent.command` in `~/.agentwire/config.yaml` from `claude --dangerously-skip-permissions` to `opencode`. See [Migration Guide](MIGRATION_GUIDE.md) for details.

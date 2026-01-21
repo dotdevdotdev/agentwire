@@ -355,6 +355,67 @@ agentwire hooks install
 
 ---
 
+## Idle Notification Issues
+
+### Notifications Not Appearing
+
+**Check hook installation:**
+
+```bash
+# Claude Code
+ls ~/.claude/hooks/suppress-bg-notifications.sh
+
+# OpenCode
+ls ~/.config/opencode/plugin/agentwire-notify.ts
+```
+
+**Verify parent is configured:**
+
+Check `.agentwire.yml` in the project directory:
+
+```yaml
+parent: agentwire  # Must be set for cross-session notifications
+```
+
+### Notifications Firing Too Often
+
+**Rate limiting:** Idle notifications have a 60-second cooldown per session/pane. If a pane goes idle multiple times within 60 seconds, only the first notification fires.
+
+**Cooldown files:**
+
+- Claude Code: `/tmp/agentwire-idle/session-pane.last`
+- OpenCode: `/tmp/agentwire-idle/session-pane.last`
+
+**Reset cooldown manually:**
+
+```bash
+rm -rf /tmp/agentwire-idle/
+```
+
+### Wrong Target Session
+
+**For workers (panes 1+):** Notifications go to pane 0 automatically.
+
+**For orchestrators (pane 0):** Notifications go to the `parent` session specified in `.agentwire.yml`.
+
+**Check current session/pane:**
+
+```bash
+echo $AGENTWIRE_SESSION  # Current session name
+echo $TMUX_PANE          # Current pane (e.g., %5)
+```
+
+### `agentwire alert` vs `agentwire say`
+
+| Command | Audio | Use Case |
+|---------|-------|----------|
+| `agentwire say` | Yes (TTS) | User-facing messages, completion announcements |
+| `agentwire alert` | No (text only) | Background notifications, idle status updates |
+
+Idle hooks use `alert` to avoid audio spam when multiple panes go idle.
+
+---
+
 ## Performance Issues
 
 ### Slow Terminal Mode

@@ -177,6 +177,8 @@ agentwire stt status        # Check if running
 # Voice
 agentwire say "Hello"              # Speak (auto-routes to browser or local)
 agentwire say -s api "Done"        # Send TTS to specific session
+agentwire alert "Status update"    # Text notification to parent (no audio)
+agentwire alert --to main "Done"   # Text notification to specific session
 agentwire listen start             # Start recording voice input
 agentwire listen stop              # Stop and send transcription
 

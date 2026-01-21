@@ -45,12 +45,12 @@ voice: worker3
 parent: agentwire  # Idle notifications bubble up to main orchestrator
 ```
 
-When this session goes idle (waiting for input), the idle hook will call:
+When this session goes idle (waiting for input), the idle hook will send a text notification:
 ```bash
-agentwire say -v worker3 --notify agentwire "project-name is waiting for input"
+agentwire alert --to agentwire "project-name is waiting for input"
 ```
 
-This keeps the main orchestrator informed without you needing to explicitly report.
+**Note:** Idle notifications use `alert` (text-only, no audio) with 60-second rate limiting to avoid spam. For intentional voice announcements, use `agentwire say --notify`.
 
 ## When to Do Directly vs Delegate
 
@@ -206,7 +206,7 @@ mcp__claude-in-chrome__read_console_messages pattern="error|Error"
 
 ### Reporting to Main Orchestrator
 
-Use `--notify agentwire` to bubble up important updates:
+Use `say --notify` for intentional voice announcements:
 
 ```bash
 # Starting work
@@ -218,6 +218,8 @@ agentwire say -v worker3 --notify agentwire "2 of 3 workers done, testing now"
 # Completion
 agentwire say -v worker3 --notify agentwire "Auth complete, tested in Chrome"
 ```
+
+**Note:** These are deliberate announcements that play audio. Automatic idle notifications use `alert` (text-only) to avoid audio spam.
 
 ### Style
 

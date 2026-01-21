@@ -545,4 +545,4 @@ See `docs/examples/` for complete examples:
 
 - [Session Types Reference](SESSION_TYPES.md) - Understanding different session types
 - [OpenCode Integration Guide](opencode-integration.md) - Complete OpenCode setup
-- [Migration Guide](migration-guide.md) - Migrating from Claude Code to OpenCode
+- [Migration Guide](MIGRATION_GUIDE.md) - Migrating from Claude Code to OpenCode

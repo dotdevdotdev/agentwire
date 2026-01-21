@@ -233,12 +233,12 @@ session:
 
 ### Hierarchical Idle Notifications
 
-When a session goes idle, it notifies up the hierarchy via `agentwire say`:
+When a session goes idle, it notifies up the hierarchy via `agentwire alert` (text-only, no audio):
 
 ```
-agentwire (main orchestrator) ← receives "[VOICE from project] ..."
-    ↑ --notify agentwire
-voice-orch (project session)  ← receives "[VOICE] worker (pane N): ..."
+agentwire (main orchestrator) ← receives "[ALERT from project] ..."
+    ↑ alert --to agentwire
+voice-orch (project session)  ← receives "[ALERT from session pane N] ..."
     ↑ auto-notify pane 0
 worker panes
 ```
@@ -246,6 +246,7 @@ worker panes
 **Auto-notification:**
 - Worker panes (index > 0) automatically notify pane 0 (orchestrator)
 - Use `parent: agentwire` in `.agentwire.yml` for voice-orch → main notifications
+- Rate limited: 60-second cooldown per session/pane to avoid spam
 
 **Both Claude Code and OpenCode** support idle notifications:
 - Claude Code: via `~/.claude/hooks/suppress-bg-notifications.sh`

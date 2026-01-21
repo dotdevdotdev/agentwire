@@ -1342,43 +1342,43 @@ def _install_global_tmux_hooks() -> None:
             )
 
     # Session lifecycle hooks
-    # All hooks suppress output (>/dev/null 2>&1) to avoid noise in terminals
+    # All hooks suppress output and exit 0 (|| true) to avoid tmux showing error messages
     install_hook(
         "session-created",
-        f'run-shell -b "{agentwire_path} notify session_created -s #{{session_name}} >/dev/null 2>&1"'
+        f'run-shell -b "{agentwire_path} notify session_created -s #{{session_name}} >/dev/null 2>&1 || true"'
     )
     install_hook(
         "session-closed",
-        f'run-shell -b "{agentwire_path} notify session_closed -s #{{hook_session_name}} >/dev/null 2>&1"'
+        f'run-shell -b "{agentwire_path} notify session_closed -s #{{hook_session_name}} >/dev/null 2>&1 || true"'
     )
 
     # Presence tracking hooks
     install_hook(
         "client-attached",
-        f'run-shell -b "{agentwire_path} notify client_attached -s #{{session_name}} >/dev/null 2>&1"'
+        f'run-shell -b "{agentwire_path} notify client_attached -s #{{session_name}} >/dev/null 2>&1 || true"'
     )
     install_hook(
         "client-detached",
-        f'run-shell -b "{agentwire_path} notify client_detached -s #{{session_name}} >/dev/null 2>&1"'
+        f'run-shell -b "{agentwire_path} notify client_detached -s #{{session_name}} >/dev/null 2>&1 || true"'
     )
 
     # Pane creation hook (global - catches all pane creations)
     install_hook(
         "after-split-window",
-        f'run-shell -b "{agentwire_path} notify pane_created -s #{{session_name}} --pane-id #{{pane_id}} >/dev/null 2>&1"'
+        f'run-shell -b "{agentwire_path} notify pane_created -s #{{session_name}} --pane-id #{{pane_id}} >/dev/null 2>&1 || true"'
     )
 
     # Session rename hook
     # Note: #{hook_session_name} has new name, we pass old name via #{@_old_session_name} if set
     install_hook(
         "session-renamed",
-        f'run-shell -b "{agentwire_path} notify session_renamed -s #{{session_name}} >/dev/null 2>&1"'
+        f'run-shell -b "{agentwire_path} notify session_renamed -s #{{session_name}} >/dev/null 2>&1 || true"'
     )
 
     # Activity notification hook (fires when monitor-activity is enabled on a window)
     install_hook(
         "alert-activity",
-        f'run-shell -b "{agentwire_path} notify window_activity -s #{{session_name}} >/dev/null 2>&1"'
+        f'run-shell -b "{agentwire_path} notify window_activity -s #{{session_name}} >/dev/null 2>&1 || true"'
     )
 
 
@@ -1404,8 +1404,9 @@ def _install_pane_hooks(session_name: str, pane_index: int) -> None:
     # Install after-kill-pane hook on the session
     # Note: #{hook_pane} may be empty when pane is already dead, so we just notify
     # without pane-id and let the portal refresh its pane list
+    # Use || true to suppress error display in tmux
     if "after-kill-pane" not in existing:
-        hook_cmd = f'run-shell -b "{agentwire_path} notify pane_died -s {session_name} >/dev/null 2>&1"'
+        hook_cmd = f'run-shell -b "{agentwire_path} notify pane_died -s {session_name} >/dev/null 2>&1 || true"'
         subprocess.run(
             ["tmux", "set-hook", "-t", session_name, "after-kill-pane", hook_cmd],
             capture_output=True,
@@ -1413,9 +1414,9 @@ def _install_pane_hooks(session_name: str, pane_index: int) -> None:
 
     # Install pane-focus-in hook for active pane tracking
     # This fires when a pane gains focus within the session
-    # Suppress output to avoid noise in the terminal
+    # Use || true to suppress error display in tmux
     if "pane-focus-in" not in existing:
-        hook_cmd = f'run-shell -b "{agentwire_path} notify pane_focused -s {session_name} --pane-id #{{pane_id}} >/dev/null 2>&1"'
+        hook_cmd = f'run-shell -b "{agentwire_path} notify pane_focused -s {session_name} --pane-id #{{pane_id}} >/dev/null 2>&1 || true"'
         subprocess.run(
             ["tmux", "set-hook", "-t", session_name, "pane-focus-in", hook_cmd],
             capture_output=True,
