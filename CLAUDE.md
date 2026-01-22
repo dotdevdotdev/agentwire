@@ -272,7 +272,9 @@ agentwire new -s myproject -p ~/projects/myproject --roles voice-orchestrator,gl
 Roles are bundled in the `agentwire/roles/` package directory:
 - `agentwire.md` - Main orchestrator role (coordinates projects, uses dotdev voice)
 - `voice-orchestrator.md` - Project orchestrator (delegates to workers, waits for notifications)
+- `glm-orchestration.md` - Comprehensive GLM worker management guide (task templates, failure patterns)
 - `glm-worker.md` - GLM task executor (focused execution, system detects idle)
+- `voice-worker.md` - Worker that uses voice for status updates
 - `worker.md` - Basic worker pane role
 - `chatbot.md` - Chatbot personality
 - `voice.md` - Voice input handling
@@ -282,11 +284,11 @@ Roles are bundled in the `agentwire/roles/` package directory:
 | Role | Use Case | Key Behavior |
 |------|----------|--------------|
 | `agentwire` | Main orchestrator | Uses `dotdev` voice, coordinates multiple projects |
-| `voice-orchestrator` | Project orchestrator | Delegates to workers, waits for idle notifications |
+| `voice-orchestrator` | Project orchestrator | Spawns workers via `agentwire spawn`, waits for notifications |
 | `glm-worker` | Worker pane | Execute task, stop when done, system notifies orchestrator |
 | `worker` | Basic worker | No voice, no AskUserQuestion |
 
-**Note:** OpenCode sessions can also use native GLM subagents (Task tool) instead of `agentwire spawn`. Both approaches work - agentwire spawn gives multi-pane visibility, native subagents are simpler for single-machine work.
+**For detailed GLM task templates:** Add `glm-orchestration` role to voice-orchestrator sessions.
 
 ## Key Patterns
 
@@ -296,20 +298,13 @@ Roles are bundled in the `agentwire/roles/` package directory:
 - **Damage-control hooks** block dangerous ops (`rm -rf`, `git push --force`, etc.)
 - **Smart TTS routing** - audio goes to browser if connected, local speakers if not
 
-### Killing Multiple Panes
+### Worker Pane Lifecycle
 
-**Kill panes one at a time with a pause between each.** The kill command sends `/exit` and waits for graceful shutdown - killing multiple in parallel can cause race conditions.
+**Workers auto-kill after sending idle notification.** The OpenCode plugin captures output, sends alert to pane 0, then kills itself.
 
+Manual kill (if needed):
 ```bash
-# WRONG - parallel kills can fail
-agentwire kill --pane 1; agentwire kill --pane 2; agentwire kill --pane 3
-
-# RIGHT - sequential with verification
 agentwire kill --pane 1
-sleep 1
-agentwire kill --pane 2
-sleep 1
-agentwire kill --pane 3
 ```
 
 ## Desktop UI Patterns
