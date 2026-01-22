@@ -30,10 +30,10 @@ The OpenCode plugin has features the Claude Code hook lacks.
 
 Test these commands work identically for both agent types:
 
-- [ ] Task 2.1: `agentwire spawn` - spawns worker pane with correct agent type
-- [ ] Task 2.2: `agentwire send` - sends prompts correctly to both agent types
-- [ ] Task 2.3: `agentwire output` - captures output from both agent types
-- [ ] Task 2.4: `agentwire kill` - clean shutdown works for both (/exit for Claude Code, appropriate for OpenCode)
+- [x] Task 2.1: `agentwire spawn` - spawns worker pane with correct agent type
+- [x] Task 2.2: `agentwire send` - sends prompts correctly to both agent types
+- [x] Task 2.3: `agentwire output` - captures output from both agent types
+- [x] Task 2.4: `agentwire kill` - clean shutdown works for both (auto-kill via hooks verified)
 
 ## Wave 3: History & Resume
 
