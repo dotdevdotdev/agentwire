@@ -1746,9 +1746,13 @@ def cmd_alert(args) -> int:
     else:
         notification = f"[ALERT from {source}] {text}"
 
-    # Send to target session or pane 0 of current session
+    # Send to target session's pane 0 (but not to yourself)
     try:
-        if target_session and target_session != current_session:
+        if target_session:
+            # Don't alert yourself (pane 0 alerting to its own session's pane 0)
+            if target_session == current_session and current_pane == 0:
+                print("Cannot alert to own pane", file=sys.stderr)
+                return 1
             pane_manager.send_to_pane(target_session, 0, notification)
             if not getattr(args, 'quiet', False):
                 print(f"Notified {target_session}")
