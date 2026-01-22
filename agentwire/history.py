@@ -21,6 +21,49 @@ HISTORY_FILE = CLAUDE_DIR / "history.jsonl"
 PROJECTS_DIR = CLAUDE_DIR / "projects"
 
 
+def resolve_session_id(prefix: str, machine: str = "local") -> str | None:
+    """Resolve a session ID prefix to full UUID.
+
+    Args:
+        prefix: Session ID prefix (e.g., "b52e2fac" or full UUID)
+        machine: Machine ID or 'local'
+
+    Returns:
+        Full session ID if unique match found, None otherwise.
+    """
+    # If it looks like a full UUID, return as-is
+    if len(prefix) == 36 and prefix.count("-") == 4:
+        return prefix
+
+    # Search history for matching session IDs
+    if machine == "local":
+        history_path = str(HISTORY_FILE)
+    else:
+        history_path = "~/.claude/history.jsonl"
+
+    content = _read_file_content(history_path, machine)
+    if not content:
+        return None
+
+    matches = set()
+    for line in content.strip().split("\n"):
+        if not line:
+            continue
+        try:
+            entry = json.loads(line)
+            session_id = entry.get("sessionId", "")
+            if session_id.startswith(prefix):
+                matches.add(session_id)
+        except json.JSONDecodeError:
+            continue
+
+    # Return if exactly one match
+    if len(matches) == 1:
+        return matches.pop()
+
+    return None
+
+
 def encode_project_path(path: str) -> str:
     """Encode project path to Claude's directory format.
 
@@ -260,13 +303,18 @@ def get_session_detail(session_id: str, machine: str = "local") -> dict | None:
     """Get full details for a specific session.
 
     Args:
-        session_id: UUID of the session
+        session_id: UUID of the session (or unique prefix)
         machine: Machine ID or 'local'
 
     Returns:
         Session dict: {sessionId, summaries, firstMessage, timestamps: {start, end}, gitBranch, messageCount}
         None if session not found.
     """
+    # Resolve prefix to full session ID
+    resolved = resolve_session_id(session_id, machine)
+    if resolved:
+        session_id = resolved
+
     # First find the session in history to get project path
     if machine == "local":
         history_path = str(HISTORY_FILE)

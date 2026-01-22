@@ -37,9 +37,13 @@ Test these commands work identically for both agent types:
 
 ## Wave 3: History & Resume
 
-- [ ] Task 3.1: Test `agentwire history list` shows sessions from both agent types
-- [ ] Task 3.2: Test `agentwire history resume` works for Claude Code sessions
-- [ ] Task 3.3: Test `agentwire history resume` works for OpenCode sessions (if applicable)
+- [x] Task 3.1: Test `agentwire history list` shows sessions from both agent types
+- [x] Task 3.2: Test `agentwire history resume` works for Claude Code sessions
+- [x] Task 3.3: OpenCode doesn't support --resume (documented, not a bug)
+
+**Fixes made:**
+- Fixed temp file approach for system prompts in resume (same as cmd_new)
+- Added prefix matching for session IDs (8-char prefix works now)
 
 ## Wave 4: Doctor & Diagnostics
 

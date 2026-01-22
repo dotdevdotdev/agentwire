@@ -12,6 +12,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -4099,6 +4100,7 @@ def cmd_history_resume(args) -> int:
     claude_parts.extend(project_config.type.to_cli_flags())
 
     # Load and apply roles if specified in config
+    temp_file = None
     if project_config.roles:
         roles, missing = load_roles(project_config.roles, project_path)
         if not missing and roles:
@@ -4110,8 +4112,12 @@ def cmd_history_resume(args) -> int:
                 claude_parts.append("--disallowedTools")
                 claude_parts.extend(sorted(merged.disallowed_tools))
             if merged.instructions:
-                escaped = merged.instructions.replace('\\', '\\\\').replace('"', '\\"').replace('$', '\\$').replace('`', '\\`')
-                claude_parts.append(f'--append-system-prompt "{escaped}"')
+                # Write to temp file to avoid shell escaping issues
+                f = tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False)
+                f.write(merged.instructions)
+                f.close()
+                temp_file = f.name
+                claude_parts.append(f'--append-system-prompt "$(<{temp_file})"')
             if merged.model:
                 claude_parts.append(f"--model {merged.model}")
 
