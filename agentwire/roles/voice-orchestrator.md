@@ -142,30 +142,79 @@ SUCCESS CRITERIA:
 
 ---
 
-## Worker Tracking
+## Worker Lifecycle (TRUST THE NOTIFICATIONS)
 
-Maintain a mental map:
+### After Spawning: ONE Verification Check
 
-| Pane | Task | Status |
-|------|------|--------|
-| 0 | You (orchestrator) | Running |
-| 1 | Task 2.1 | In progress |
-| 2 | Task 2.2 | In progress |
-
-### Check Completion
+After spawning workers and sending tasks, do **ONE** quick check to verify they started:
 
 ```bash
-agentwire output --pane 1  # Look for "TASK COMPLETE"
-agentwire output --pane 2
+# Wait 10s then verify workers are processing
+sleep 10
+agentwire output --pane 1 -n 10  # Just confirm it's running
+agentwire output --pane 2 -n 10  # Just confirm it's running
 ```
 
-### Kill Workers (one at a time)
+**This is your ONLY check.** Don't keep polling.
+
+### Then: WAIT for Notifications
+
+**Stop polling. Trust the notification system.**
+
+Workers notify you automatically when done:
+- **OpenCode idle hook** - Worker sends `agentwire alert` to pane 0 when idle
+- **Pane closed hook** - tmux notifies when pane exits
+
+You will receive a message like:
+```
+[ALERT from pane 1] Worker 1 in youtube-thumbs is idle
+```
+
+Or if the worker crashes/exits:
+```
+[ALERT from pane 1] pane_closed
+```
+
+### When You Receive a Notification
+
+1. Check that worker's output for "TASK COMPLETE"
+2. If complete, kill the pane and update mission checklist
+3. If ALL workers for a wave are done, proceed to next wave
+
+```bash
+# After notification from pane 1
+agentwire output --pane 1 -n 30  # Check for completion
+agentwire kill --pane 1          # Clean up
+```
+
+### Kill Workers (one at a time, sequentially)
 
 ```bash
 agentwire kill --pane 1
-sleep 2
+sleep 2  # Wait between kills
 agentwire kill --pane 2
 ```
+
+---
+
+## ⚠️ IMPORTANT: Don't Waste Tokens Polling
+
+**BAD (wastes tokens):**
+```bash
+# DON'T DO THIS - constant polling
+sleep 30 && agentwire output --pane 1 | tail -100
+sleep 30 && agentwire output --pane 1 | tail -100
+sleep 30 && agentwire output --pane 1 | tail -100
+```
+
+**GOOD (trust notifications):**
+```bash
+# DO THIS - verify once, then wait
+sleep 10 && agentwire output --pane 1 -n 10  # One quick check
+# Now wait for idle notification...
+```
+
+Your tokens are expensive. Workers are cheap. Let them work and notify you.
 
 ---
 
@@ -220,13 +269,14 @@ Bad: Reading code aloud / Technical monologues
 3. **Announce** mission created
 4. **Spawn workers** (max 2 at a time)
 5. **Send structured tasks** using GLM template
-6. **Monitor** for "TASK COMPLETE" in output
-7. **Kill workers** when wave done
-8. **Next wave** or proceed to testing
-9. **Chrome test** - screenshot, interact, check console
-10. **Iterate** - spawn fix workers if issues
-11. **Update mission** checkboxes
-12. **Report completion** via voice
+6. **Verify once** - quick check that workers are processing (10s delay, 10 lines)
+7. **WAIT for notifications** - don't poll, workers will notify when idle
+8. **On notification** - check output, kill worker, update checklist
+9. **When wave done** - proceed to next wave or testing
+10. **Chrome test** - screenshot, interact, check console
+11. **Iterate** - spawn fix workers if issues
+12. **Update mission** checkboxes
+13. **Report completion** via voice
 
 ---
 
