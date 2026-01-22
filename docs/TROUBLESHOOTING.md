@@ -489,3 +489,24 @@ When reporting issues, include:
 - Output of `agentwire --version`
 - Your OS and Python version
 - Steps to reproduce
+
+## Claude Code 0-Token Action Bug (2026-01-22)
+
+**Symptom:** Claude Code sessions get stuck with a "0 token" action - the model produces no output and the session hangs. Shows "Perambulating..." or similar thinking state indefinitely.
+
+**Frequency:** Happens intermittently, especially:
+- Voice-orchestrator sessions delegating to workers
+- During Chrome browser automation (mid-interaction)
+- After receiving notifications/alerts
+
+**Observed patterns:**
+- Gets stuck after tool calls complete (especially Chrome automation)
+- May need multiple nudges to complete a task
+- Often happens at end of workflows (after announcing completion)
+
+**Workaround:**
+- Send a follow-up prompt to nudge the session: `agentwire send -s name "continue"`
+- May need to nudge 2-3 times per task
+- Kill session if it's done anyway
+
+**Status:** Suspected Claude Code bug, not an agentwire issue. Monitoring. (2026-01-22)

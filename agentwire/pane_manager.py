@@ -112,13 +112,18 @@ def spawn_worker_pane(
     # Use side-by-side only if width is >2.5x height (clearly ultrawide)
     split_flag = "-h" if width > height * 2.5 else "-v"
 
+    # Find the last pane index to split FROM it (ensures new pane is appended, not inserted)
+    # This prevents pane index shuffling when multiple workers are spawned
+    panes = list_panes(session)
+    last_pane_index = max(p.index for p in panes) if panes else 0
+
     # Build split-window command
     # -d: don't change focus to new pane
     # -P: print pane info
     # -F: format string
     split_cmd = [
         "tmux", "split-window",
-        "-t", f"{session}:0",  # target window 0
+        "-t", f"{session}:0.{last_pane_index}",  # split the LAST pane (append, don't insert)
         split_flag,  # smart split direction
         "-d",  # detached (don't steal focus)
         "-P", "-F", "#{pane_index}:#{pane_id}"  # return pane info
@@ -150,29 +155,29 @@ def spawn_worker_pane(
 
 
 def _apply_main_top_layout(session: str) -> None:
-    """Apply layout with orchestrator (pane 0) at top, workers tiled below.
+    """Apply main-horizontal layout: orchestrator on top, workers evenly tiled below.
 
-    This layout maintains stable, predictable indexing:
-    - pane 0 is always the orchestrator (at top, 60% height)
-    - panes 1+ are workers in spawn order (below, sharing 40%)
+    Uses tmux's built-in main-horizontal layout which:
+    - Keeps pane 0 (orchestrator) as main pane at top (60% height)
+    - Evenly tiles all worker panes (1+) in the bottom 40%
+    - Maintains stable pane indices (new panes append, don't insert)
 
     Layout (2 panes):
-        [  orchestrator  ]  <- top 60% (pane 0)
-        [    worker 1    ]  <- bottom 40% (pane 1)
+        [   orchestrator   ]  <- pane 0, 60%
+        [     worker 1     ]  <- pane 1, 40%
 
     Layout (3+ panes):
-        [   orchestrator  ]  <- top 60% (pane 0)
-        [worker1][worker2]  <- bottom 40%, stacked vertically (panes 1+)
+        [    orchestrator    ]  <- pane 0, 60%
+        [ worker 1 ][ worker 2 ]  <- panes 1+, evenly split in 40%
 
     Args:
         session: Tmux session name.
     """
     panes = list_panes(session)
-    num_panes = len(panes)
-    if num_panes <= 1:
+    if len(panes) <= 1:
         return  # No layout needed for single pane
 
-    # Get window dimensions
+    # Get window height for main pane size calculation
     result = run_command(
         ["tmux", "display", "-t", f"{session}:0", "-p", "#{window_height}"],
         timeout=5,
@@ -183,9 +188,21 @@ def _apply_main_top_layout(session: str) -> None:
     window_height = int(result.stdout.strip())
     main_height = int(window_height * 0.6)  # Orchestrator gets 60%
 
-    # Resize pane 0 (orchestrator) to 60% - workers naturally get the rest
-    # Note: tmux distributes space to adjacent panes, so worker sizes may vary
-    run_command(["tmux", "resize-pane", "-t", f"{session}:0.0", "-y", str(main_height)], timeout=5)
+    # Apply main-horizontal layout (main pane on top, others tiled below)
+    # The main-pane-height option sets how much space the main pane gets
+    run_command([
+        "tmux", "select-layout", "-t", f"{session}:0", "main-horizontal"
+    ], timeout=5)
+
+    # Set the main pane height
+    run_command([
+        "tmux", "set-window-option", "-t", f"{session}:0", "main-pane-height", str(main_height)
+    ], timeout=5)
+
+    # Re-apply layout to pick up the new height
+    run_command([
+        "tmux", "select-layout", "-t", f"{session}:0", "main-horizontal"
+    ], timeout=5)
 
 
 def list_panes(session: str | None = None) -> list[PaneInfo]:
