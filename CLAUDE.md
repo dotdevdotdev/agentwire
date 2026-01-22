@@ -243,10 +243,22 @@ voice-orch (project session)  ← receives "[ALERT from session pane N] ..."
 worker panes
 ```
 
-**Auto-notification:**
+**Auto-notification (queued to prevent collision):**
 - Worker panes (index > 0) automatically notify pane 0 (orchestrator) with last 20 lines of output
-- Worker panes auto-kill after sending notification
+- Notifications are queued and sent with 15-second gaps to prevent overwhelming orchestrator
+- Worker panes auto-kill after queuing notification
 - Use `parent: agentwire` in `.agentwire.yml` for voice-orch → main notifications
+
+**Queue system files:**
+- `~/.agentwire/queue-processor.sh` - Processes queue with 15s delays between alerts
+- `~/.agentwire/queues/{session}.jsonl` - Per-session notification queues
+
+**Worker idle sequence:**
+1. `session.idle` fires → wait 2s (let OpenCode settle)
+2. Capture last 20 lines of output
+3. Queue notification to `{session}.jsonl`
+4. Start queue processor if not running
+5. Wait 1s → call `agentwire kill --pane N` (3s internal wait before kill)
 
 **Both Claude Code and OpenCode** support idle notifications:
 - Claude Code: via `~/.claude/hooks/suppress-bg-notifications.sh`
