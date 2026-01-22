@@ -2929,6 +2929,49 @@ def cmd_kill(args) -> int:
     return 0
 
 
+def _wait_for_worker_ready(session: str, pane_index: int, timeout: int = 30, agent_type: str = "claude") -> bool:
+    """Wait for a worker pane to be ready to receive input.
+
+    Polls the pane output looking for ready indicators:
+    - Claude Code: looks for '❯' prompt
+    - OpenCode: looks for 'Ask anything' or similar ready state
+
+    Returns True if worker became ready, False if timeout.
+    """
+    import time
+
+    start = time.time()
+    poll_interval = 0.5  # Check every 500ms
+
+    # Ready indicators
+    claude_ready = ['❯', '>', 'Claude Code']  # Claude's prompt
+    opencode_ready = ['Ask anything', 'GLM', 'Coding Plan', '▣']  # OpenCode's ready state
+
+    ready_indicators = opencode_ready if agent_type.startswith("opencode") else claude_ready
+
+    while (time.time() - start) < timeout:
+        try:
+            # Use :0.N to target pane N in window 0 (not :N which targets window N)
+            result = subprocess.run(
+                ["tmux", "capture-pane", "-t", f"{session}:0.{pane_index}", "-p", "-S", "-20"],
+                capture_output=True, text=True
+            )
+            if result.returncode == 0:
+                output = result.stdout
+                # Check for any ready indicator
+                for indicator in ready_indicators:
+                    if indicator in output:
+                        # Extra wait to ensure fully ready
+                        time.sleep(0.3)
+                        return True
+        except Exception:
+            pass
+
+        time.sleep(poll_interval)
+
+    return False
+
+
 def cmd_spawn(args) -> int:
     """Spawn a worker pane in the current session.
 
@@ -2937,12 +2980,17 @@ def cmd_spawn(args) -> int:
 
     With --branch, creates an isolated worktree for the worker to enable
     parallel commits without conflicts.
+
+    By default, waits for the worker to be ready before returning.
+    Use --no-wait to return immediately after spawning.
     """
     json_mode = getattr(args, 'json', False)
     cwd = getattr(args, 'cwd', None)
     roles_arg = getattr(args, 'roles', 'worker')
     session = getattr(args, 'session', None)
     branch = getattr(args, 'branch', None)
+    no_wait = getattr(args, 'no_wait', False)
+    timeout = getattr(args, 'timeout', 30)
 
     # If cwd not specified, use the target session's pane 0 directory
     if not cwd:
@@ -3004,19 +3052,30 @@ def cmd_spawn(args) -> int:
         actual_session = session or pane_manager.get_current_session()
         _install_pane_hooks(actual_session, pane_index)
 
+        # Wait for worker to be ready (unless --no-wait)
+        worker_ready = True
+        if not no_wait:
+            # Determine agent type for ready detection
+            agent_type = "opencode" if session_type_str.startswith("opencode") else "claude"
+            worker_ready = _wait_for_worker_ready(actual_session, pane_index, timeout, agent_type)
+
         if json_mode:
             result = {
                 "success": True,
                 "pane": pane_index,
-                "session": session or pane_manager.get_current_session(),
+                "session": actual_session,
                 "roles": role_names,
+                "ready": worker_ready,
             }
             if branch:
                 result["branch"] = branch
                 result["worktree"] = worktree_path
             _output_json(result)
         else:
-            print(f"Spawned pane {pane_index}")
+            if worker_ready:
+                print(f"Spawned pane {pane_index}")
+            else:
+                print(f"Spawned pane {pane_index} (timeout waiting for ready)")
 
         return 0
 
@@ -6118,6 +6177,8 @@ def main() -> int:
     spawn_parser.add_argument("--branch", "-b", help="Create worktree on this branch for isolated commits")
     spawn_parser.add_argument("--type", help="Session type (claude-bypass, claude-prompted, claude-restricted, opencode-bypass, opencode-prompted, opencode-restricted)")
     spawn_parser.add_argument("--roles", default="worker", help="Comma-separated roles (default: worker)")
+    spawn_parser.add_argument("--no-wait", action="store_true", help="Don't wait for worker to be ready (default: wait up to 30s)")
+    spawn_parser.add_argument("--timeout", type=int, default=30, help="Seconds to wait for worker ready (default: 30)")
     spawn_parser.add_argument("--json", action="store_true", help="Output as JSON")
     spawn_parser.set_defaults(func=cmd_spawn)
 
