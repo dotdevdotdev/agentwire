@@ -244,9 +244,9 @@ worker panes
 ```
 
 **Auto-notification:**
-- Worker panes (index > 0) automatically notify pane 0 (orchestrator)
+- Worker panes (index > 0) automatically notify pane 0 (orchestrator) with last 20 lines of output
+- Worker panes auto-kill after sending notification
 - Use `parent: agentwire` in `.agentwire.yml` for voice-orch → main notifications
-- Rate limited: 60-second cooldown per session/pane to avoid spam
 
 **Both Claude Code and OpenCode** support idle notifications:
 - Claude Code: via `~/.claude/hooks/suppress-bg-notifications.sh`
@@ -271,9 +271,8 @@ agentwire new -s myproject -p ~/projects/myproject --roles voice-orchestrator,gl
 
 Roles are bundled in the `agentwire/roles/` package directory:
 - `agentwire.md` - Main orchestrator role (coordinates projects, uses dotdev voice)
-- `voice-orchestrator.md` - Project orchestrator (picks worker voice, spawns workers)
-- `glm-orchestration.md` - GLM worker management (explicit task templates)
-- `voice-worker.md` - Worker that signals completion via output
+- `voice-orchestrator.md` - Project orchestrator (delegates to workers, waits for notifications)
+- `glm-worker.md` - GLM task executor (focused execution, system detects idle)
 - `worker.md` - Basic worker pane role
 - `chatbot.md` - Chatbot personality
 - `voice.md` - Voice input handling
@@ -283,15 +282,11 @@ Roles are bundled in the `agentwire/roles/` package directory:
 | Role | Use Case | Key Behavior |
 |------|----------|--------------|
 | `agentwire` | Main orchestrator | Uses `dotdev` voice, coordinates multiple projects |
-| `voice-orchestrator` | Project orchestrator | Picks `worker1-8` voice, spawns GLM workers |
-| `glm-orchestration` | Supplement for GLM workers | Task templates, Chrome testing protocol |
-| `voice-worker` | Worker pane | Signals completion via output, no AskUserQuestion |
+| `voice-orchestrator` | Project orchestrator | Delegates to workers, waits for idle notifications |
+| `glm-worker` | Worker pane | Execute task, stop when done, system notifies orchestrator |
 | `worker` | Basic worker | No voice, no AskUserQuestion |
 
-**Combining roles for GLM orchestration:**
-```bash
-agentwire new -s myproject --roles voice-orchestrator,glm-orchestration
-```
+**Note:** OpenCode sessions can also use native GLM subagents (Task tool) instead of `agentwire spawn`. Both approaches work - agentwire spawn gives multi-pane visibility, native subagents are simpler for single-machine work.
 
 ## Key Patterns
 
