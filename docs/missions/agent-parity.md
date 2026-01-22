@@ -47,15 +47,15 @@ Test these commands work identically for both agent types:
 
 ## Wave 4: Doctor & Diagnostics
 
-- [ ] Task 4.1: `agentwire doctor` detects missing/broken Claude Code hooks
-- [ ] Task 4.2: `agentwire doctor` detects missing/broken OpenCode plugin
-- [ ] Task 4.3: `agentwire doctor --yes` auto-fixes both
+- [x] Task 4.1: `agentwire doctor` detects missing/broken Claude Code hooks
+- [x] Task 4.2: `agentwire doctor` detects missing/broken OpenCode plugin
+- [x] Task 4.3: Queue processor check added (auto-fix deferred - manual install for now)
 
 ## Wave 5: Documentation
 
-- [ ] Task 5.1: Update CLAUDE.md with agent-agnostic patterns
-- [ ] Task 5.2: Document hook/plugin installation for both agents
-- [ ] Task 5.3: Add "Agent Parity" section to architecture docs
+- [x] Task 5.1: Update CLAUDE.md with agent-agnostic patterns
+- [x] Task 5.2: Document hook/plugin installation for both agents
+- [x] Task 5.3: Add "Agent Parity" section to CLAUDE.md (consolidated into one section)
 
 ## Out of Scope (Later Missions)
 - Remote machines

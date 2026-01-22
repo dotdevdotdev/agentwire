@@ -302,6 +302,80 @@ Roles are bundled in the `agentwire/roles/` package directory:
 
 **For detailed GLM task templates:** Add `glm-orchestration` role to voice-orchestrator sessions.
 
+## Agent Parity
+
+**The system works identically for Claude Code and OpenCode.** Both agents can be used for any role (orchestrator, worker) with identical behavior.
+
+### Supported Features
+
+| Feature | Claude Code | OpenCode |
+|---------|-------------|----------|
+| Idle detection | ✓ | ✓ |
+| Output capture (last 20 lines) | ✓ | ✓ |
+| Auto-kill worker panes | ✓ | ✓ |
+| Queue-based notifications | ✓ | ✓ |
+| Session resume | ✓ | ✗ (no --resume flag) |
+
+### Hook/Plugin Installation
+
+Both agents need idle notification hooks installed to work with the agentwire system.
+
+**Claude Code** - Install the idle hook:
+
+```bash
+# Create hooks directory
+mkdir -p ~/.claude/hooks
+
+# Install the hook (copies from agentwire source)
+agentwire hooks install
+
+# Verify installation
+agentwire doctor
+```
+
+The hook lives at `~/.claude/hooks/suppress-bg-notifications.sh` and fires on `idle_prompt` notifications.
+
+**OpenCode** - Install the plugin:
+
+```bash
+# Create plugin directory
+mkdir -p ~/.config/opencode/plugin
+
+# Copy the plugin from agentwire source
+cp ~/projects/agentwire-dev/opencode-plugin/agentwire-notify.ts ~/.config/opencode/plugin/
+
+# Restart OpenCode to load the plugin
+```
+
+The plugin lives at `~/.config/opencode/plugin/agentwire-notify.ts` and fires on `session.idle` events.
+
+### Queue Processor
+
+Both hooks use a shared queue processor for notifications:
+
+```bash
+# Install the queue processor
+mkdir -p ~/.agentwire
+cp ~/projects/agentwire-dev/scripts/queue-processor.sh ~/.agentwire/
+chmod +x ~/.agentwire/queue-processor.sh
+```
+
+The processor sends queued alerts with 15-second gaps to prevent overwhelming orchestrators.
+
+### Diagnosing Issues
+
+```bash
+# Check all components are installed
+agentwire doctor
+
+# View hook debug logs
+tail -f /tmp/claude-hook-debug.log      # Claude Code
+tail -f /tmp/opencode-plugin-debug.log  # OpenCode
+
+# View queue processor logs
+tail -f /tmp/queue-processor-debug.log
+```
+
 ## Key Patterns
 
 - **agentwire sessions** coordinate via voice, delegate to workers

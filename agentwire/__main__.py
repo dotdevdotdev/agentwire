@@ -4815,6 +4815,32 @@ def cmd_doctor(args) -> int:
         print("  [..] Permission hook: not found (optional for prompted sessions)")
         print("     Run: agentwire hooks install")
 
+    # Check Claude Code idle notification hook
+    idle_hook = CLAUDE_HOOKS_DIR / "suppress-bg-notifications.sh"
+    if idle_hook.exists():
+        print(f"  [ok] Idle notification hook: {idle_hook}")
+    else:
+        print("  [!!] Idle notification hook: not found (required for worker notifications)")
+        print("     This hook enables output capture and auto-kill for Claude Code workers.")
+        issues_found += 1
+
+    # Check OpenCode plugin
+    print("\nChecking OpenCode plugin...")
+    opencode_plugin = Path.home() / ".config" / "opencode" / "plugin" / "agentwire-notify.ts"
+    if opencode_plugin.exists():
+        print(f"  [ok] OpenCode plugin: {opencode_plugin}")
+    else:
+        print("  [..] OpenCode plugin: not found (required for OpenCode worker notifications)")
+        print("     Copy from agentwire source or install manually.")
+
+    # Check queue processor
+    queue_processor = Path.home() / ".agentwire" / "queue-processor.sh"
+    if queue_processor.exists():
+        print(f"  [ok] Queue processor: {queue_processor}")
+    else:
+        print("  [!!] Queue processor: not found (required for notification queuing)")
+        issues_found += 1
+
     # 5. Validate config
     print("\nChecking configuration...")
     try:
