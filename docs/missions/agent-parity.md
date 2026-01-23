@@ -39,7 +39,7 @@ Test these commands work identically for both agent types:
 
 - [x] Task 3.1: Test `agentwire history list` shows sessions from both agent types
 - [x] Task 3.2: Test `agentwire history resume` works for Claude Code sessions
-- [x] Task 3.3: OpenCode doesn't support --resume (documented, not a bug)
+- [x] Task 3.3: Added OpenCode resume support (`--session` flag)
 
 **Fixes made:**
 - Fixed temp file approach for system prompts in resume (same as cmd_new)

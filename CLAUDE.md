@@ -314,7 +314,7 @@ Roles are bundled in the `agentwire/roles/` package directory:
 | Output capture (last 20 lines) | ✓ | ✓ |
 | Auto-kill worker panes | ✓ | ✓ |
 | Queue-based notifications | ✓ | ✓ |
-| Session resume | ✓ | ✗ (no --resume flag) |
+| Session resume | ✓ (`--resume`) | ✓ (`--session`) |
 
 ### Hook/Plugin Installation
 

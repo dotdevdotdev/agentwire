@@ -4046,12 +4046,13 @@ def cmd_history_show(args) -> int:
 
 
 def cmd_history_resume(args) -> int:
-    """Resume a Claude Code session (always forks).
+    """Resume a session (Claude Code or OpenCode).
 
-    Creates a new tmux session and runs `claude --resume <session-id> --fork-session`
-    with appropriate flags based on the project's .agentwire.yml config.
+    Creates a new tmux session and runs the appropriate resume command:
+    - Claude Code: `claude --resume <session-id> --fork-session`
+    - OpenCode: `opencode --session <session-id>`
 
-    Note: Only Claude Code supports --resume. OpenCode sessions cannot be resumed.
+    Flags are applied based on the project's .agentwire.yml config.
     """
     session_id = args.session_id
     name = getattr(args, 'name', None)
@@ -4059,14 +4060,8 @@ def cmd_history_resume(args) -> int:
     project_path_str = args.project
     json_mode = getattr(args, 'json', False)
 
-    # Check if the default agent supports resume
+    # Detect agent type
     agent_type = detect_default_agent_type()
-    if agent_type == "opencode":
-        return _output_result(
-            False,
-            json_mode,
-            "Session resume is not supported for OpenCode. Only Claude Code supports --resume."
-        )
 
     # Resolve project path
     project_path = Path(project_path_str).expanduser().resolve()
@@ -4095,33 +4090,53 @@ def cmd_history_resume(args) -> int:
             counter += 1
             name = f"{base_name}-fork-{counter}"
 
-    # Build claude command with --resume --fork-session and session type flags
-    claude_parts = ["claude", "--resume", session_id, "--fork-session"]
-    claude_parts.extend(project_config.type.to_cli_flags())
-
-    # Load and apply roles if specified in config
+    # Build resume command based on agent type
     temp_file = None
-    if project_config.roles:
-        roles, missing = load_roles(project_config.roles, project_path)
-        if not missing and roles:
-            merged = merge_roles(roles)
-            if merged.tools:
-                claude_parts.append("--tools")
-                claude_parts.extend(sorted(merged.tools))
-            if merged.disallowed_tools:
-                claude_parts.append("--disallowedTools")
-                claude_parts.extend(sorted(merged.disallowed_tools))
-            if merged.instructions:
-                # Write to temp file to avoid shell escaping issues
-                f = tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False)
-                f.write(merged.instructions)
-                f.close()
-                temp_file = f.name
-                claude_parts.append(f'--append-system-prompt "$(<{temp_file})"')
-            if merged.model:
-                claude_parts.append(f"--model {merged.model}")
+    if agent_type == "opencode":
+        # OpenCode: opencode --session <session-id>
+        cmd_parts = ["opencode", "--session", session_id]
 
-    claude_cmd = " ".join(claude_parts)
+        # Load and apply roles if specified in config
+        if project_config.roles:
+            roles, missing = load_roles(project_config.roles, project_path)
+            if not missing and roles:
+                merged = merge_roles(roles)
+                if merged.instructions:
+                    # Write to temp file for --prompt flag
+                    f = tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False)
+                    f.write(merged.instructions)
+                    f.close()
+                    temp_file = f.name
+                    cmd_parts.append(f'--prompt "$(<{temp_file})"')
+                if merged.model:
+                    cmd_parts.append(f"--model {merged.model}")
+    else:
+        # Claude Code: claude --resume <session-id> --fork-session
+        cmd_parts = ["claude", "--resume", session_id, "--fork-session"]
+        cmd_parts.extend(project_config.type.to_cli_flags())
+
+        # Load and apply roles if specified in config
+        if project_config.roles:
+            roles, missing = load_roles(project_config.roles, project_path)
+            if not missing and roles:
+                merged = merge_roles(roles)
+                if merged.tools:
+                    cmd_parts.append("--tools")
+                    cmd_parts.extend(sorted(merged.tools))
+                if merged.disallowed_tools:
+                    cmd_parts.append("--disallowedTools")
+                    cmd_parts.extend(sorted(merged.disallowed_tools))
+                if merged.instructions:
+                    # Write to temp file to avoid shell escaping issues
+                    f = tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False)
+                    f.write(merged.instructions)
+                    f.close()
+                    temp_file = f.name
+                    cmd_parts.append(f'--append-system-prompt "$(<{temp_file})"')
+                if merged.model:
+                    cmd_parts.append(f"--model {merged.model}")
+
+    agent_cmd = " ".join(cmd_parts)
 
     if machine_id and machine_id != "local":
         # Remote machine
@@ -4142,7 +4157,7 @@ def cmd_history_resume(args) -> int:
             f"tmux new-session -d -s {shlex.quote(name)} -c {shlex.quote(remote_path)} && "
             f"tmux send-keys -t {shlex.quote(name)} 'cd {shlex.quote(remote_path)}' Enter && "
             f"sleep 0.1 && "
-            f"tmux send-keys -t {shlex.quote(name)} {shlex.quote(claude_cmd)} Enter"
+            f"tmux send-keys -t {shlex.quote(name)} {shlex.quote(agent_cmd)} Enter"
         )
 
         result = _run_remote(machine_id, create_cmd)
@@ -4193,7 +4208,7 @@ def cmd_history_resume(args) -> int:
 
     # Send the claude resume command
     subprocess.run(
-        ["tmux", "send-keys", "-t", name, claude_cmd, "Enter"],
+        ["tmux", "send-keys", "-t", name, agent_cmd, "Enter"],
         check=True
     )
 
