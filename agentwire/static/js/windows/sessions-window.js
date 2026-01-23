@@ -5,6 +5,32 @@
 import { ListWindow } from '../list-window.js';
 import { desktop } from '../desktop-manager.js';
 
+/** Session icon filenames (12 icons, wraps for more sessions) */
+const SESSION_ICONS = [
+    'agentwire.png',
+    'android.png',
+    'cat.png',
+    'crown.png',
+    'cyborg.png',
+    'drone.png',
+    'fox.png',
+    'mech.png',
+    'microphone.png',
+    'owl.png',
+    'robot.png',
+    'wolf.png'
+];
+
+/**
+ * Get icon for a session by index (wraps around if more sessions than icons)
+ * @param {number} index - Session index in the list
+ * @returns {string} Icon URL
+ */
+function getSessionIconUrl(index) {
+    const iconFile = SESSION_ICONS[index % SESSION_ICONS.length];
+    return `/static/icons/sessions/${iconFile}`;
+}
+
 /** @type {ListWindow|null} */
 let sessionsWindow = null;
 
@@ -54,7 +80,7 @@ export function openSessionsWindow() {
 async function fetchSessions() {
     const response = await fetch('/api/sessions/local');
     const data = await response.json();
-    return (data.sessions || []).map(s => ({
+    return (data.sessions || []).map((s, index) => ({
         name: s.name,
         active: s.activity === 'active',
         type: s.type || 'bare',
@@ -62,18 +88,19 @@ async function fetchSessions() {
         // Chat button shown for agent session types (not bare)
         hasVoice: s.type && (s.type.startsWith('claude-') || s.type.startsWith('opencode-')),
         // Attached client count for presence indicator
-        clientCount: s.client_count || 0
+        clientCount: s.client_count || 0,
+        // Icon URL based on position in list (alphabetically ordered)
+        iconUrl: getSessionIconUrl(index)
     }));
 }
 
 /**
- * Render a single session item
+ * Render a single session item as a card with icon
  * @param {Object} session - Session data
  * @returns {string} HTML string for the session item
  */
 function renderSessionItem(session) {
     const statusClass = session.active ? 'active' : 'idle';
-    const statusDot = session.active ? '●' : '○';
     const chatButton = session.hasVoice
         ? '<button class="btn btn-small" data-action="chat">Chat</button>'
         : '';
@@ -89,33 +116,41 @@ function renderSessionItem(session) {
     // Format path for display (show last 2 segments or full if short)
     const pathDisplay = formatPath(session.path);
 
-    // Build summary parts
-    const summaryParts = [];
+    // Use pre-assigned icon URL based on list position
+    const iconUrl = session.iconUrl;
+
+    // Build meta info line
+    const metaParts = [];
     if (session.type && session.type !== 'bare') {
-        summaryParts.push(`<span class="session-type">${session.type}</span>`);
+        metaParts.push(`<span class="session-type">${session.type}</span>`);
     }
     if (pathDisplay) {
-        summaryParts.push(`<span class="session-path">${pathDisplay}</span>`);
+        metaParts.push(`<span class="session-path">${pathDisplay}</span>`);
     }
-    const summary = summaryParts.length > 0
-        ? `<div class="session-summary">${summaryParts.join(' · ')}</div>`
+    const metaLine = metaParts.length > 0
+        ? `<div class="session-meta">${metaParts.join(' · ')}</div>`
         : '';
 
     return `
-        <div class="session-row-top">
-            <div class="session-info" data-session="${session.name}">
-                <span class="session-status ${statusClass}">${statusDot}</span>
-                <span class="session-name">${session.name}</span>
-                ${presenceIndicator}
+        <div class="session-card ${statusClass}">
+            <div class="session-icon-wrapper">
+                <img src="${iconUrl}" alt="" class="session-icon" />
+                <span class="session-status-dot ${statusClass}"></span>
             </div>
-            <div class="list-item-actions">
+            <div class="session-content">
+                <div class="session-header">
+                    <span class="session-name" data-session="${session.name}">${session.name}</span>
+                    ${presenceIndicator}
+                </div>
+                ${metaLine}
+            </div>
+            <div class="session-actions">
                 <button class="btn btn-small" data-action="monitor">Monitor</button>
                 ${chatButton}
                 <button class="btn btn-small btn-primary" data-action="connect">Connect</button>
                 <button class="btn btn-small danger" data-action="close" title="Close session">✕</button>
             </div>
         </div>
-        ${summary}
     `;
 }
 
