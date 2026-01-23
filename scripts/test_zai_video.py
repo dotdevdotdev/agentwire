@@ -47,7 +47,7 @@ def generate_video(
         image_path: Optional image for image-to-video generation
         quality: Video quality (720p, 1080p, 4K)
         fps: Frames per second (30 or 60)
-        output_dir: Directory to save video (default: current directory)
+        output_dir: Directory to save video (default: ~/generated-images/)
 
     Returns:
         Path to the saved video file
@@ -126,7 +126,7 @@ def generate_video(
         raise TimeoutError("Video generation timed out after 5 minutes")
 
     # Download video
-    output_dir = output_dir or Path.cwd()
+    output_dir = output_dir or Path.home() / "generated-images"
     output_dir.mkdir(parents=True, exist_ok=True)
 
     safe_prompt = "".join(c if c.isalnum() or c in " -_" else "" for c in prompt)[:40]
@@ -177,7 +177,7 @@ def main():
         "--output-dir",
         type=Path,
         default=None,
-        help="Output directory (default: current directory)",
+        help="Output directory (default: ~/generated-images/)",
     )
 
     args = parser.parse_args()

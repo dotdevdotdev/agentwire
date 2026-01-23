@@ -44,7 +44,7 @@ def generate_image(
         model: Model to use (glm-image or cogview-4-250304)
         quality: Image quality (hd ~20s, standard ~5-10s)
         size: Image dimensions (default 1280x1280)
-        output_dir: Directory to save image (default: current directory)
+        output_dir: Directory to save image (default: ~/generated-images/)
 
     Returns:
         Path to the saved image file
@@ -79,7 +79,7 @@ def generate_image(
     print(f"  Generated: {image_url[:80]}...")
 
     # Download and save image
-    output_dir = output_dir or Path.cwd()
+    output_dir = output_dir or Path.home() / "generated-images"
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Create filename from prompt
@@ -130,7 +130,7 @@ def main():
         "--output-dir",
         type=Path,
         default=None,
-        help="Output directory (default: current directory)",
+        help="Output directory (default: ~/generated-images/)",
     )
 
     args = parser.parse_args()
