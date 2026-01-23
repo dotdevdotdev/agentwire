@@ -843,6 +843,33 @@ body {
     flex-shrink: 0;
 }
 
+.session-actions .btn {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+}
+
+.session-actions .btn:hover {
+    background: var(--hover);
+    border-color: var(--accent);
+}
+
+.session-actions .btn.btn-primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--background);
+}
+
+.session-actions .btn.danger {
+    color: var(--error);
+}
+
+.session-actions .btn.danger:hover {
+    background: var(--error);
+    border-color: var(--error);
+    color: var(--background);
+}
+
 /* Presence indicator - shows attached client count */
 .presence-indicator {
     display: inline-flex;
