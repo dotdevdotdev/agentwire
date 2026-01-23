@@ -133,16 +133,18 @@ function renderSessionItem(session) {
 
     return `
         <div class="session-card ${statusClass}">
-            <div class="session-icon-wrapper">
-                <img src="${iconUrl}" alt="" class="session-icon" />
-                <span class="session-status-dot ${statusClass}"></span>
-            </div>
-            <div class="session-content">
-                <div class="session-header">
-                    <span class="session-name" data-session="${session.name}">${session.name}</span>
-                    ${presenceIndicator}
+            <div class="session-card-top">
+                <div class="session-icon-wrapper">
+                    <img src="${iconUrl}" alt="" class="session-icon" />
+                    <span class="session-status-dot ${statusClass}"></span>
                 </div>
-                ${metaLine}
+                <div class="session-content">
+                    <div class="session-header">
+                        <span class="session-name" data-session="${session.name}">${session.name}</span>
+                        ${presenceIndicator}
+                    </div>
+                    ${metaLine}
+                </div>
             </div>
             <div class="session-actions">
                 <button class="btn btn-small" data-action="monitor">Monitor</button>

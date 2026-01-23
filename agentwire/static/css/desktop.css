@@ -762,13 +762,19 @@ body {
 /* Session card layout */
 .session-card {
     display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 10px 12px;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px;
     background: var(--surface);
     border-radius: 8px;
     border: 1px solid var(--border);
     transition: border-color 0.15s, background 0.15s;
+}
+
+.session-card-top {
+    display: flex;
+    align-items: center;
+    gap: 12px;
 }
 
 .session-card:hover {
@@ -839,6 +845,7 @@ body {
 
 .session-actions {
     display: flex;
+    justify-content: flex-end;
     gap: 6px;
     flex-shrink: 0;
 }
