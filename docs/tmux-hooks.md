@@ -300,85 +300,56 @@ tmux set-hook -g session-closed 'run-shell -b "tmux list-sessions > /tmp/tmux-se
 
 ## AgentWire Integration
 
-### Recommended Approach: Webhook Notifications
+### Current Implementation
 
-Instead of polling `tmux list-sessions`, set hooks to notify the portal of changes:
+AgentWire uses `agentwire notify` command instead of direct HTTP calls. Hooks are installed globally and call the CLI:
 
 ```bash
-# In ~/.tmux.conf or set programmatically
-PORTAL_URL="http://localhost:8765"
-
-set-hook -g session-created 'run-shell -b "curl -s -X POST ${PORTAL_URL}/api/tmux/session-created \
-  -H \"Content-Type: application/json\" \
-  -d \"{\\\"name\\\": \\\"#{session_name}\\\", \\\"id\\\": \\\"#{session_id}\\\"}\""'
-
-set-hook -g session-closed 'run-shell -b "curl -s -X POST ${PORTAL_URL}/api/tmux/session-closed \
-  -H \"Content-Type: application/json\" \
-  -d \"{\\\"name\\\": \\\"#{hook_session_name}\\\"}\""'
-
-set-hook -g session-renamed 'run-shell -b "curl -s -X POST ${PORTAL_URL}/api/tmux/session-renamed \
-  -H \"Content-Type: application/json\" \
-  -d \"{\\\"name\\\": \\\"#{session_name}\\\", \\\"id\\\": \\\"#{session_id}\\\"}\""'
+# View installed hooks
+tmux show-hooks -g | grep agentwire
 ```
 
-### Portal Webhook Endpoints
+### Installed Hooks
 
-The portal would need these endpoints:
+| Hook | Event | Purpose |
+|------|-------|---------|
+| `session-created` | `session_created` | Update dashboard |
+| `session-closed` | `session_closed` | Clean up state, update dashboard |
+| `session-renamed` | `session_renamed` | Update session names in UI |
+| `client-attached` | `client_attached` | Presence indicator (client count) |
+| `client-detached` | `client_detached` | Presence indicator (client count) |
+| `after-split-window` | `pane_created` | Real-time pane counts |
+| `alert-activity` | `window_activity` | Desktop notifications |
 
-```python
-@app.post("/api/tmux/session-created")
-async def on_session_created(data: dict):
-    name = data["name"]
-    session_id = data["id"]
-    # Update internal session list
-    # Broadcast to WebSocket clients
-    await broadcast({"type": "session_created", "name": name})
+### Per-Session Hooks
 
-@app.post("/api/tmux/session-closed")
-async def on_session_closed(data: dict):
-    name = data["name"]
-    # Remove from internal list
-    # Broadcast to WebSocket clients
-    await broadcast({"type": "session_closed", "name": name})
+Some hooks are installed per-session (not global):
+
+| Hook | Event | Purpose |
+|------|-------|---------|
+| `after-kill-pane` | `pane_died` | Real-time pane counts |
+| `pane-focus-in` | `pane_focused` | Active pane tracking |
+
+### Hook Command Format
+
+All hooks use background execution (`run-shell -b`) with error suppression:
+
+```bash
+run-shell -b "/path/to/agentwire notify <event> -s #{session_name} >/dev/null 2>&1 || true"
 ```
 
-### Hook Installation Script
+### State Cleanup
 
-AgentWire could install hooks on startup:
+Stale state is cleaned up:
+1. **On `session_closed` event:** Immediately removes client counts
+2. **On dashboard refresh:** Removes entries for sessions that no longer exist
 
-```python
-def install_tmux_hooks(portal_url: str):
-    hooks = [
-        ("session-created", f'run-shell -b "curl -s -X POST {portal_url}/api/tmux/session-created ..."'),
-        ("session-closed", f'run-shell -b "curl -s -X POST {portal_url}/api/tmux/session-closed ..."'),
-        ("session-renamed", f'run-shell -b "curl -s -X POST {portal_url}/api/tmux/session-renamed ..."'),
-    ]
-    for hook_name, command in hooks:
-        subprocess.run(["tmux", "set-hook", "-g", hook_name, command])
+### Portal Startup
 
-def uninstall_tmux_hooks():
-    for hook in ["session-created", "session-closed", "session-renamed"]:
-        subprocess.run(["tmux", "set-hook", "-gu", hook])
-```
-
-### Fallback Strategy
-
-Since hooks don't persist across tmux server restarts:
-
-1. **On portal start:** Install hooks via `tmux set-hook`
-2. **Periodic check:** Every 60s, verify hooks are still set
-3. **Initial sync:** On startup, poll once to get current state
-4. **Event-driven after:** Rely on webhooks for real-time updates
-
-### Benefits Over Polling
-
-| Aspect | Polling | Hooks + Webhooks |
-|--------|---------|------------------|
-| Latency | 1-5s (poll interval) | ~50ms (instant) |
-| CPU usage | Constant | Only on events |
-| Scalability | Degrades with sessions | Constant |
-| Complexity | Simple | Moderate |
-| Reliability | High (always works) | Needs fallback |
+On portal start:
+1. Global hooks are installed via `_install_global_tmux_hooks()`
+2. Dashboard syncs with actual tmux state
+3. Hooks survive portal restart (global hooks persist in tmux server)
 
 ## References
 

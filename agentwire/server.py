@@ -605,11 +605,19 @@ class AgentWireServer:
                 return []
 
             sessions = result.get("sessions", [])
+            session_names = set()
             for s in sessions:
                 name = s.get("name", "")
+                session_names.add(name)
                 s["activity"] = self._get_global_session_activity(name)
                 # Include attached client count for presence indicator
                 s["client_count"] = self.session_client_counts.get(name, 0)
+
+            # Clean up stale state for sessions that no longer exist
+            stale = [k for k in self.session_client_counts if k not in session_names]
+            for k in stale:
+                del self.session_client_counts[k]
+
             return sessions
         except Exception as e:
             logger.error(f"Failed to get sessions data: {e}")
@@ -2968,6 +2976,8 @@ projects:
             # Broadcast to dashboard clients based on event type
             if event == "session_closed":
                 await self.broadcast_dashboard("session_closed", {"session": session})
+                # Clean up stale state for this session
+                self.session_client_counts.pop(session, None)
                 # Also send sessions_update with refreshed list
                 sessions_data = await self._get_sessions_data()
                 await self.broadcast_dashboard("sessions_update", {"sessions": sessions_data})

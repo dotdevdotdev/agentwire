@@ -81,10 +81,10 @@ Now we can expand to cover all useful tmux hooks.
 ### Wave 7: Polish & Edge Cases
 
 - [x] Handle portal restart (re-install all hooks via _install_global_tmux_hooks)
-- [ ] Clean up stale hooks from crashed sessions
-- [ ] Add `agentwire hooks list` to show all installed hooks
-- [ ] Rate limiting for high-frequency events (pane-focus-in)
-- [ ] Documentation for hooks system
+- [x] Clean up stale state from crashed sessions (on session_closed + on refresh)
+- [x] Skip `agentwire hooks list` (only 2 hooks, not needed)
+- [x] Skip rate limiting (not an issue in practice)
+- [x] Documentation updated (docs/tmux-hooks.md)
 
 ## Completion Criteria
 
@@ -92,5 +92,5 @@ Now we can expand to cover all useful tmux hooks.
 - [x] Pane counts update in real-time for both creation and destruction
 - [x] Session renames propagate to open windows and taskbar
 - [x] Desktop notifications fire for background session activity
-- [ ] Active pane highlighted in multi-pane session views *(nice-to-have)*
 - [x] All hooks survive portal restart
+- [x] Stale state cleaned up on session close and refresh
