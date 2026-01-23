@@ -22,13 +22,19 @@ const SESSION_ICONS = [
 ];
 
 /**
- * Get icon for a session by index (wraps around if more sessions than icons)
- * @param {number} index - Session index in the list
+ * Get a consistent icon for a session based on its name
+ * Uses hash so same session always gets same icon
+ * @param {string} sessionName - Session name
  * @returns {string} Icon URL
  */
-function getSessionIconUrl(index) {
-    const iconFile = SESSION_ICONS[index % SESSION_ICONS.length];
-    return `/static/icons/sessions/${iconFile}`;
+export function getSessionIconUrl(sessionName) {
+    let hash = 0;
+    for (let i = 0; i < sessionName.length; i++) {
+        hash = ((hash << 5) - hash) + sessionName.charCodeAt(i);
+        hash = hash & hash;
+    }
+    const index = Math.abs(hash) % SESSION_ICONS.length;
+    return `/static/icons/sessions/${SESSION_ICONS[index]}`;
 }
 
 /** @type {ListWindow|null} */
@@ -89,8 +95,8 @@ async function fetchSessions() {
         hasVoice: s.type && (s.type.startsWith('claude-') || s.type.startsWith('opencode-')),
         // Attached client count for presence indicator
         clientCount: s.client_count || 0,
-        // Icon URL based on position in list (alphabetically ordered)
-        iconUrl: getSessionIconUrl(index)
+        // Icon URL based on session name hash (consistent across windows)
+        iconUrl: getSessionIconUrl(s.name)
     }));
 }
 

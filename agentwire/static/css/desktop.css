@@ -1238,48 +1238,30 @@ body {
     background: var(--background);
 }
 
-.chat-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 8px 12px;
-    background: var(--chrome);
-    border-bottom: 1px solid var(--chrome-border);
-    flex-shrink: 0;
-}
-
-.chat-session-select {
-    padding: 4px 8px;
-    background: var(--background);
-    border: 1px solid var(--chrome-border);
-    border-radius: 4px;
-    color: var(--text);
-    font-size: 12px;
-    min-width: 150px;
-}
-
-.chat-session-select:focus {
-    outline: none;
-    border-color: var(--accent);
-}
-
 .chat-ptt {
+    position: absolute;
+    bottom: 40px;  /* Above status bar */
+    right: 12px;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: 2px solid var(--chrome-border);
+    background: rgba(26, 26, 26, 0.9);
+    color: var(--text);
+    cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 36px;
-    height: 36px;
-    border-radius: 50%;
-    border: 2px solid var(--chrome-border);
-    background: var(--background);
-    cursor: pointer;
     transition: all 0.15s ease;
-    font-size: 16px;
+    z-index: 10;
+    backdrop-filter: blur(4px);
+    font-size: 20px;
 }
 
 .chat-ptt:hover {
     border-color: var(--accent);
-    background: var(--hover);
+    background: rgba(26, 26, 26, 0.95);
+    transform: scale(1.05);
 }
 
 .chat-ptt.recording {

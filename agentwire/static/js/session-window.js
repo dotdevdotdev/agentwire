@@ -7,6 +7,7 @@
  */
 
 import { desktop } from './desktop-manager.js';
+import { getSessionIconUrl } from './windows/sessions-window.js';
 
 export class SessionWindow {
     /**
@@ -272,7 +273,7 @@ export class SessionWindow {
 
         this.winbox = new WinBox({
             title: title,
-            icon: '/static/favicon-green.jpeg',
+            icon: getSessionIconUrl(this.session),
             mount: container,
             root: this.root,
             x: this.position.x,

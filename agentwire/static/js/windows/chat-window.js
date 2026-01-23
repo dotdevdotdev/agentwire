@@ -10,6 +10,7 @@
  */
 
 import { desktop } from '../desktop-manager.js';
+import { getSessionIconUrl } from './sessions-window.js';
 
 /** @type {ChatWindow|null} */
 let chatWindowInstance = null;
@@ -57,7 +58,6 @@ class ChatWindow {
         this.audioChunks = [];
 
         // Element references
-        this.sessionNameEl = null;
         this.pttButton = null;
         this.orbEl = null;
         this.orbRingEl = null;
@@ -125,12 +125,6 @@ class ChatWindow {
         const container = document.createElement('div');
         container.className = 'chat-window-content';
         container.innerHTML = `
-            <div class="chat-header">
-                <span class="chat-session-name"></span>
-                <button class="chat-ptt" title="Hold to record (Ctrl+Space)">
-                    <span class="ptt-icon">🎤</span>
-                </button>
-            </div>
             <div class="orb-area">
                 <div class="orb-container">
                     <div class="orb idle"></div>
@@ -139,6 +133,9 @@ class ChatWindow {
                 <div class="state-label idle">READY</div>
             </div>
             <div class="chat-messages"></div>
+            <button class="chat-ptt" title="Hold to record (Ctrl+Space)">
+                <span class="ptt-icon">🎤</span>
+            </button>
             <div class="chat-status-bar">
                 <span class="status-indicator"></span>
                 <span class="status-text">No session selected</span>
@@ -147,7 +144,6 @@ class ChatWindow {
         `;
 
         // Store element references
-        this.sessionNameEl = container.querySelector('.chat-session-name');
         this.pttButton = container.querySelector('.chat-ptt');
         this.orbEl = container.querySelector('.orb');
         this.orbRingEl = container.querySelector('.orb-ring');
@@ -164,9 +160,16 @@ class ChatWindow {
      * Create the WinBox window
      */
     _createWinBox() {
+        const title = this._initialSession
+            ? `${this._initialSession} (chat)`
+            : 'Chat';
+        const icon = this._initialSession
+            ? getSessionIconUrl(this._initialSession)
+            : '/static/favicon-green.jpeg';
+
         this.winbox = new WinBox({
-            title: 'Chat',
-            icon: '/static/favicon-green.jpeg',
+            title: title,
+            icon: icon,
             mount: this.container,
             root: document.getElementById('desktopArea'),
             x: 'center',
@@ -314,9 +317,13 @@ class ChatWindow {
         if (!session) return;
 
         this.selectedSession = session;
-        if (this.sessionNameEl) {
-            this.sessionNameEl.textContent = session;
+
+        // Update WinBox title and icon
+        if (this.winbox) {
+            this.winbox.setTitle(`${session} (chat)`);
+            this.winbox.setIcon(getSessionIconUrl(session));
         }
+
         this._connectSessionWs();
         this._updateStatus();
     }

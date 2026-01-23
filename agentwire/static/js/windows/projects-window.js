@@ -3,6 +3,7 @@
  */
 
 import { ListWindow } from '../list-window.js';
+import { getSessionIconUrl } from './sessions-window.js';
 
 /** @type {ListWindow|null} */
 let projectsWindow = null;
@@ -150,6 +151,23 @@ async function fetchProjects() {
 }
 
 /**
+ * Format path for display - show abbreviated version
+ * @param {string|null} path - Full path
+ * @returns {string} Formatted path
+ */
+function formatPath(path) {
+    if (!path) return '';
+
+    // Replace home directory with ~ (detect common patterns)
+    const homeMatch = path.match(/^(\/Users\/[^/]+|\/home\/[^/]+|\/root)/);
+    if (homeMatch) {
+        return '~' + path.slice(homeMatch[1].length);
+    }
+
+    return path;
+}
+
+/**
  * Render a single project item or group header
  * @param {Object} project - Project data {name, path, type, roles, machine} or {_groupHeader, machine}
  * @returns {string} HTML string for the project item
@@ -166,14 +184,25 @@ function renderProjectItem(project) {
     }
 
     const typeClass = `type-${project.type || 'claude-bypass'}`;
+    const iconUrl = getSessionIconUrl(project.name);
+    const pathDisplay = formatPath(project.path);
+
+    const typeBadge = project.type && project.type !== 'bare'
+        ? `<div class="project-type-row"><span class="project-type ${typeClass}">${project.type}</span></div>`
+        : '';
 
     return `
-        <div class="project-info" data-path="${project.path}" data-machine="${project.machine}">
-            <div class="project-row">
-                <span class="project-name">${project.name}</span>
-                <span class="project-type ${typeClass}">${project.type || 'claude-bypass'}</span>
+        <div class="project-card" data-path="${project.path}" data-machine="${project.machine}">
+            <div class="project-icon-wrapper">
+                <img src="${iconUrl}" alt="" class="project-icon" />
             </div>
-            <div class="project-path">${project.path}</div>
+            <div class="project-content">
+                <div class="project-header">
+                    <span class="project-name">${project.name}</span>
+                </div>
+                <div class="project-path">${pathDisplay}</div>
+                ${typeBadge}
+            </div>
         </div>
     `;
 }
@@ -574,24 +603,47 @@ function addProjectsStyles() {
     const style = document.createElement('style');
     style.id = 'projects-window-styles';
     style.textContent = `
-        /* Project list item */
-        .project-info {
+        /* Project card */
+        .project-card {
             display: flex;
-            flex-direction: column;
-            gap: 4px;
+            align-items: center;
+            gap: 12px;
             width: 100%;
         }
 
-        .project-row {
+        .project-icon-wrapper {
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .project-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+            object-fit: cover;
+        }
+
+        .project-content {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .project-header {
             display: flex;
             align-items: center;
-            justify-content: space-between;
             gap: 8px;
         }
 
         .project-name {
             font-weight: 500;
             color: var(--text);
+            font-size: 14px;
+        }
+
+        .project-type-row {
+            display: flex;
+            justify-content: flex-end;
+            margin-top: 6px;
         }
 
         .project-type {
@@ -617,10 +669,18 @@ function addProjectsStyles() {
             color: var(--error);
         }
 
+        .project-type.type-opencode-bypass {
+            background: rgba(168, 85, 247, 0.15);
+            color: #a855f7;
+        }
+
         .project-path {
             font-size: 11px;
             color: var(--text-muted);
-            word-break: break-all;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            margin-top: 4px;
         }
 
         /* Group headers */
