@@ -527,7 +527,7 @@ class ChatWindow {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    text: `[Voice input - respond using: agentwire say "your response"] ${text}`
+                    text: `[User said: '${text}' - respond using CLI: agentwire say 'your message']`
                 })
             });
 
