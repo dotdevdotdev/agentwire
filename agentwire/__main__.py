@@ -4060,8 +4060,17 @@ def cmd_history_resume(args) -> int:
     project_path_str = args.project
     json_mode = getattr(args, 'json', False)
 
-    # Detect agent type
-    agent_type = detect_default_agent_type()
+    # Detect agent type from session ID format
+    # OpenCode uses "ses_*" format, Claude Code uses UUID format
+    if session_id.startswith("ses_"):
+        agent_type = "opencode"
+    else:
+        agent_type = "claude"
+        # Resolve prefix to full UUID for Claude Code sessions
+        from .history import resolve_session_id
+        resolved = resolve_session_id(session_id, machine_id)
+        if resolved:
+            session_id = resolved
 
     # Resolve project path
     project_path = Path(project_path_str).expanduser().resolve()
