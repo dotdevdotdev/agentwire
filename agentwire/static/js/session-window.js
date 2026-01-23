@@ -7,7 +7,7 @@
  */
 
 import { desktop } from './desktop-manager.js';
-import { getSessionIconUrl } from './windows/sessions-window.js';
+import { getSessionIconByName } from './windows/sessions-window.js';
 
 export class SessionWindow {
     /**
@@ -270,16 +270,24 @@ export class SessionWindow {
 
     _createWinBox(container) {
         const title = `${this.sessionId} (${this.mode})`;
+        const windowId = `session_${this.sessionId}_${this.mode}`;
+
+        // Load saved position/size (null on mobile)
+        const savedState = desktop.loadWindowState(windowId);
+        const x = savedState?.x ?? this.position.x;
+        const y = savedState?.y ?? this.position.y;
+        const width = savedState?.width ?? 700;
+        const height = savedState?.height ?? 500;
 
         this.winbox = new WinBox({
             title: title,
-            icon: getSessionIconUrl(this.session),
+            icon: getSessionIconByName(this.session),
             mount: container,
             root: this.root,
-            x: this.position.x,
-            y: this.position.y,
-            width: 700,
-            height: 500,
+            x: x,
+            y: y,
+            width: width,
+            height: height,
             minwidth: 400,
             minheight: 300,
             class: ['session-window'],
@@ -295,8 +303,12 @@ export class SessionWindow {
                     this.onFocusCallback(this);
                 }
             },
+            onmove: () => {
+                this._saveWindowState(windowId);
+            },
             onresize: () => {
                 this._handleResize();
+                this._saveWindowState(windowId);
             },
             onmaximize: () => {
                 // WinBox animates maximize - wait for animation to complete
@@ -466,6 +478,21 @@ export class SessionWindow {
                 }
             });
         }
+    }
+
+    /**
+     * Save window position/size to localStorage (skip on mobile).
+     * @param {string} windowId - Unique window identifier
+     */
+    _saveWindowState(windowId) {
+        if (!this.winbox || desktop.isNarrowViewport()) return;
+
+        desktop.saveWindowState(windowId, {
+            x: this.winbox.x,
+            y: this.winbox.y,
+            width: this.winbox.width,
+            height: this.winbox.height
+        });
     }
 
     _handleFullscreenResize() {

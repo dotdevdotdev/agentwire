@@ -73,11 +73,23 @@ export class ListWindow {
         const refreshBtn = this.container.querySelector('.list-refresh-btn');
         refreshBtn.addEventListener('click', () => this.refresh());
 
-        // Calculate position (cascade if not specified)
-        const existingWindows = document.querySelectorAll('.winbox').length;
-        const offset = existingWindows * 30;
-        const x = this.x ?? (100 + offset);
-        const y = this.y ?? (80 + offset);
+        // Load saved state or calculate cascade position
+        const savedState = desktop.loadWindowState(this.id);
+        let x, y, width, height;
+
+        if (savedState) {
+            x = savedState.x;
+            y = savedState.y;
+            width = savedState.width || this.width;
+            height = savedState.height || this.height;
+        } else {
+            const existingWindows = document.querySelectorAll('.winbox').length;
+            const offset = existingWindows * 30;
+            x = this.x ?? (100 + offset);
+            y = this.y ?? (80 + offset);
+            width = this.width;
+            height = this.height;
+        }
 
         // Create WinBox
         this.winbox = new WinBox({
@@ -87,14 +99,20 @@ export class ListWindow {
             root: this.root,
             x: x,
             y: y,
-            width: this.width,
-            height: this.height,
+            width: width,
+            height: height,
             minwidth: 300,
             minheight: 200,
             class: ['list-window-box'],
             onclose: () => this._onClose(),
             onfocus: () => {
                 desktop.setActiveWindow(this.id);
+            },
+            onmove: (x, y) => {
+                this._saveState();
+            },
+            onresize: (width, height) => {
+                this._saveState();
             }
         });
 
@@ -233,5 +251,19 @@ export class ListWindow {
         this.winbox = null;
         this.container = null;
         this.contentEl = null;
+    }
+
+    /**
+     * Save current window state to localStorage
+     */
+    _saveState() {
+        if (!this.winbox || desktop.isNarrowViewport()) return;
+
+        desktop.saveWindowState(this.id, {
+            x: this.winbox.x,
+            y: this.winbox.y,
+            width: this.winbox.width,
+            height: this.winbox.height
+        });
     }
 }

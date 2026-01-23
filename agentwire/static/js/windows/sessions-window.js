@@ -30,6 +30,22 @@ export function getSessionIconUrl(index) {
     return `/static/icons/sessions/${SESSION_ICONS[index % SESSION_ICONS.length]}`;
 }
 
+/**
+ * Get icon URL for a session by name (hash-based, consistent per session)
+ * Use this for terminal/chat windows where icon should be consistent for a session name.
+ * @param {string} sessionName - Session name
+ * @returns {string} Icon URL
+ */
+export function getSessionIconByName(sessionName) {
+    let hash = 0;
+    for (let i = 0; i < sessionName.length; i++) {
+        hash = ((hash << 5) - hash) + sessionName.charCodeAt(i);
+        hash = hash & hash;
+    }
+    const index = Math.abs(hash) % SESSION_ICONS.length;
+    return `/static/icons/sessions/${SESSION_ICONS[index]}`;
+}
+
 /** @type {ListWindow|null} */
 let sessionsWindow = null;
 

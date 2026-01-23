@@ -171,6 +171,12 @@ function setupMenuListeners() {
         openConfigWindow();
         closeSettingsDropdown();
     });
+    document.getElementById('resetWindowsMenuItem')?.addEventListener('click', () => {
+        desktop.clearWindowStates();
+        closeSettingsDropdown();
+        // Show brief confirmation
+        alert('Window positions reset. Changes take effect when windows are reopened.');
+    });
 
     // Settings dropdown toggle (click to open/close)
     const settingsMenu = document.getElementById('settingsMenu');

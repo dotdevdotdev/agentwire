@@ -10,7 +10,7 @@
  */
 
 import { desktop } from '../desktop-manager.js';
-import { getSessionIconUrl } from './sessions-window.js';
+import { getSessionIconByName } from './sessions-window.js';
 
 /** @type {ChatWindow|null} */
 let chatWindowInstance = null;
@@ -164,18 +164,25 @@ class ChatWindow {
             ? `${this._initialSession} (chat)`
             : 'Chat';
         const icon = this._initialSession
-            ? getSessionIconUrl(this._initialSession)
+            ? getSessionIconByName(this._initialSession)
             : '/static/favicon-green.jpeg';
+
+        // Load saved position/size (null on mobile)
+        const savedState = desktop.loadWindowState('chat');
+        const x = savedState?.x ?? 'center';
+        const y = savedState?.y ?? 'center';
+        const width = savedState?.width ?? 400;
+        const height = savedState?.height ?? 500;
 
         this.winbox = new WinBox({
             title: title,
             icon: icon,
             mount: this.container,
             root: document.getElementById('desktopArea'),
-            x: 'center',
-            y: 'center',
-            width: 400,
-            height: 500,
+            x: x,
+            y: y,
+            width: width,
+            height: height,
             minwidth: 300,
             minheight: 400,
             class: ['chat-window'],
@@ -186,12 +193,32 @@ class ChatWindow {
             onfocus: () => {
                 desktop.setActiveWindow('chat');
             },
+            onmove: () => {
+                this._saveWindowState();
+            },
+            onresize: () => {
+                this._saveWindowState();
+            },
             onfullscreen: (isFullscreen) => {
                 this._handleFullscreenChange(isFullscreen);
             }
         });
 
         desktop.registerWindow('chat', this.winbox);
+    }
+
+    /**
+     * Save window position/size to localStorage (skip on mobile)
+     */
+    _saveWindowState() {
+        if (!this.winbox || desktop.isNarrowViewport()) return;
+
+        desktop.saveWindowState('chat', {
+            x: this.winbox.x,
+            y: this.winbox.y,
+            width: this.winbox.width,
+            height: this.winbox.height
+        });
     }
 
     /**
@@ -321,7 +348,7 @@ class ChatWindow {
         // Update WinBox title and icon
         if (this.winbox) {
             this.winbox.setTitle(`${session} (chat)`);
-            this.winbox.setIcon(getSessionIconUrl(session));
+            this.winbox.setIcon(getSessionIconByName(session));
         }
 
         this._connectSessionWs();

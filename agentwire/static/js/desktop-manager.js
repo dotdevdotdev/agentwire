@@ -340,6 +340,73 @@ class DesktopManager {
         this.emit('window_unregistered', { id });
     }
 
+    // ============================================
+    // Window State Persistence
+    // ============================================
+
+    /** @type {string} localStorage key prefix for window states */
+    static WINDOW_STATE_PREFIX = 'agentwire_window_';
+
+    /**
+     * Save window position and size to localStorage.
+     * @param {string} id - Window identifier
+     * @param {Object} state - {x, y, width, height}
+     */
+    saveWindowState(id, state) {
+        try {
+            const key = DesktopManager.WINDOW_STATE_PREFIX + id;
+            localStorage.setItem(key, JSON.stringify(state));
+        } catch (e) {
+            console.warn('[DesktopManager] Failed to save window state:', e);
+        }
+    }
+
+    /**
+     * Load window position and size from localStorage.
+     * Returns null on narrow viewports (mobile uses maximized mode).
+     * @param {string} id - Window identifier
+     * @returns {Object|null} {x, y, width, height} or null
+     */
+    loadWindowState(id) {
+        // Don't restore position on mobile - it uses maximized mode
+        if (this.isNarrowViewport()) {
+            return null;
+        }
+
+        try {
+            const key = DesktopManager.WINDOW_STATE_PREFIX + id;
+            const data = localStorage.getItem(key);
+            if (data) {
+                const state = JSON.parse(data);
+                // Validate state has required fields
+                if (typeof state.x === 'number' && typeof state.y === 'number') {
+                    return state;
+                }
+            }
+        } catch (e) {
+            console.warn('[DesktopManager] Failed to load window state:', e);
+        }
+        return null;
+    }
+
+    /**
+     * Clear all saved window states from localStorage.
+     */
+    clearWindowStates() {
+        const prefix = DesktopManager.WINDOW_STATE_PREFIX;
+        const keysToRemove = [];
+
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && key.startsWith(prefix)) {
+                keysToRemove.push(key);
+            }
+        }
+
+        keysToRemove.forEach(key => localStorage.removeItem(key));
+        console.log(`[DesktopManager] Cleared ${keysToRemove.length} window state(s)`);
+    }
+
     /**
      * Get a registered window by ID.
      * @param {string} id - Window identifier
