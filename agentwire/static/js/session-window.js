@@ -381,8 +381,8 @@ export class SessionWindow {
                             console.log('[SessionWindow] JSON message received:', msg.type);
 
                             if (msg.type === 'audio' && msg.data) {
-                                console.log('[SessionWindow] Playing audio, data length:', msg.data.length);
-                                this._playAudio(msg.data);
+                                console.log('[SessionWindow] Audio received, forwarding to device');
+                                desktop._playAudio(msg.data, this.sessionId);
                                 return;
                             } else if (msg.type === 'tts_start') {
                                 console.log('[SessionWindow] TTS starting:', msg.text);
@@ -411,7 +411,7 @@ export class SessionWindow {
                 try {
                     const msg = JSON.parse(event.data);
                     if (msg.type === 'audio' && msg.data) {
-                        this._playAudio(msg.data);
+                        desktop._playAudio(msg.data, this.sessionId);
                     } else if (msg.type === 'output' && msg.data) {
                         // Convert ANSI to HTML and display
                         this.outputEl.innerHTML = this._ansiToHtml(msg.data);
@@ -933,38 +933,4 @@ export class SessionWindow {
         }
     }
 
-    // Audio Playback
-
-    async _playAudio(base64Data) {
-        try {
-            // Decode base64 to binary
-            const binaryString = atob(base64Data);
-            const bytes = new Uint8Array(binaryString.length);
-            for (let i = 0; i < binaryString.length; i++) {
-                bytes[i] = binaryString.charCodeAt(i);
-            }
-
-            // Create audio context if needed
-            if (!this._audioContext) {
-                this._audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            }
-
-            // Resume context if suspended (browser autoplay policy)
-            if (this._audioContext.state === 'suspended') {
-                await this._audioContext.resume();
-            }
-
-            // Decode and play
-            const audioBuffer = await this._audioContext.decodeAudioData(bytes.buffer);
-            const source = this._audioContext.createBufferSource();
-            source.buffer = audioBuffer;
-            source.connect(this._audioContext.destination);
-            source.start(0);
-
-            console.log('[SessionWindow] Playing audio:', audioBuffer.duration.toFixed(2), 'seconds');
-
-        } catch (err) {
-            console.error('[SessionWindow] Audio playback failed:', err);
-        }
-    }
 }

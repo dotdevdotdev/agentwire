@@ -49,6 +49,12 @@ class DesktopManager {
 
         /** @type {AudioContext|null} */
         this._audioContext = null;
+
+        /** @type {string|null} Device-level audio dedupe */
+        this._lastAudioHash = null;
+
+        /** @type {number} Timestamp of last audio play */
+        this._lastAudioTime = 0;
     }
 
     // ============================================
@@ -669,6 +675,19 @@ class DesktopManager {
             console.warn('[DesktopManager] No audio data to play');
             return;
         }
+
+        // Device-level dedupe: hash first 100 chars + length
+        const audioHash = `${base64Data.substring(0, 100)}-${base64Data.length}`;
+        const now = Date.now();
+
+        // Skip if same audio within 2 seconds (multiple windows, same device)
+        if (audioHash === this._lastAudioHash && (now - this._lastAudioTime) < 2000) {
+            console.log('[DesktopManager] Skipping duplicate audio (already playing on this device)');
+            return;
+        }
+
+        this._lastAudioHash = audioHash;
+        this._lastAudioTime = now;
 
         try {
             // Decode base64 to binary
