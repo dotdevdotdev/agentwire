@@ -3,7 +3,31 @@
  */
 
 import { ListWindow } from '../list-window.js';
-import { getSessionIconUrl } from './sessions-window.js';
+
+/** Project icon filenames (12 cute monsters, wraps for more projects) */
+const PROJECT_ICONS = [
+    'blob.png',
+    'cloud.png',
+    'crystal.png',
+    'cyclops.png',
+    'flame.png',
+    'fuzzy.png',
+    'horned.png',
+    'moon.png',
+    'slime.png',
+    'star.png',
+    'tentacle.png',
+    'winged.png'
+];
+
+/**
+ * Get icon URL for a project by list index (wraps after 12)
+ * @param {number} index - Position in the list
+ * @returns {string} Icon URL
+ */
+function getProjectIconUrl(index) {
+    return `/static/icons/projects/${PROJECT_ICONS[index % PROJECT_ICONS.length]}`;
+}
 
 /** @type {ListWindow|null} */
 let projectsWindow = null;
@@ -120,6 +144,12 @@ async function fetchProjects() {
     const data = await response.json();
     const projects = data.projects || [];
 
+    // Sort alphabetically so icons are stable, then assign by index
+    projects.sort((a, b) => a.name.localeCompare(b.name));
+    projects.forEach((p, index) => {
+        p.iconUrl = getProjectIconUrl(index);
+    });
+
     // Cache for detail view
     cachedProjects = projects;
 
@@ -184,7 +214,7 @@ function renderProjectItem(project) {
     }
 
     const typeClass = `type-${project.type || 'claude-bypass'}`;
-    const iconUrl = getSessionIconUrl(project.name);
+    const iconUrl = project.iconUrl;
     const pathDisplay = formatPath(project.path);
 
     const typeBadge = project.type && project.type !== 'bare'

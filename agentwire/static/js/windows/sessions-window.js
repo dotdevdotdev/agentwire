@@ -5,36 +5,29 @@
 import { ListWindow } from '../list-window.js';
 import { desktop } from '../desktop-manager.js';
 
-/** Session icon filenames (12 icons, wraps for more sessions) */
+/** Session icon filenames (12 animal silhouettes, wraps for more sessions) */
 const SESSION_ICONS = [
-    'agentwire.png',
-    'android.png',
+    'bear.png',
     'cat.png',
-    'crown.png',
-    'cyborg.png',
-    'drone.png',
+    'deer.png',
+    'eagle.png',
     'fox.png',
-    'mech.png',
-    'microphone.png',
+    'hawk.png',
+    'horse.png',
+    'lion.png',
     'owl.png',
-    'robot.png',
+    'rabbit.png',
+    'tiger.png',
     'wolf.png'
 ];
 
 /**
- * Get a consistent icon for a session based on its name
- * Uses hash so same session always gets same icon
- * @param {string} sessionName - Session name
+ * Get icon URL for a session by list index (wraps after 12)
+ * @param {number} index - Position in the list
  * @returns {string} Icon URL
  */
-export function getSessionIconUrl(sessionName) {
-    let hash = 0;
-    for (let i = 0; i < sessionName.length; i++) {
-        hash = ((hash << 5) - hash) + sessionName.charCodeAt(i);
-        hash = hash & hash;
-    }
-    const index = Math.abs(hash) % SESSION_ICONS.length;
-    return `/static/icons/sessions/${SESSION_ICONS[index]}`;
+export function getSessionIconUrl(index) {
+    return `/static/icons/sessions/${SESSION_ICONS[index % SESSION_ICONS.length]}`;
 }
 
 /** @type {ListWindow|null} */
@@ -86,7 +79,9 @@ export function openSessionsWindow() {
 async function fetchSessions() {
     const response = await fetch('/api/sessions/local');
     const data = await response.json();
-    return (data.sessions || []).map((s, index) => ({
+    // Sort alphabetically so icons are stable
+    const sessions = (data.sessions || []).sort((a, b) => a.name.localeCompare(b.name));
+    return sessions.map((s, index) => ({
         name: s.name,
         active: s.activity === 'active',
         type: s.type || 'bare',
@@ -95,8 +90,8 @@ async function fetchSessions() {
         hasVoice: s.type && (s.type.startsWith('claude-') || s.type.startsWith('opencode-')),
         // Attached client count for presence indicator
         clientCount: s.client_count || 0,
-        // Icon URL based on session name hash (consistent across windows)
-        iconUrl: getSessionIconUrl(s.name)
+        // Icon URL based on list index (wraps after 12)
+        iconUrl: getSessionIconUrl(index)
     }));
 }
 

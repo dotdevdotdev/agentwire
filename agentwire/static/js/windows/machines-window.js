@@ -3,7 +3,31 @@
  */
 
 import { ListWindow } from '../list-window.js';
-import { getSessionIconUrl } from './sessions-window.js';
+
+/** Machine icon filenames (12 robot/android icons, wraps for more machines) */
+const MACHINE_ICONS = [
+    'android.png',
+    'automaton.png',
+    'bot.png',
+    'cyborg.png',
+    'droid.png',
+    'drone.png',
+    'guardian.png',
+    'mech.png',
+    'probe.png',
+    'robot.png',
+    'sentinel.png',
+    'unit.png'
+];
+
+/**
+ * Get icon URL for a machine by list index (wraps after 12)
+ * @param {number} index - Position in the list
+ * @returns {string} Icon URL
+ */
+function getMachineIconUrl(index) {
+    return `/static/icons/machines/${MACHINE_ICONS[index % MACHINE_ICONS.length]}`;
+}
 
 /** @type {ListWindow|null} */
 let machinesWindow = null;
@@ -46,7 +70,10 @@ export function openMachinesWindow() {
 async function fetchMachines() {
     const response = await fetch('/api/machines');
     const machines = await response.json();
-    return Array.isArray(machines) ? machines : [];
+    if (!Array.isArray(machines)) return [];
+    // Sort alphabetically so icons are stable
+    machines.sort((a, b) => a.id.localeCompare(b.id));
+    return machines.map((m, index) => ({ ...m, iconUrl: getMachineIconUrl(index) }));
 }
 
 /**
@@ -58,7 +85,7 @@ function renderMachineItem(machine) {
     const isOnline = machine.status === 'online';
     const statusClass = isOnline ? 'online' : 'offline';
     const localTag = machine.local ? '<span class="machine-tag local">local</span>' : '';
-    const iconUrl = getSessionIconUrl(machine.id);
+    const iconUrl = machine.iconUrl;
 
     return `
         <div class="machine-card">
