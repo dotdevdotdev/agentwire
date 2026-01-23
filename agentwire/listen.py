@@ -321,7 +321,7 @@ def stop_recording(session: str, voice_prompt: bool = True, type_at_cursor: bool
 
         # Build message
         if voice_prompt:
-            full_text = f"[Voice input - respond with say command] {text}"
+            full_text = f"[Voice input - respond using: agentwire say "your response"] {text}"
         else:
             full_text = text
 

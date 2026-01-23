@@ -59,8 +59,8 @@ async function fetchSessions() {
         active: s.activity === 'active',
         type: s.type || 'bare',
         path: s.path || null,
-        // Chat button shown for Claude session types (not bare)
-        hasVoice: s.type && s.type.startsWith('claude-'),
+        // Chat button shown for agent session types (not bare)
+        hasVoice: s.type && (s.type.startsWith('claude-') || s.type.startsWith('opencode-')),
         // Attached client count for presence indicator
         clientCount: s.client_count || 0
     }));

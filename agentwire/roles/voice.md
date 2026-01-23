@@ -10,7 +10,7 @@ You have access to a TTS voice layer for conversational communication.
 
 ## Voice Input
 
-When you see `[Voice input - respond with say command]` at the start of a message, the user is speaking to you via push-to-talk. Respond with the `say` command.
+When you see `[Voice input - respond using: agentwire say "your response"]` at the start of a message, the user is speaking to you via push-to-talk. Respond with the `say` command.
 
 ## Using Voice
 
