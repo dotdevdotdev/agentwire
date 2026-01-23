@@ -2448,6 +2448,23 @@ def cmd_new(args) -> int:
 
         agent_cmd = agent.command
 
+        # If agent command uses a local temp file, write content to remote
+        if agent.temp_file and agent_cmd:
+            try:
+                with open(agent.temp_file, 'r') as f:
+                    content = f.read()
+                # Create remote temp file with same content
+                remote_temp = f"/tmp/agentwire-prompt-{session_name.replace('/', '-')}.txt"
+                # Escape content for shell
+                escaped_content = content.replace("'", "'\"'\"'")
+                write_cmd = f"cat > {shlex.quote(remote_temp)} << 'AGENTWIRE_EOF'\n{content}\nAGENTWIRE_EOF"
+                result = _run_remote(machine_id, write_cmd)
+                if result.returncode == 0:
+                    # Replace local path with remote path in command
+                    agent_cmd = agent_cmd.replace(agent.temp_file, remote_temp)
+            except Exception as e:
+                print(f"Warning: Failed to write system prompt to remote: {e}", file=sys.stderr)
+
         # Create session - Agent starts immediately if not bare
         if agent_cmd:
             create_cmd = (
