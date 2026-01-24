@@ -867,12 +867,16 @@ def _start_tts_local(args) -> int:
     tts_config = config.get("tts", {})
     port = args.port or tts_config.get("port", 8100)
     host = args.host or tts_config.get("host", "0.0.0.0")
+    backend = getattr(args, "backend", None) or tts_config.get("backend", "chatterbox")
+
+    # Build backend flag
+    backend_flag = f" --backend {backend}" if backend != "chatterbox" else ""
 
     # Check if uvicorn is available in current environment
     try:
         import uvicorn  # noqa: F401
 
-        tts_cmd = f"agentwire tts serve --host {host} --port {port}"
+        tts_cmd = f"agentwire tts serve --host {host} --port {port}{backend_flag}"
     except ImportError:
         # TTS deps not in current env, try to find project venv
         # Look for agentwire project in common locations
@@ -889,13 +893,13 @@ def _start_tts_local(args) -> int:
                 break
 
         if venv_path:
-            tts_cmd = f"cd {venv_path} && source .venv/bin/activate && python -m agentwire tts serve --host {host} --port {port}"
+            tts_cmd = f"cd {venv_path} && source .venv/bin/activate && python -m agentwire tts serve --host {host} --port {port}{backend_flag}"
         else:
             print("Error: TTS dependencies (uvicorn) not found.", file=sys.stderr)
             print("Install with: uv pip install -e '.[tts]'", file=sys.stderr)
             return 1
 
-    print(f"Starting TTS server on {host}:{port}...")
+    print(f"Starting TTS server on {host}:{port} (backend: {backend})...")
     subprocess.run([
         "tmux", "new-session", "-d", "-s", session_name,
     ])
@@ -933,9 +937,13 @@ def _start_tts_remote(ssh_target: str, machine_id: str, args) -> int:
     tts_config = config.get("tts", {})
     port = args.port or tts_config.get("port", 8100)
     host = args.host or tts_config.get("host", "0.0.0.0")
+    backend = getattr(args, "backend", None) or tts_config.get("backend", "chatterbox")
+
+    # Build backend flag
+    backend_flag = f" --backend {backend}" if backend != "chatterbox" else ""
 
     # Build remote command - on remote machine, use agentwire tts serve
-    server_cmd = f"agentwire tts serve --host {host} --port {port}"
+    server_cmd = f"agentwire tts serve --host {host} --port {port}{backend_flag}"
 
     # Start remotely in tmux
     remote_cmd = f"tmux new-session -d -s {session_name} && tmux send-keys -t {session_name} {shlex.quote(server_cmd)} Enter"
@@ -1038,8 +1046,12 @@ def cmd_tts_serve(args) -> int:
     tts_config = config.get("tts", {})
     port = args.port or tts_config.get("port", 8100)
     host = args.host or tts_config.get("host", "0.0.0.0")
+    backend = getattr(args, "backend", None) or tts_config.get("backend", "chatterbox")
 
-    print(f"Starting TTS server on {host}:{port}...")
+    # Set backend via env var for the TTS server module
+    os.environ["TTS_BACKEND"] = backend
+
+    print(f"Starting TTS server on {host}:{port} (backend: {backend})...")
     uvicorn.run(
         "agentwire.tts_server:app",
         host=host,
@@ -6094,12 +6106,16 @@ def main() -> int:
     tts_start = tts_subparsers.add_parser("start", help="Start TTS server in tmux")
     tts_start.add_argument("--port", type=int, help="Server port (default: 8100)")
     tts_start.add_argument("--host", type=str, help="Server host (default: 0.0.0.0)")
+    tts_start.add_argument("--backend", type=str, choices=["chatterbox", "qwen-0.6b", "qwen-1.7b"],
+                           help="TTS backend (default: chatterbox)")
     tts_start.set_defaults(func=cmd_tts_start)
 
     # tts serve (run in foreground)
     tts_serve = tts_subparsers.add_parser("serve", help="Run TTS server in foreground")
     tts_serve.add_argument("--port", type=int, help="Server port (default: 8100)")
     tts_serve.add_argument("--host", type=str, help="Server host (default: 0.0.0.0)")
+    tts_serve.add_argument("--backend", type=str, choices=["chatterbox", "qwen-0.6b", "qwen-1.7b"],
+                           help="TTS backend (default: chatterbox)")
     tts_serve.set_defaults(func=cmd_tts_serve)
 
     # tts stop

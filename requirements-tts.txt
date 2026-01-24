@@ -8,8 +8,11 @@
 torch>=2.0.0
 torchaudio>=2.0.0
 
-# TTS Engine
+# TTS Engines
+# Chatterbox (default)
 git+https://github.com/resemble-ai/chatterbox.git
+# Qwen3-TTS (optional - use --backend qwen-0.6b or qwen-1.7b)
+qwen-tts
 
 # Speech-to-Text (for /transcribe endpoint)
 faster-whisper

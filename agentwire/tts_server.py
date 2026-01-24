@@ -1,20 +1,28 @@
 #!/usr/bin/env python3
-"""AgentWire TTS Server - Chatterbox TTS with Voice Cloning + Whisper Transcription
+"""AgentWire TTS Server - Multi-backend TTS with Voice Cloning + Whisper Transcription
 
-This is the canonical TTS server for AgentWire. Run via:
-    agentwire tts start       # Start in tmux session
-    agentwire tts stop        # Stop the server
-    agentwire tts status      # Check status
+Supported backends:
+  - chatterbox: Chatterbox Turbo TTS (default)
+  - qwen-0.6b: Qwen3-TTS 0.6B model
+  - qwen-1.7b: Qwen3-TTS 1.7B model
+
+Run via:
+    agentwire tts start                    # Start with default backend
+    agentwire tts start --backend qwen-0.6b # Start with Qwen3-TTS 0.6B
+    agentwire tts stop                     # Stop the server
+    agentwire tts status                   # Check status
 
 Or run directly:
-    uvicorn agentwire.tts_server:app --host 0.0.0.0 --port 8100
+    TTS_BACKEND=qwen-1.7b uvicorn agentwire.tts_server:app --host 0.0.0.0 --port 8100
 """
 
 import io
 import os
 import tempfile
+from abc import ABC, abstractmethod
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Optional
 
 import torch
 import torchaudio
@@ -27,33 +35,190 @@ from pydantic import BaseModel
 torch.backends.cudnn.benchmark = True  # Auto-tune for input sizes
 torch.set_float32_matmul_precision('high')  # TensorFloat-32 on Ampere GPUs
 
+# Backend selection via env var (set by CLI)
+TTS_BACKEND = os.environ.get("TTS_BACKEND", "chatterbox")
+
 # Global model references
-model = None
+tts_engine: Optional["TTSEngine"] = None
 whisper_model = None
 
 # Voice profiles directory (supports VOICES_DIR env var for Docker)
 VOICES_DIR = Path(os.environ.get("VOICES_DIR", str(Path.home() / ".agentwire" / "voices")))
 
 
+# === TTS Engine Abstraction ===
+
+class TTSEngine(ABC):
+    """Abstract base class for TTS backends."""
+
+    @property
+    @abstractmethod
+    def name(self) -> str:
+        """Human-readable backend name."""
+        pass
+
+    @property
+    @abstractmethod
+    def sample_rate(self) -> int:
+        """Output sample rate in Hz."""
+        pass
+
+    @abstractmethod
+    def generate(
+        self,
+        text: str,
+        voice_path: Optional[str] = None,
+        exaggeration: float = 0.0,
+        cfg_weight: float = 0.0,
+    ) -> torch.Tensor:
+        """Generate audio from text.
+
+        Args:
+            text: Text to synthesize
+            voice_path: Path to voice reference audio for cloning
+            exaggeration: Expression exaggeration (backend-specific)
+            cfg_weight: CFG weight (backend-specific)
+
+        Returns:
+            Audio tensor of shape (1, samples)
+        """
+        pass
+
+
+class ChatterboxEngine(TTSEngine):
+    """Chatterbox Turbo TTS backend."""
+
+    def __init__(self):
+        from chatterbox.tts_turbo import ChatterboxTurboTTS
+        print("Loading Chatterbox Turbo model...")
+        self._model = ChatterboxTurboTTS.from_pretrained(device="cuda")
+        print(f"Chatterbox loaded! Sample rate: {self._model.sr}")
+
+    @property
+    def name(self) -> str:
+        return "Chatterbox Turbo"
+
+    @property
+    def sample_rate(self) -> int:
+        return self._model.sr
+
+    def generate(
+        self,
+        text: str,
+        voice_path: Optional[str] = None,
+        exaggeration: float = 0.0,
+        cfg_weight: float = 0.0,
+    ) -> torch.Tensor:
+        return self._model.generate(
+            text,
+            audio_prompt_path=voice_path,
+            exaggeration=exaggeration,
+            cfg_weight=cfg_weight,
+        )
+
+
+class QwenTTSEngine(TTSEngine):
+    """Qwen3-TTS backend (0.6B or 1.7B)."""
+
+    def __init__(self, model_size: str = "0.6b"):
+        from qwen_tts import Qwen3TTSModel
+
+        model_id = f"Qwen/Qwen3-TTS-12Hz-{model_size.upper()}-Base"
+        print(f"Loading Qwen3-TTS {model_size.upper()} model...")
+
+        # Check for FlashAttention support
+        try:
+            import flash_attn  # noqa: F401
+            attn_impl = "flash_attention_2"
+            print("  Using FlashAttention 2")
+        except ImportError:
+            attn_impl = "sdpa"
+            print("  Using SDPA (install flash-attn for better performance)")
+
+        self._model = Qwen3TTSModel.from_pretrained(
+            model_id,
+            device_map="cuda:0",
+            dtype=torch.bfloat16,
+            attn_implementation=attn_impl,
+        )
+        self._model_size = model_size
+        # Qwen3-TTS outputs at 24kHz
+        self._sample_rate = 24000
+        print(f"Qwen3-TTS {model_size.upper()} loaded! Sample rate: {self._sample_rate}")
+
+    @property
+    def name(self) -> str:
+        return f"Qwen3-TTS {self._model_size.upper()}"
+
+    @property
+    def sample_rate(self) -> int:
+        return self._sample_rate
+
+    def generate(
+        self,
+        text: str,
+        voice_path: Optional[str] = None,
+        exaggeration: float = 0.0,
+        cfg_weight: float = 0.0,
+    ) -> torch.Tensor:
+        # Qwen3-TTS voice cloning uses reference audio + transcript
+        if voice_path:
+            # For voice cloning, we need the reference audio
+            # Qwen expects the transcript of the reference audio too,
+            # but we don't have it stored. Use empty string and let it infer.
+            wavs, sr = self._model.generate(
+                text=text,
+                ref_audio=voice_path,
+                ref_text="",  # Will be inferred
+                language="English",
+            )
+        else:
+            # No voice cloning - use default voice
+            wavs, sr = self._model.generate(
+                text=text,
+                language="English",
+            )
+
+        # Return as (1, samples) tensor
+        if isinstance(wavs, list):
+            wavs = wavs[0]
+        if wavs.dim() == 1:
+            wavs = wavs.unsqueeze(0)
+        return wavs
+
+
+def create_tts_engine(backend: str) -> TTSEngine:
+    """Factory function to create TTS engine by name."""
+    if backend == "chatterbox":
+        return ChatterboxEngine()
+    elif backend == "qwen-0.6b":
+        return QwenTTSEngine("0.6b")
+    elif backend == "qwen-1.7b":
+        return QwenTTSEngine("1.7b")
+    else:
+        raise ValueError(f"Unknown TTS backend: {backend}. Options: chatterbox, qwen-0.6b, qwen-1.7b")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Load models on startup."""
-    global model, whisper_model
+    global tts_engine, whisper_model
     VOICES_DIR.mkdir(parents=True, exist_ok=True)
 
-    print("Loading Chatterbox Turbo model...")
+    print(f"TTS Backend: {TTS_BACKEND}")
     print(f"  cuDNN benchmark: {torch.backends.cudnn.benchmark}")
     print(f"  TF32 matmul: {torch.get_float32_matmul_precision()}")
-    from chatterbox.tts_turbo import ChatterboxTurboTTS
-    model = ChatterboxTurboTTS.from_pretrained(device="cuda")
-    print(f"TTS model loaded! Sample rate: {model.sr}")
+
+    tts_engine = create_tts_engine(TTS_BACKEND)
+    print(f"TTS engine: {tts_engine.name}")
 
     print("Loading Whisper model (large-v3)...")
     whisper_model = WhisperModel("large-v3", device="cuda", compute_type="float16")
     print("Whisper model loaded!")
 
     print(f"Voices directory: {VOICES_DIR}")
-    print("Paralinguistic tags supported: [laugh], [chuckle], [cough], [sigh], [gasp]")
+    if TTS_BACKEND == "chatterbox":
+        print("Paralinguistic tags supported: [laugh], [chuckle], [cough], [sigh], [gasp]")
     yield
     print("Shutting down...")
 
@@ -74,23 +239,23 @@ async def generate_tts(request: TTSRequest):
     if not request.text.strip():
         raise HTTPException(status_code=400, detail="Text cannot be empty")
 
-    audio_prompt_path = None
+    voice_path = None
     if request.voice:
-        voice_path = VOICES_DIR / f"{request.voice}.wav"
-        if not voice_path.exists():
+        voice_file = VOICES_DIR / f"{request.voice}.wav"
+        if not voice_file.exists():
             raise HTTPException(status_code=404, detail=f"Voice '{request.voice}' not found")
-        audio_prompt_path = str(voice_path)
+        voice_path = str(voice_file)
 
     try:
-        wav = model.generate(
+        wav = tts_engine.generate(
             request.text,
-            audio_prompt_path=audio_prompt_path,
+            voice_path=voice_path,
             exaggeration=request.exaggeration,
             cfg_weight=request.cfg_weight,
         )
 
         buffer = io.BytesIO()
-        torchaudio.save(buffer, wav, model.sr, format="wav")
+        torchaudio.save(buffer, wav, tts_engine.sample_rate, format="wav")
         buffer.seek(0)
 
         return StreamingResponse(
@@ -169,7 +334,9 @@ async def health():
     """Health check."""
     return {
         "status": "ok",
-        "tts_loaded": model is not None,
+        "backend": TTS_BACKEND,
+        "tts_loaded": tts_engine is not None,
+        "tts_engine": tts_engine.name if tts_engine else None,
         "whisper_loaded": whisper_model is not None
     }
 
