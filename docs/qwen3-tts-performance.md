@@ -14,11 +14,23 @@
 | Qwen3-TTS-12Hz-0.6B-Base | ~6.7GB | Faster, more consistent |
 | Qwen3-TTS-12Hz-1.7B-Base | ~8.6GB | Higher quality, preferred |
 
-## Baseline Performance (Jan 2026)
+## Backend Comparison (Jan 2026)
 
-Test: `agentwire say -v dotdev "Testing message with one sentence."`
+Test: `agentwire say "Hey there, let me tell you about this cool feature." -v <voice>`
 
-### 1.7B Model (Preferred)
+| Backend | Time | Notes |
+|---------|------|-------|
+| **chatterbox** | ~6-8s | **Fastest**, recommended default |
+| qwen-custom (streaming) | ~10-12s | Preset voices + emotion |
+| qwen-custom (non-streaming) | ~15s | Preset voices + emotion |
+| qwen-design | ~10-14s | Voice from description |
+| qwen-base-1.7b | ~20s | Highest quality cloning |
+
+**Recommendation:** Use `chatterbox` as default (~3x faster than qwen-base). Use qwen backends for voice design or when higher quality is needed.
+
+## Qwen Model Performance Details
+
+### 1.7B Model
 
 | Configuration | Avg Time | Best | Worst | Notes |
 |---------------|----------|------|-------|-------|
@@ -37,6 +49,16 @@ Test: `agentwire say -v dotdev "Testing message with one sentence."`
 - Mode: `reduce-overhead` torch.compile
 - Backend: SDPA (FlashAttention available but not providing speedup)
 - GPU optimizations: cuDNN benchmark, TF32 matmul
+
+## Venv Hot-Swap
+
+Switching between venv families requires server restart:
+
+| Switch | Action |
+|--------|--------|
+| qwen ↔ qwen | Hot-swap (no restart) |
+| chatterbox ↔ chatterbox | Hot-swap (no restart) |
+| qwen ↔ chatterbox | Auto-restart (~15-30s) |
 
 ## Potential Further Optimizations
 

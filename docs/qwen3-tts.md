@@ -218,16 +218,97 @@ wavs, sr = model.generate_voice_clone(
 
 ## Integration with AgentWire
 
-Currently using Base model for voice cloning. To add VoiceDesign or CustomVoice:
+All Qwen3-TTS models are now integrated via the modular TTS architecture with hot-swap support.
 
-1. Load appropriate model variant
-2. Add new endpoint or modify existing `/tts` endpoint
-3. Accept `instruct` parameter for emotion/style control
+### Available Backends
 
-**Potential enhancements:**
-- Add `/tts/design` endpoint for voice generation from description
-- Add `instruct` parameter to existing `/tts` for emotion control with clones
-- Pre-generate character voices with VoiceDesign, store as cloneable references
+| Backend | Engine | Use Case |
+|---------|--------|----------|
+| `chatterbox` | Chatterbox Turbo | **Default** - fastest (~6s), paralinguistic tags |
+| `qwen-base-0.6b` | Qwen3-TTS 0.6B Base | Lighter voice cloning |
+| `qwen-base-1.7b` | Qwen3-TTS 1.7B Base | Higher quality voice cloning (~20s) |
+| `qwen-design` | Qwen3-TTS VoiceDesign | Design voices from text descriptions (~10s) |
+| `qwen-custom` | Qwen3-TTS CustomVoice | Preset voices with emotion control |
+
+### CLI Usage
+
+```bash
+# Default (chatterbox) - fastest
+agentwire say "Hello world" -v dotdev
+
+# Voice cloning with qwen (higher quality)
+agentwire say "Hello" --backend qwen-base-1.7b -v myvoice
+
+# Design a new voice
+agentwire say "Test this voice" --backend qwen-design --instruct "description"
+
+# Preset voice with emotion
+agentwire say "I am excited!" --backend qwen-custom -v Ryan --instruct "very enthusiastic"
+
+# Paralinguistic tags (chatterbox only)
+agentwire say "Ha! [laugh] That is funny [sigh]" -v jeremy
+```
+
+### Venv Hot-Swap
+
+Chatterbox and Qwen require different Python dependencies. The system automatically handles this:
+
+- **Same venv family** → hot-swap (no restart)
+  - `qwen-base-0.6b` ↔ `qwen-base-1.7b` ↔ `qwen-design` ↔ `qwen-custom`
+  - `chatterbox` ↔ `chatterbox-streaming`
+- **Different venv family** → auto-restart server with correct venv
+  - `chatterbox` ↔ any qwen backend
+
+### Voice Design Workflow
+
+Create persistent character voices:
+
+```bash
+# 1. Experiment with voice descriptions
+agentwire say "Test phrase" --backend qwen-design --instruct "Young woman, Brooklyn accent, confident"
+
+# 2. When you like one, generate a longer reference (via API)
+curl -X POST http://localhost:8100/tts \
+  -H "Content-Type: application/json" \
+  -d '{"text": "Intro text for the voice...", "backend": "qwen-design", "instruct": "your description"}' \
+  -o /tmp/newvoice.wav
+
+# 3. Upload as voice clone
+curl -X POST http://localhost:8100/voices/newvoice -F "file=@/tmp/newvoice.wav"
+
+# 4. Use with any cloning backend
+agentwire say "Hello" --backend chatterbox -v newvoice
+agentwire say "Hello" --backend qwen-base-1.7b -v newvoice
+```
+
+### Voice Design Prompts That Work Well
+
+| Voice Type | Instruct |
+|------------|----------|
+| Tech enthusiast woman | "Young woman with naturally high-pitched voice, speaks with rising intonation at end of phrases, friendly and enthusiastic but natural, slight vocal fry, American accent" |
+| Sarcastic Southern guy | "Laid-back young man, dry sarcastic tone, slightly bored, deadpan delivery with subtle humor, New Orleans accent, Southern drawl" |
+| Brooklyn woman | "Young woman in her twenties, Brooklyn New York accent, confident and flirty, streetwise attitude, slightly husky voice" |
+| Latina cop | "Young Latina woman, slight Spanish accent, authoritative but warm, professional cop demeanor, clear and direct speech" |
+| Soothing doctor | "Middle-aged woman, soothing and calming voice, trained speaker with strong downward inflections, soft quick asides between emphasized statements, warm and reassuring, gentle but controlled delivery" |
+| British wizard | "Old British man, raspy weathered voice, wise wizard, mysterious and knowing, speaks slowly with gravitas, hints of gravel in throat" |
+| California surfer | "Young man in his twenties, deep male voice, California surfer accent, slow relaxed speech, elongated vowels, Jeff Spicoli vibes" |
+
+**Tips:**
+- Specify gender and age explicitly ("young man", "middle-aged woman")
+- Include accent details ("Brooklyn", "New Orleans", "British")
+- Describe delivery style ("deadpan", "enthusiastic", "soothing")
+- Mention speech patterns ("rising intonation", "downward inflections", "slow and deliberate")
+
+### Performance Benchmarks (RTX 3080)
+
+| Backend | Voice Type | Time |
+|---------|------------|------|
+| chatterbox | voice clone | ~6-8s |
+| qwen-custom | preset + emotion | ~10-12s |
+| qwen-design | from description | ~10-14s |
+| qwen-base-1.7b | voice clone | ~20s |
+
+**Recommendation:** Use `chatterbox` as default for speed. Use `qwen-design` for creating new voices, then clone them for daily use with `chatterbox`.
 
 ## Resources
 
