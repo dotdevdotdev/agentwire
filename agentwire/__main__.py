@@ -852,8 +852,20 @@ def cmd_portal_restart(args) -> int:
 # === TTS Commands ===
 
 
-def _start_tts_local(args) -> int:
-    """Start TTS server locally in tmux."""
+def _get_venv_for_backend(backend: str) -> str:
+    """Get the venv family required for a backend."""
+    if backend.startswith("chatterbox"):
+        return "chatterbox"
+    return "qwen"
+
+
+def _start_tts_local(args, venv_override: str | None = None) -> int:
+    """Start TTS server locally in tmux.
+
+    Args:
+        args: Parsed CLI arguments
+        venv_override: Force specific venv (used for restart after venv_mismatch)
+    """
     session_name = get_tts_session_name()
 
     if tmux_session_exists(session_name):
@@ -867,35 +879,34 @@ def _start_tts_local(args) -> int:
     tts_config = config.get("tts", {})
     port = args.port or tts_config.get("port", 8100)
     host = args.host or tts_config.get("host", "0.0.0.0")
+    backend = getattr(args, "backend", None) or tts_config.get("backend", "chatterbox")
 
-    # Check if uvicorn is available in current environment
-    try:
-        import uvicorn  # noqa: F401
+    # Determine venv family
+    venv = venv_override or _get_venv_for_backend(backend)
 
-        tts_cmd = f"agentwire tts serve --host {host} --port {port}"
-    except ImportError:
-        # TTS deps not in current env, try to find project venv
-        # Look for agentwire project in common locations
-        possible_paths = [
-            get_source_dir(),
-            Path("/usr/local/share/agentwire"),  # System-wide install location
-            Path.cwd(),
-        ]
-        venv_path = None
-        for p in possible_paths:
-            venv = p / ".venv" / "bin" / "activate"
-            if venv.exists():
-                venv_path = p
-                break
+    # Find the source directory and appropriate venv
+    source_dir = get_source_dir()
+    if not source_dir:
+        print("Error: Cannot find agentwire source directory.", file=sys.stderr)
+        return 1
 
-        if venv_path:
-            tts_cmd = f"cd {venv_path} && source .venv/bin/activate && python -m agentwire tts serve --host {host} --port {port}"
-        else:
-            print("Error: TTS dependencies (uvicorn) not found.", file=sys.stderr)
-            print("Install with: uv pip install -e '.[tts]'", file=sys.stderr)
-            return 1
+    # Map venv family to venv directory name
+    venv_name = f".venv-{venv}" if venv != "default" else ".venv"
+    venv_path = source_dir / venv_name / "bin" / "activate"
 
-    print(f"Starting TTS server on {host}:{port}...")
+    if not venv_path.exists():
+        print(f"Error: Venv not found: {venv_path}", file=sys.stderr)
+        print(f"Create it with: cd {source_dir} && uv venv {venv_name}", file=sys.stderr)
+        return 1
+
+    # Build command with venv
+    tts_cmd = (
+        f"cd {source_dir} && "
+        f"source {venv_name}/bin/activate && "
+        f"python -m agentwire tts serve --host {host} --port {port} --backend {backend} --venv {venv}"
+    )
+
+    print(f"Starting TTS server on {host}:{port} (backend: {backend}, venv: {venv})...")
     subprocess.run([
         "tmux", "new-session", "-d", "-s", session_name,
     ])
@@ -933,9 +944,13 @@ def _start_tts_remote(ssh_target: str, machine_id: str, args) -> int:
     tts_config = config.get("tts", {})
     port = args.port or tts_config.get("port", 8100)
     host = args.host or tts_config.get("host", "0.0.0.0")
+    backend = getattr(args, "backend", None) or tts_config.get("backend", "chatterbox")
+
+    # Build backend flag
+    backend_flag = f" --backend {backend}" if backend != "chatterbox" else ""
 
     # Build remote command - on remote machine, use agentwire tts serve
-    server_cmd = f"agentwire tts serve --host {host} --port {port}"
+    server_cmd = f"agentwire tts serve --host {host} --port {port}{backend_flag}"
 
     # Start remotely in tmux
     remote_cmd = f"tmux new-session -d -s {session_name} && tmux send-keys -t {session_name} {shlex.quote(server_cmd)} Enter"
@@ -1038,8 +1053,19 @@ def cmd_tts_serve(args) -> int:
     tts_config = config.get("tts", {})
     port = args.port or tts_config.get("port", 8100)
     host = args.host or tts_config.get("host", "0.0.0.0")
+    backend = getattr(args, "backend", None) or tts_config.get("backend", "chatterbox")
 
-    print(f"Starting TTS server on {host}:{port}...")
+    # Determine venv family (explicit or auto-detect from backend)
+    venv = getattr(args, "venv", None)
+    if not venv:
+        # Auto-detect from backend
+        venv = "chatterbox" if backend.startswith("chatterbox") else "qwen"
+
+    # Set env vars for the TTS server module
+    os.environ["DEFAULT_BACKEND"] = backend
+    os.environ["CURRENT_VENV"] = venv
+
+    print(f"Starting TTS server on {host}:{port} (backend: {backend}, venv: {venv})...")
     uvicorn.run(
         "agentwire.tts_server:app",
         host=host,
@@ -1075,6 +1101,36 @@ def cmd_tts_stop(args) -> int:
 
     print(f"TTS runs on {machine_id}, stopping remotely...")
     return _stop_tts_remote(ssh_target, machine_id)
+
+
+def cmd_tts_restart(args) -> int:
+    """Restart TTS server with optional venv override.
+
+    Used by CLI when venv_mismatch occurs during TTS request.
+    """
+    from .network import NetworkContext
+
+    ctx = NetworkContext.from_config()
+    session_name = get_tts_session_name()
+
+    # Get venv override if specified
+    venv_override = getattr(args, "venv", None)
+
+    if ctx.is_local("tts"):
+        # Stop if running
+        if tmux_session_exists(session_name):
+            print("Stopping TTS server...")
+            subprocess.run(["tmux", "kill-session", "-t", session_name])
+            # Brief pause to ensure clean shutdown
+            import time
+            time.sleep(1)
+
+        # Start with new venv
+        return _start_tts_local(args, venv_override=venv_override)
+
+    # Remote TTS - not yet implemented for venv switching
+    print("Remote TTS restart with venv switching not yet supported.", file=sys.stderr)
+    return 1
 
 
 def cmd_tts_status(args) -> int:
@@ -1543,25 +1599,31 @@ def _local_say_runpod(
     exaggeration: float,
     cfg_weight: float,
     tts_config: dict,
+    backend: str | None = None,
+    instruct: str | None = None,
+    language: str = "English",
+    stream: bool = False,
 ) -> int:
-    """Generate TTS via RunPod API and play locally.
+    """Generate TTS via RunPod API or local TTS server.
 
     Works with runpod backend - calls the API directly.
-    Falls back to chatterbox HTTP if that's the backend.
+    Falls back to HTTP TTS server for other backends.
     """
+    config_backend = tts_config.get("backend", "none")
 
-    backend = tts_config.get("backend", "none")
-
-    if backend == "runpod":
+    if config_backend == "runpod":
         return _local_say_runpod_api(text, voice, exaggeration, cfg_weight, tts_config)
-    elif backend == "chatterbox":
-        # Use the old HTTP-based local TTS
+    elif config_backend in ("chatterbox", "local"):
+        # Use HTTP-based local TTS server (supports hot-swap)
         from .network import NetworkContext
         ctx = NetworkContext.from_config()
         tts_url = ctx.get_service_url("tts", use_tunnel=True)
-        return _local_say(text, voice, exaggeration, cfg_weight, tts_url)
+        return _local_say(
+            text, voice, exaggeration, cfg_weight, tts_url,
+            backend=backend, instruct=instruct, language=language, stream=stream
+        )
     else:
-        print(f"TTS backend '{backend}' not supported for local playback", file=sys.stderr)
+        print(f"TTS backend '{config_backend}' not supported for local playback", file=sys.stderr)
         return 1
 
 
@@ -1688,6 +1750,12 @@ def cmd_say(args) -> int:
     exaggeration = args.exaggeration if args.exaggeration is not None else tts_config.get("exaggeration", 0.5)
     cfg_weight = args.cfg if args.cfg is not None else tts_config.get("cfg_weight", 0.5)
 
+    # New parameters for modular TTS
+    backend = getattr(args, 'backend', None)
+    instruct = getattr(args, 'instruct', None)
+    language = getattr(args, 'language', "English")
+    stream = getattr(args, 'stream', False)
+
     # Determine session name (priority: flag > tmux session > path inference)
     # Tmux session is more accurate than path for forked/named sessions like "anna-fork-1"
     session = args.session or _get_current_tmux_session() or _infer_session_from_path()
@@ -1705,7 +1773,10 @@ def cmd_say(args) -> int:
             return _remote_say(text, actual_session, portal_url)
 
     # No portal connections (or no session) - generate locally
-    return _local_say_runpod(text, voice, exaggeration, cfg_weight, tts_config)
+    return _local_say_runpod(
+        text, voice, exaggeration, cfg_weight, tts_config,
+        backend=backend, instruct=instruct, language=language, stream=stream
+    )
 
 
 def cmd_alert(args) -> int:
@@ -1811,19 +1882,94 @@ def _handle_voice_notifications(text: str, voice: str, args, session: str | None
             pass  # Don't fail the say command if notification fails
 
 
-def _local_say(text: str, voice: str, exaggeration: float, cfg_weight: float, tts_url: str) -> int:
+def _restart_tts_for_venv(venv: str, backend: str) -> bool:
+    """Restart TTS server with specific venv (non-interactive).
+
+    Returns True if restart succeeded, False otherwise.
+    """
+    import time
+    session_name = get_tts_session_name()
+    config = load_config()
+    tts_config = config.get("tts", {})
+    port = tts_config.get("port", 8100)
+    host = tts_config.get("host", "0.0.0.0")
+
+    # Stop existing server
+    if tmux_session_exists(session_name):
+        subprocess.run(["tmux", "kill-session", "-t", session_name], capture_output=True)
+        time.sleep(1)
+
+    # Find source directory and venv
+    source_dir = get_source_dir()
+    if not source_dir:
+        print("Error: Cannot find agentwire source directory.", file=sys.stderr)
+        return False
+
+    venv_name = f".venv-{venv}"
+    venv_path = source_dir / venv_name / "bin" / "activate"
+
+    if not venv_path.exists():
+        print(f"Error: Venv not found: {venv_path}", file=sys.stderr)
+        return False
+
+    # Start server in tmux (non-interactive)
+    tts_cmd = (
+        f"cd {source_dir} && "
+        f"source {venv_name}/bin/activate && "
+        f"python -m agentwire tts serve --host {host} --port {port} --backend {backend} --venv {venv}"
+    )
+
+    subprocess.run(["tmux", "new-session", "-d", "-s", session_name], capture_output=True)
+    subprocess.run(["tmux", "send-keys", "-t", session_name, tts_cmd, "Enter"], capture_output=True)
+
+    # Wait for server to be ready
+    import urllib.request
+    url = f"http://{host}:{port}/health"
+    for _ in range(30):  # Wait up to 30 seconds
+        time.sleep(1)
+        try:
+            with urllib.request.urlopen(url, timeout=2) as resp:
+                if resp.status == 200:
+                    return True
+        except Exception:
+            pass
+
+    print("Warning: Server may not be fully ready yet.", file=sys.stderr)
+    return True  # Continue anyway, it might just be slow to load models
+
+
+def _local_say(
+    text: str,
+    voice: str,
+    exaggeration: float,
+    cfg_weight: float,
+    tts_url: str,
+    backend: str | None = None,
+    instruct: str | None = None,
+    language: str = "English",
+    stream: bool = False,
+    _retry: bool = False,
+) -> int:
     """Generate TTS locally and play via system audio."""
     import tempfile
     import urllib.request
 
     try:
-        # Request audio from chatterbox
-        data = json.dumps({
+        # Build request payload
+        payload = {
             "text": text,
             "voice": voice,
             "exaggeration": exaggeration,
             "cfg_weight": cfg_weight,
-        }).encode()
+            "language": language,
+            "stream": stream,
+        }
+        if backend:
+            payload["backend"] = backend
+        if instruct:
+            payload["instruct"] = instruct
+
+        data = json.dumps(payload).encode()
 
         req = urllib.request.Request(
             f"{tts_url}/tts",
@@ -1831,7 +1977,7 @@ def _local_say(text: str, voice: str, exaggeration: float, cfg_weight: float, tt
             headers={"Content-Type": "application/json"},
         )
 
-        with urllib.request.urlopen(req, timeout=30) as response:
+        with urllib.request.urlopen(req, timeout=60) as response:
             audio_data = response.read()
 
         # Save to temp file and play
@@ -1856,6 +2002,32 @@ def _local_say(text: str, voice: str, exaggeration: float, cfg_weight: float, tt
         # Clean up
         Path(temp_path).unlink(missing_ok=True)
         return 0
+
+    except urllib.error.HTTPError as e:
+        # Check for venv_mismatch error (422)
+        if e.code == 422 and not _retry:
+            try:
+                error_body = json.loads(e.read().decode())
+                if error_body.get("error") == "venv_mismatch":
+                    required_venv = error_body.get("required_venv")
+                    target_backend = error_body.get("backend", backend)
+                    print(f"Backend '{target_backend}' requires venv '{required_venv}'. Restarting TTS server...")
+
+                    if _restart_tts_for_venv(required_venv, target_backend):
+                        print("TTS server restarted. Retrying...")
+                        return _local_say(
+                            text, voice, exaggeration, cfg_weight, tts_url,
+                            backend=target_backend, instruct=instruct, language=language,
+                            stream=stream, _retry=True
+                        )
+                    else:
+                        print("Failed to restart TTS server.", file=sys.stderr)
+                        return 1
+            except Exception:
+                pass
+
+        print(f"TTS request failed: {e}", file=sys.stderr)
+        return 1
 
     except urllib.error.URLError as e:
         print(f"TTS server not reachable: {e}", file=sys.stderr)
@@ -6094,17 +6266,38 @@ def main() -> int:
     tts_start = tts_subparsers.add_parser("start", help="Start TTS server in tmux")
     tts_start.add_argument("--port", type=int, help="Server port (default: 8100)")
     tts_start.add_argument("--host", type=str, help="Server host (default: 0.0.0.0)")
+    tts_start.add_argument("--backend", type=str,
+                           choices=["chatterbox", "chatterbox-streaming", "qwen-base-0.6b", "qwen-base-1.7b", "qwen-design", "qwen-custom"],
+                           help="TTS backend (default: chatterbox)")
     tts_start.set_defaults(func=cmd_tts_start)
 
     # tts serve (run in foreground)
     tts_serve = tts_subparsers.add_parser("serve", help="Run TTS server in foreground")
     tts_serve.add_argument("--port", type=int, help="Server port (default: 8100)")
     tts_serve.add_argument("--host", type=str, help="Server host (default: 0.0.0.0)")
+    tts_serve.add_argument("--backend", type=str,
+                           choices=["chatterbox", "chatterbox-streaming", "qwen-base-0.6b", "qwen-base-1.7b", "qwen-design", "qwen-custom"],
+                           help="TTS backend (default: chatterbox)")
+    tts_serve.add_argument("--venv", type=str,
+                           choices=["chatterbox", "qwen"],
+                           help="Which venv family is running (for hot-swap detection)")
     tts_serve.set_defaults(func=cmd_tts_serve)
 
     # tts stop
     tts_stop = tts_subparsers.add_parser("stop", help="Stop TTS server")
     tts_stop.set_defaults(func=cmd_tts_stop)
+
+    # tts restart
+    tts_restart = tts_subparsers.add_parser("restart", help="Restart TTS server (with optional venv switch)")
+    tts_restart.add_argument("--port", type=int, help="Server port (default: 8100)")
+    tts_restart.add_argument("--host", type=str, help="Server host (default: 0.0.0.0)")
+    tts_restart.add_argument("--backend", type=str,
+                             choices=["chatterbox", "chatterbox-streaming", "qwen-base-0.6b", "qwen-base-1.7b", "qwen-design", "qwen-custom"],
+                             help="TTS backend")
+    tts_restart.add_argument("--venv", type=str,
+                             choices=["chatterbox", "qwen"],
+                             help="Force specific venv family")
+    tts_restart.set_defaults(func=cmd_tts_restart)
 
     # tts status
     tts_status = tts_subparsers.add_parser("status", help="Check TTS status")
@@ -6161,8 +6354,12 @@ def main() -> int:
     say_parser.add_argument("text", nargs="*", help="Text to speak")
     say_parser.add_argument("-v", "--voice", type=str, help="Voice name")
     say_parser.add_argument("-s", "--session", type=str, help="Session name (auto-detected from .agentwire.yml or tmux)")
-    say_parser.add_argument("--exaggeration", type=float, help="Voice exaggeration (0-1)")
-    say_parser.add_argument("--cfg", type=float, help="CFG weight (0-1)")
+    say_parser.add_argument("--exaggeration", type=float, help="Voice exaggeration (0-1, Chatterbox)")
+    say_parser.add_argument("--cfg", type=float, help="CFG weight (0-1, Chatterbox)")
+    say_parser.add_argument("--backend", type=str, help="TTS backend (chatterbox, qwen-base-1.7b, qwen-design, qwen-custom)")
+    say_parser.add_argument("--instruct", type=str, help="Emotion/style instruction (qwen-design, qwen-custom)")
+    say_parser.add_argument("--language", type=str, default="English", help="Language (default: English)")
+    say_parser.add_argument("--stream", action="store_true", help="Use streaming mode (if backend supports)")
     say_parser.add_argument("--notify", type=str, metavar="SESSION", help="Also notify this session (sends message as input)")
     say_parser.add_argument("--no-auto-notify", action="store_true", help="Disable auto-notify to pane 0 when in worker pane")
     say_parser.set_defaults(func=cmd_say)
