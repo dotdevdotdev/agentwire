@@ -1048,8 +1048,8 @@ def cmd_tts_serve(args) -> int:
     host = args.host or tts_config.get("host", "0.0.0.0")
     backend = getattr(args, "backend", None) or tts_config.get("backend", "chatterbox")
 
-    # Set backend via env var for the TTS server module
-    os.environ["TTS_BACKEND"] = backend
+    # Set default backend via env var for the TTS server module
+    os.environ["DEFAULT_BACKEND"] = backend
 
     print(f"Starting TTS server on {host}:{port} (backend: {backend})...")
     uvicorn.run(
@@ -1555,25 +1555,31 @@ def _local_say_runpod(
     exaggeration: float,
     cfg_weight: float,
     tts_config: dict,
+    backend: str | None = None,
+    instruct: str | None = None,
+    language: str = "English",
+    stream: bool = False,
 ) -> int:
-    """Generate TTS via RunPod API and play locally.
+    """Generate TTS via RunPod API or local TTS server.
 
     Works with runpod backend - calls the API directly.
-    Falls back to chatterbox HTTP if that's the backend.
+    Falls back to HTTP TTS server for other backends.
     """
+    config_backend = tts_config.get("backend", "none")
 
-    backend = tts_config.get("backend", "none")
-
-    if backend == "runpod":
+    if config_backend == "runpod":
         return _local_say_runpod_api(text, voice, exaggeration, cfg_weight, tts_config)
-    elif backend == "chatterbox":
-        # Use the old HTTP-based local TTS
+    elif config_backend in ("chatterbox", "local"):
+        # Use HTTP-based local TTS server (supports hot-swap)
         from .network import NetworkContext
         ctx = NetworkContext.from_config()
         tts_url = ctx.get_service_url("tts", use_tunnel=True)
-        return _local_say(text, voice, exaggeration, cfg_weight, tts_url)
+        return _local_say(
+            text, voice, exaggeration, cfg_weight, tts_url,
+            backend=backend, instruct=instruct, language=language, stream=stream
+        )
     else:
-        print(f"TTS backend '{backend}' not supported for local playback", file=sys.stderr)
+        print(f"TTS backend '{config_backend}' not supported for local playback", file=sys.stderr)
         return 1
 
 
@@ -1700,6 +1706,12 @@ def cmd_say(args) -> int:
     exaggeration = args.exaggeration if args.exaggeration is not None else tts_config.get("exaggeration", 0.5)
     cfg_weight = args.cfg if args.cfg is not None else tts_config.get("cfg_weight", 0.5)
 
+    # New parameters for modular TTS
+    backend = getattr(args, 'backend', None)
+    instruct = getattr(args, 'instruct', None)
+    language = getattr(args, 'language', "English")
+    stream = getattr(args, 'stream', False)
+
     # Determine session name (priority: flag > tmux session > path inference)
     # Tmux session is more accurate than path for forked/named sessions like "anna-fork-1"
     session = args.session or _get_current_tmux_session() or _infer_session_from_path()
@@ -1717,7 +1729,10 @@ def cmd_say(args) -> int:
             return _remote_say(text, actual_session, portal_url)
 
     # No portal connections (or no session) - generate locally
-    return _local_say_runpod(text, voice, exaggeration, cfg_weight, tts_config)
+    return _local_say_runpod(
+        text, voice, exaggeration, cfg_weight, tts_config,
+        backend=backend, instruct=instruct, language=language, stream=stream
+    )
 
 
 def cmd_alert(args) -> int:
@@ -1823,19 +1838,37 @@ def _handle_voice_notifications(text: str, voice: str, args, session: str | None
             pass  # Don't fail the say command if notification fails
 
 
-def _local_say(text: str, voice: str, exaggeration: float, cfg_weight: float, tts_url: str) -> int:
+def _local_say(
+    text: str,
+    voice: str,
+    exaggeration: float,
+    cfg_weight: float,
+    tts_url: str,
+    backend: str | None = None,
+    instruct: str | None = None,
+    language: str = "English",
+    stream: bool = False,
+) -> int:
     """Generate TTS locally and play via system audio."""
     import tempfile
     import urllib.request
 
     try:
-        # Request audio from chatterbox
-        data = json.dumps({
+        # Build request payload
+        payload = {
             "text": text,
             "voice": voice,
             "exaggeration": exaggeration,
             "cfg_weight": cfg_weight,
-        }).encode()
+            "language": language,
+            "stream": stream,
+        }
+        if backend:
+            payload["backend"] = backend
+        if instruct:
+            payload["instruct"] = instruct
+
+        data = json.dumps(payload).encode()
 
         req = urllib.request.Request(
             f"{tts_url}/tts",
@@ -6106,7 +6139,8 @@ def main() -> int:
     tts_start = tts_subparsers.add_parser("start", help="Start TTS server in tmux")
     tts_start.add_argument("--port", type=int, help="Server port (default: 8100)")
     tts_start.add_argument("--host", type=str, help="Server host (default: 0.0.0.0)")
-    tts_start.add_argument("--backend", type=str, choices=["chatterbox", "qwen-0.6b", "qwen-1.7b"],
+    tts_start.add_argument("--backend", type=str,
+                           choices=["chatterbox", "chatterbox-streaming", "qwen-base-0.6b", "qwen-base-1.7b", "qwen-design", "qwen-custom"],
                            help="TTS backend (default: chatterbox)")
     tts_start.set_defaults(func=cmd_tts_start)
 
@@ -6114,7 +6148,8 @@ def main() -> int:
     tts_serve = tts_subparsers.add_parser("serve", help="Run TTS server in foreground")
     tts_serve.add_argument("--port", type=int, help="Server port (default: 8100)")
     tts_serve.add_argument("--host", type=str, help="Server host (default: 0.0.0.0)")
-    tts_serve.add_argument("--backend", type=str, choices=["chatterbox", "qwen-0.6b", "qwen-1.7b"],
+    tts_serve.add_argument("--backend", type=str,
+                           choices=["chatterbox", "chatterbox-streaming", "qwen-base-0.6b", "qwen-base-1.7b", "qwen-design", "qwen-custom"],
                            help="TTS backend (default: chatterbox)")
     tts_serve.set_defaults(func=cmd_tts_serve)
 
@@ -6177,8 +6212,12 @@ def main() -> int:
     say_parser.add_argument("text", nargs="*", help="Text to speak")
     say_parser.add_argument("-v", "--voice", type=str, help="Voice name")
     say_parser.add_argument("-s", "--session", type=str, help="Session name (auto-detected from .agentwire.yml or tmux)")
-    say_parser.add_argument("--exaggeration", type=float, help="Voice exaggeration (0-1)")
-    say_parser.add_argument("--cfg", type=float, help="CFG weight (0-1)")
+    say_parser.add_argument("--exaggeration", type=float, help="Voice exaggeration (0-1, Chatterbox)")
+    say_parser.add_argument("--cfg", type=float, help="CFG weight (0-1, Chatterbox)")
+    say_parser.add_argument("--backend", type=str, help="TTS backend (chatterbox, qwen-base-1.7b, qwen-design, qwen-custom)")
+    say_parser.add_argument("--instruct", type=str, help="Emotion/style instruction (qwen-design, qwen-custom)")
+    say_parser.add_argument("--language", type=str, default="English", help="Language (default: English)")
+    say_parser.add_argument("--stream", action="store_true", help="Use streaming mode (if backend supports)")
     say_parser.add_argument("--notify", type=str, metavar="SESSION", help="Also notify this session (sends message as input)")
     say_parser.add_argument("--no-auto-notify", action="store_true", help="Disable auto-notify to pane 0 when in worker pane")
     say_parser.set_defaults(func=cmd_say)
