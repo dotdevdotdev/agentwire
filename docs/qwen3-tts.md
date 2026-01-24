@@ -1,0 +1,222 @@
+# Qwen3-TTS Complete Guide
+
+> Living document. Update this, don't create new versions.
+
+Qwen3-TTS is an open-source TTS model from Alibaba's Qwen team, released January 2026. Trained on 5+ million hours of speech data across 10 languages.
+
+## Model Variants
+
+| Model | Size | VRAM | Use Case |
+|-------|------|------|----------|
+| `Qwen3-TTS-12Hz-1.7B-Base` | 1.7B | ~8.6GB | Voice cloning from reference audio |
+| `Qwen3-TTS-12Hz-0.6B-Base` | 0.6B | ~6.7GB | Lighter voice cloning |
+| `Qwen3-TTS-12Hz-1.7B-VoiceDesign` | 1.7B | ~8.6GB | Generate voices from text descriptions |
+| `Qwen3-TTS-12Hz-1.7B-CustomVoice` | 1.7B | ~8.6GB | 9 preset premium voices with emotion control |
+| `Qwen3-TTS-12Hz-0.6B-CustomVoice` | 0.6B | ~6.7GB | Lighter preset voices |
+
+**Currently deployed:** `Qwen3-TTS-12Hz-1.7B-Base` (voice cloning mode)
+
+## Supported Languages
+
+Chinese, English, Japanese, Korean, German, French, Russian, Portuguese, Spanish, Italian
+
+## API Methods
+
+### 1. Voice Cloning (Base Models)
+
+Clone any voice from a ~3-10 second reference audio:
+
+```python
+from qwen_tts import Qwen3TTSModel
+
+model = Qwen3TTSModel.from_pretrained("Qwen/Qwen3-TTS-12Hz-1.7B-Base", ...)
+
+# Basic voice clone
+wavs, sr = model.generate_voice_clone(
+    text="Hello, this is a test.",
+    language="English",
+    ref_audio="path/to/voice.wav",
+    ref_text="Optional transcript of reference",  # Improves prosody
+    x_vector_only_mode=True,  # Speaker embedding only (no transcript needed)
+)
+
+# Reusable clone prompt (efficient for multiple generations)
+prompt = model.create_voice_clone_prompt(
+    ref_audio="path/to/voice.wav",
+    ref_text="Optional transcript",
+    x_vector_only_mode=False,
+)
+
+wavs, sr = model.generate_voice_clone(
+    text=["Line 1", "Line 2", "Line 3"],
+    language=["English", "English", "English"],
+    voice_clone_prompt=prompt,  # Reuse without re-extracting
+)
+```
+
+**Parameters:**
+- `ref_audio`: File path, URL, numpy array, or (array, sample_rate) tuple
+- `ref_text`: Transcript of reference (improves prosody matching)
+- `x_vector_only_mode`: Use speaker embedding only (faster, no transcript needed)
+- `voice_clone_prompt`: Pre-computed prompt for efficiency
+
+### 2. Voice Design (VoiceDesign Model)
+
+Generate voices from natural language descriptions:
+
+```python
+model = Qwen3TTSModel.from_pretrained("Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign", ...)
+
+wavs, sr = model.generate_voice_design(
+    text="Your text to speak",
+    language="English",
+    instruct="Deep male voice with warm tone, speaking slowly and deliberately",
+)
+```
+
+**Example Instructions:**
+
+| Goal | Instruct |
+|------|----------|
+| Deep male narrator | "Deep male voice with gravelly undertones, speaks with authority" |
+| Young excited female | "High-pitched young female voice, excited and energetic" |
+| Calm meditation guide | "Soft, soothing female voice, speaks slowly with gentle pauses" |
+| Angry character | "Speak in an angry, frustrated tone with rising intensity" |
+| Sad/emotional | "Melancholic voice, speaks slowly with a hint of tears" |
+| News anchor | "Professional, clear enunciation, neutral tone, moderate pace" |
+
+**Controllable Attributes:**
+- Timbre: deep, bright, husky, mellow, edgy
+- Pitch: high, low, varied
+- Emotion: happy, sad, angry, excited, calm, fearful
+- Pace: slow, fast, varied rhythm
+- Age: young, mature, elderly
+- Gender: male, female
+- Style: professional, casual, dramatic, soothing
+
+### 3. Custom Voice (CustomVoice Model)
+
+Use preset premium voices with optional emotion/style instructions:
+
+```python
+model = Qwen3TTSModel.from_pretrained("Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice", ...)
+
+wavs, sr = model.generate_custom_voice(
+    text="Hello, how are you today?",
+    language="English",
+    speaker="Ryan",
+    instruct="Very happy and enthusiastic",  # Optional emotion
+)
+```
+
+**Preset Speakers:**
+
+| Speaker | Description | Native Language |
+|---------|-------------|-----------------|
+| Vivian | Bright, slightly edgy young female | Chinese |
+| Serena | Warm, gentle young female | Chinese |
+| Uncle_Fu | Seasoned male, low mellow timbre | Chinese |
+| Dylan | Youthful Beijing male, clear natural | Chinese (Beijing) |
+| Eric | Lively Chengdu male, husky bright | Chinese (Sichuan) |
+| Ryan | Dynamic male, strong rhythm | English |
+| Aiden | Sunny American male, clear midrange | English |
+| Ono_Anna | Playful Japanese female, light nimble | Japanese |
+| Sohee | Warm Korean female, rich emotion | Korean |
+
+All speakers can speak any of the 10 supported languages.
+
+## Streaming Support
+
+All models support streaming for low-latency applications (~97ms first packet):
+
+```python
+# Enable streaming
+wavs, sr = model.generate_voice_clone(
+    text="...",
+    non_streaming_mode=False,  # Enable streaming
+    ...
+)
+```
+
+## Advanced: Design → Clone Workflow
+
+Create a persistent character voice by combining VoiceDesign and Clone:
+
+```python
+# 1. Generate reference audio with VoiceDesign
+design_model = Qwen3TTSModel.from_pretrained("Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign", ...)
+ref_wavs, sr = design_model.generate_voice_design(
+    text="Hello, my name is Alex and I'm here to help you.",
+    language="English",
+    instruct="Young male tech enthusiast, friendly and approachable, clear voice",
+)
+soundfile.write("alex_reference.wav", ref_wavs[0], sr)
+
+# 2. Create reusable clone prompt from that reference
+clone_model = Qwen3TTSModel.from_pretrained("Qwen/Qwen3-TTS-12Hz-1.7B-Base", ...)
+alex_prompt = clone_model.create_voice_clone_prompt(
+    ref_audio="alex_reference.wav",
+    x_vector_only_mode=True,
+)
+
+# 3. Use the prompt for all future "Alex" lines
+wavs, sr = clone_model.generate_voice_clone(
+    text=["Line 1", "Line 2", "Line 3"],
+    language=["English", "English", "English"],
+    voice_clone_prompt=alex_prompt,
+)
+```
+
+## Generation Parameters
+
+Additional kwargs passed to HuggingFace generate:
+
+```python
+wavs, sr = model.generate_voice_clone(
+    text="...",
+    max_new_tokens=2048,  # Limit output length
+    top_p=0.9,            # Nucleus sampling
+    temperature=1.0,      # Sampling temperature
+    ...
+)
+```
+
+## Best Practices
+
+### Voice Cloning
+- Use 10-30 seconds of clean audio (not just the 3s minimum)
+- Minimize background noise in reference
+- Provide accurate transcript via `ref_text` for better prosody
+- Use `x_vector_only_mode=True` if transcript is unavailable
+
+### Voice Design
+- Be specific: "Deep male voice with slight rasp" > "male voice"
+- Include emotion: "speaks with excitement and energy"
+- Mention pace: "slow and deliberate" or "quick and energetic"
+- Describe persona: "wise elderly storyteller"
+
+### Performance
+- Use `x_vector_only_mode=True` for faster voice cloning
+- Create `voice_clone_prompt` once, reuse for multiple generations
+- 1.7B models have stronger emotion control than 0.6B
+- torch.compile with `reduce-overhead` helps inference speed
+
+## Integration with AgentWire
+
+Currently using Base model for voice cloning. To add VoiceDesign or CustomVoice:
+
+1. Load appropriate model variant
+2. Add new endpoint or modify existing `/tts` endpoint
+3. Accept `instruct` parameter for emotion/style control
+
+**Potential enhancements:**
+- Add `/tts/design` endpoint for voice generation from description
+- Add `instruct` parameter to existing `/tts` for emotion control with clones
+- Pre-generate character voices with VoiceDesign, store as cloneable references
+
+## Resources
+
+- [GitHub - QwenLM/Qwen3-TTS](https://github.com/QwenLM/Qwen3-TTS)
+- [HuggingFace Collection](https://huggingface.co/collections/Qwen/qwen3-tts)
+- [Technical Report (arXiv:2601.15621)](https://arxiv.org/html/2601.15621v1)
+- [Voice Design Demo](https://huggingface.co/spaces/Qwen/Qwen3-TTS-Voice-Design)
