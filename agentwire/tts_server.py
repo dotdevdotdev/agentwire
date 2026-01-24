@@ -44,10 +44,39 @@ torch.set_float32_matmul_precision("high")
 
 # Configuration via environment
 DEFAULT_BACKEND = os.environ.get("DEFAULT_BACKEND", "chatterbox")
+CURRENT_VENV = os.environ.get("CURRENT_VENV", "unknown")
 VOICES_DIR = Path(os.environ.get("VOICES_DIR", str(Path.home() / ".agentwire" / "voices")))
+
+# Backend family mapping - which venv each backend requires
+BACKEND_FAMILIES = {
+    "chatterbox": "chatterbox",
+    "chatterbox-streaming": "chatterbox",
+    "qwen-base-0.6b": "qwen",
+    "qwen-base-1.7b": "qwen",
+    "qwen-design": "qwen",
+    "qwen-custom": "qwen",
+}
 
 # Global Whisper model (separate from TTS engines)
 whisper_model = None
+
+
+def get_required_venv(backend: str) -> str:
+    """Get the venv family required for a backend."""
+    return BACKEND_FAMILIES.get(backend, "unknown")
+
+
+def check_venv_compatibility(backend: str) -> tuple[bool, str]:
+    """Check if current venv can run the requested backend.
+
+    Returns:
+        (compatible, required_venv)
+    """
+    required = get_required_venv(backend)
+    if CURRENT_VENV == "unknown":
+        # Unknown venv - try anyway
+        return True, required
+    return CURRENT_VENV == required, required
 
 
 def register_engines():
@@ -143,6 +172,22 @@ async def generate_tts(request: TTSRequest):
 
     # Determine which backend to use
     backend = request.backend or registry.current_name or DEFAULT_BACKEND
+
+    # Check if current venv can handle this backend
+    compatible, required_venv = check_venv_compatibility(backend)
+    if not compatible:
+        # Return special error that CLI can catch and handle
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=422,
+            content={
+                "error": "venv_mismatch",
+                "message": f"Backend '{backend}' requires venv '{required_venv}', but server is running in '{CURRENT_VENV}'",
+                "current_venv": CURRENT_VENV,
+                "required_venv": required_venv,
+                "backend": backend,
+            }
+        )
 
     try:
         # Hot-swap if needed
