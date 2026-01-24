@@ -148,10 +148,10 @@ class QwenTTSEngine(TTSEngine):
         # Try to compile the underlying model for faster inference
         try:
             if hasattr(self._model, 'model'):
-                print("  Applying torch.compile (max-autotune mode)...")
+                print("  Applying torch.compile (reduce-overhead mode)...")
                 self._model.model = torch.compile(
                     self._model.model,
-                    mode="max-autotune",
+                    mode="reduce-overhead",
                 )
                 print("  torch.compile applied!")
         except Exception as e:
