@@ -144,6 +144,19 @@ class QwenTTSEngine(TTSEngine):
         self._model_size = model_size
         # Qwen3-TTS outputs at 24kHz
         self._sample_rate = 24000
+
+        # Try to compile the underlying model for faster inference
+        try:
+            if hasattr(self._model, 'model'):
+                print("  Applying torch.compile (reduce-overhead mode)...")
+                self._model.model = torch.compile(
+                    self._model.model,
+                    mode="reduce-overhead",
+                )
+                print("  torch.compile applied!")
+        except Exception as e:
+            print(f"  torch.compile failed: {e}")
+
         print(f"Qwen3-TTS {model_size.upper()} loaded! Sample rate: {self._sample_rate}")
 
     @property
