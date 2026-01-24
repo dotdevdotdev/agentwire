@@ -161,30 +161,32 @@ class QwenTTSEngine(TTSEngine):
         exaggeration: float = 0.0,
         cfg_weight: float = 0.0,
     ) -> torch.Tensor:
-        # Qwen3-TTS voice cloning uses reference audio + transcript
-        if voice_path:
-            # For voice cloning, we need the reference audio
-            # Qwen expects the transcript of the reference audio too,
-            # but we don't have it stored. Use empty string and let it infer.
-            wavs, sr = self._model.generate(
-                text=text,
-                ref_audio=voice_path,
-                ref_text="",  # Will be inferred
-                language="English",
-            )
-        else:
-            # No voice cloning - use default voice
-            wavs, sr = self._model.generate(
-                text=text,
-                language="English",
-            )
+        import numpy as np
 
-        # Return as (1, samples) tensor
+        if not voice_path:
+            raise ValueError("Qwen3-TTS Base model requires a voice reference. Provide a voice name.")
+
+        # Use x_vector_only_mode=True for speaker embedding only (no transcript needed)
+        wavs, sr = self._model.generate_voice_clone(
+            text=text,
+            language="English",
+            ref_audio=voice_path,
+            x_vector_only_mode=True,
+        )
+
+        # Convert to tensor - wavs is List[np.ndarray]
         if isinstance(wavs, list):
-            wavs = wavs[0]
-        if wavs.dim() == 1:
-            wavs = wavs.unsqueeze(0)
-        return wavs
+            wav = wavs[0]
+        else:
+            wav = wavs
+
+        if isinstance(wav, np.ndarray):
+            wav = torch.from_numpy(wav)
+
+        if wav.dim() == 1:
+            wav = wav.unsqueeze(0)
+
+        return wav
 
 
 def create_tts_engine(backend: str) -> TTSEngine:
