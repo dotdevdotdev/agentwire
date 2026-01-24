@@ -181,6 +181,21 @@ wavs, sr = model.generate_voice_clone(
 )
 ```
 
+## Limitations vs Chatterbox
+
+| Feature | Qwen3-TTS | Chatterbox |
+|---------|-----------|------------|
+| Voice cloning | ✓ (3s min) | ✓ |
+| Paralinguistic tags (`[laugh]`, `[sigh]`, `[gasp]`) | ✗ | ✓ |
+| Emotion control (Base/clone) | ✗ | ✗ |
+| Emotion control (preset voices) | ✓ (CustomVoice) | ✗ |
+| Voice design from text | ✓ (VoiceDesign) | ✗ |
+| Multi-language | 10 languages | English only |
+| Voice quality | Higher | Good |
+| Speed (RTX 3080) | ~10s | ~5s |
+
+**Bottom line:** Qwen3-TTS has better quality and more features, but lacks Chatterbox's paralinguistic tags for non-verbal sounds.
+
 ## Best Practices
 
 ### Voice Cloning
