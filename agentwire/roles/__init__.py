@@ -1,0 +1,238 @@
+"""Role file parsing and merging for composable roles."""
+
+import re
+from dataclasses import dataclass, field
+from pathlib import Path
+
+
+@dataclass
+class RoleConfig:
+    """Configuration for a single role parsed from a markdown file."""
+
+    name: str
+    description: str = ""
+    instructions: str = ""  # markdown body after frontmatter
+    tools: list[str] = field(default_factory=list)  # whitelist
+    disallowed_tools: list[str] = field(default_factory=list)  # blacklist
+    model: str | None = None  # sonnet, opus, haiku, inherit
+    color: str | None = None  # UI hint
+
+
+@dataclass
+class MergedRole:
+    """Result of merging multiple roles together."""
+
+    tools: set[str]  # union of all tools
+    disallowed_tools: set[str]  # intersection (only block if ALL agree)
+    instructions: str  # concatenated
+    model: str | None  # last non-None model
+
+
+def parse_role_file(path: Path) -> RoleConfig | None:
+    """Parse a role markdown file with YAML frontmatter.
+
+    Expected format:
+        ---
+        name: worker
+        description: Autonomous code execution
+        disallowedTools: AskUserQuestion
+        model: inherit
+        ---
+
+        # Role instructions here...
+
+    Args:
+        path: Path to the role markdown file
+
+    Returns:
+        RoleConfig if parsing succeeds, None if file doesn't exist or is invalid
+    """
+    if not path.exists():
+        return None
+
+    try:
+        content = path.read_text()
+    except Exception:
+        return None
+
+    # Parse YAML frontmatter
+    frontmatter = {}
+    instructions = content
+
+    # Check for YAML frontmatter (starts with ---)
+    if content.startswith("---"):
+        # Find closing ---
+        end_match = re.search(r"\n---\s*\n", content[3:])
+        if end_match:
+            yaml_content = content[3:3 + end_match.start()]
+            instructions = content[3 + end_match.end():]
+
+            # Simple YAML parsing (handles key: value and key: [list])
+            for line in yaml_content.split("\n"):
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+
+                if ":" in line:
+                    key, value = line.split(":", 1)
+                    key = key.strip()
+                    value = value.strip()
+
+                    # Handle list values
+                    if value.startswith("[") and value.endswith("]"):
+                        # Parse simple array: [item1, item2]
+                        items = value[1:-1].split(",")
+                        value = [item.strip().strip("'\"") for item in items if item.strip()]
+                    elif value.startswith('"') and value.endswith('"'):
+                        value = value[1:-1]
+                    elif value.startswith("'") and value.endswith("'"):
+                        value = value[1:-1]
+
+                    frontmatter[key] = value
+
+    # Extract fields from frontmatter
+    name = frontmatter.get("name", path.stem)
+    description = frontmatter.get("description", "")
+    model = frontmatter.get("model")
+    color = frontmatter.get("color")
+
+    # Handle tools (can be string or list)
+    tools_raw = frontmatter.get("tools", [])
+    if isinstance(tools_raw, str):
+        tools = [t.strip() for t in tools_raw.split(",") if t.strip()]
+    else:
+        tools = tools_raw
+
+    # Handle disallowedTools (can be string or list)
+    disallowed_raw = frontmatter.get("disallowedTools", [])
+    if isinstance(disallowed_raw, str):
+        disallowed_tools = [t.strip() for t in disallowed_raw.split(",") if t.strip()]
+    else:
+        disallowed_tools = disallowed_raw
+
+    return RoleConfig(
+        name=name,
+        description=description,
+        instructions=instructions.strip(),
+        tools=tools,
+        disallowed_tools=disallowed_tools,
+        model=model if model != "inherit" else None,
+        color=color,
+    )
+
+
+def merge_roles(roles: list[RoleConfig]) -> MergedRole:
+    """Merge multiple roles into a single configuration.
+
+    Merge logic:
+    - tools: Union of all tools (deduplicated) - every tool any role needs is available
+    - disallowed_tools: Intersection - only block if ALL roles agree
+    - instructions: Concatenated with newlines
+    - model: Last non-None model wins
+
+    Args:
+        roles: List of RoleConfig objects to merge
+
+    Returns:
+        MergedRole with combined configuration
+    """
+    if not roles:
+        return MergedRole(tools=set(), disallowed_tools=set(), instructions="", model=None)
+
+    # Union of all tools (deduplicated)
+    tools: set[str] = set()
+    for r in roles:
+        if r.tools:
+            tools.update(r.tools)
+
+    # Intersection of disallowed tools - only block if ALL roles agree
+    disallowed: set[str] | None = None
+    for r in roles:
+        if r.disallowed_tools:
+            if disallowed is None:
+                disallowed = set(r.disallowed_tools)
+            else:
+                disallowed &= set(r.disallowed_tools)
+    disallowed = disallowed or set()
+
+    # Concatenate instructions
+    instructions = "\n\n".join(r.instructions for r in roles if r.instructions)
+
+    # Last non-None model wins
+    model = next((r.model for r in reversed(roles) if r.model), None)
+
+    return MergedRole(
+        tools=tools,
+        disallowed_tools=disallowed,
+        instructions=instructions,
+        model=model,
+    )
+
+
+def discover_role(name: str, project_path: Path | None = None) -> Path | None:
+    """Find a role file by name using discovery order.
+
+    Discovery order (first match wins):
+    1. Project: .agentwire/roles/{name}.md
+    2. User: ~/.agentwire/roles/{name}.md
+    3. Bundled: agentwire/roles/{name}.md (package)
+
+    Args:
+        name: Role name (without .md extension)
+        project_path: Optional project directory for project-level roles
+
+    Returns:
+        Path to role file if found, None otherwise
+    """
+    # 1. Project roles
+    if project_path:
+        project_role = project_path / ".agentwire" / "roles" / f"{name}.md"
+        if project_role.exists():
+            return project_role
+
+    # 2. User roles
+    user_role = Path.home() / ".agentwire" / "roles" / f"{name}.md"
+    if user_role.exists():
+        return user_role
+
+    # 3. Bundled roles (in package)
+    import importlib.resources
+    try:
+        files = importlib.resources.files("agentwire.roles")
+        role_path = files.joinpath(f"{name}.md")
+        if role_path.is_file():
+            return Path(str(role_path))
+    except Exception:
+        pass
+
+    return None
+
+
+def load_roles(
+    role_names: list[str],
+    project_path: Path | None = None,
+) -> tuple[list[RoleConfig], list[str]]:
+    """Load multiple roles by name.
+
+    Args:
+        role_names: List of role names to load
+        project_path: Optional project directory for project-level roles
+
+    Returns:
+        Tuple of (loaded roles, missing role names)
+    """
+    roles: list[RoleConfig] = []
+    missing: list[str] = []
+
+    for name in role_names:
+        path = discover_role(name, project_path)
+        if path:
+            role = parse_role_file(path)
+            if role:
+                roles.append(role)
+            else:
+                missing.append(name)
+        else:
+            missing.append(name)
+
+    return roles, missing
