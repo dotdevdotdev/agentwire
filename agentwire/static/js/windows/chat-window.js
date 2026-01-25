@@ -165,7 +165,7 @@ class ChatWindow {
             : 'Chat';
         const icon = this._initialSession
             ? getSessionIconByName(this._initialSession)
-            : '/static/agentwire-favicon-transparent.png';
+            : '/static/agentwire-favicon-green--transparent.png';
 
         // Load saved position/size (null on mobile)
         const savedState = desktop.loadWindowState('chat');
