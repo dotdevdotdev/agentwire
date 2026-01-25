@@ -265,6 +265,8 @@ export class SessionWindow {
             cursorBlink: true,
             fontSize: 14,
             fontFamily: '"FiraMono Nerd Font Mono", Menlo, Monaco, "Courier New", monospace',
+            altClickMovesCursor: false,
+            macOptionClickForcesSelection: true,  // Allow Option/Alt+drag for native selection (bypasses tmux mouse mode)
             theme: {
                 background: '#000',
                 foreground: '#e6edf3',
