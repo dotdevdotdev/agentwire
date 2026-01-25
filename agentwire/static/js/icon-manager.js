@@ -2,31 +2,12 @@
  * IconManager - Smart icon assignment with persistence
  *
  * Features:
+ * - Dynamic icon discovery: fetches available icons from server
  * - Name matching: item name matches icon filename → auto-assign
  * - Random assignment: no duplicates within a list
  * - localStorage persistence: icons stay consistent across refreshes
  * - User override: manual icon selection
  */
-
-// Available icons per category
-const ICON_SETS = {
-    sessions: [
-        'agentwire.jpeg', 'android.jpeg', 'bear.jpeg', 'cat.jpeg', 'crown.jpeg',
-        'cyborg.jpeg', 'deer.jpeg', 'drone.jpeg', 'eagle.jpeg', 'fox.jpeg',
-        'hawk.jpeg', 'horse.jpeg', 'lion.jpeg', 'mech.jpeg', 'microphone.jpeg',
-        'owl.jpeg', 'rabbit.jpeg', 'robot.jpeg', 'tiger.jpeg', 'wolf.jpeg'
-    ],
-    machines: [
-        'android.jpeg', 'automaton.jpeg', 'bot.jpeg', 'cyborg.jpeg', 'droid.jpeg',
-        'drone.jpeg', 'guardian.jpeg', 'mech.jpeg', 'probe.jpeg', 'robot.jpeg',
-        'sentinel.jpeg', 'unit.jpeg'
-    ],
-    projects: [
-        'blob.jpeg', 'cloud.jpeg', 'crystal.jpeg', 'cyclops.jpeg', 'flame.jpeg',
-        'fuzzy.jpeg', 'horned.jpeg', 'moon.jpeg', 'slime.jpeg', 'star.jpeg',
-        'tentacle.jpeg', 'winged.jpeg'
-    ]
-};
 
 /**
  * IconManager handles icon assignment for a specific category
@@ -38,8 +19,41 @@ export class IconManager {
     constructor(type) {
         this.type = type;
         this.storageKey = `agentwire_icons_${type}`;
-        this.availableIcons = ICON_SETS[type] || [];
+        this.availableIcons = [];
         this.basePath = `/static/icons/${type}/`;
+        this._iconsLoaded = false;
+        this._loadPromise = null;
+    }
+
+    /**
+     * Fetch available icons from server (cached after first call)
+     * @returns {Promise<string[]>} Array of icon filenames
+     */
+    async fetchIcons() {
+        if (this._iconsLoaded) {
+            return this.availableIcons;
+        }
+
+        // Prevent multiple concurrent fetches
+        if (this._loadPromise) {
+            return this._loadPromise;
+        }
+
+        this._loadPromise = (async () => {
+            try {
+                const response = await fetch(`/api/icons/${this.type}`);
+                if (response.ok) {
+                    this.availableIcons = await response.json();
+                }
+            } catch (e) {
+                console.warn(`[IconManager] Failed to fetch ${this.type} icons:`, e);
+            }
+            this._iconsLoaded = true;
+            this._loadPromise = null;
+            return this.availableIcons;
+        })();
+
+        return this._loadPromise;
     }
 
     /**
@@ -73,9 +87,10 @@ export class IconManager {
     /**
      * Get icon URL for a single item
      * @param {string} itemName - Item name
-     * @returns {string} Icon URL
+     * @returns {Promise<string>} Icon URL
      */
-    getIcon(itemName) {
+    async getIcon(itemName) {
+        await this.fetchIcons();
         const assignments = this.loadAssignments();
 
         // Check saved assignment
@@ -101,9 +116,10 @@ export class IconManager {
     /**
      * Get icons for a list of items (ensures no duplicates within the list)
      * @param {string[]} itemNames - Array of item names
-     * @returns {Object} Map of itemName → iconUrl
+     * @returns {Promise<Object>} Map of itemName → iconUrl
      */
-    getIconsForItems(itemNames) {
+    async getIconsForItems(itemNames) {
+        await this.fetchIcons();
         const assignments = this.loadAssignments();
         const result = {};
         const usedIcons = new Set();
@@ -161,9 +177,10 @@ export class IconManager {
     /**
      * Get available icons for picker UI
      * @param {string} currentItem - Currently selected item (to highlight its icon)
-     * @returns {Array} Array of { filename, url, isAssigned }
+     * @returns {Promise<Array>} Array of { filename, url, isAssigned }
      */
-    getAvailableIcons(currentItem = null) {
+    async getAvailableIcons(currentItem = null) {
+        await this.fetchIcons();
         const assignments = this.loadAssignments();
         const currentIcon = assignments[currentItem];
 
@@ -182,15 +199,27 @@ export class IconManager {
     }
 
     /**
+     * Force reload icons from server on next fetch
+     */
+    invalidateCache() {
+        this._iconsLoaded = false;
+        this._loadPromise = null;
+    }
+
+    /**
      * Find an icon that matches the item name
      * @param {string} itemName - Item name to match
      * @returns {string|null} Matching icon filename or null
      */
     _findNameMatch(itemName) {
-        const normalizedName = itemName.toLowerCase().replace(/[^a-z0-9]/g, '');
+        // Strip @machine suffix for remote sessions (e.g., "agentwire-tts@dotdev-pc" → "agentwire-tts")
+        const baseName = itemName.split('@')[0];
+        // Normalize: lowercase, remove non-alphanumeric (hyphens, etc.)
+        const normalizedName = baseName.toLowerCase().replace(/[^a-z0-9]/g, '');
 
         for (const icon of this.availableIcons) {
-            const iconName = icon.replace(/\.[^.]+$/, '').toLowerCase();
+            // Same normalization for icon filename
+            const iconName = icon.replace(/\.[^.]+$/, '').toLowerCase().replace(/[^a-z0-9]/g, '');
             if (iconName === normalizedName) {
                 return icon;
             }

@@ -25,7 +25,7 @@ export class IconPicker {
      * @param {string} itemName - Item to change icon for
      * @param {Function} onSelect - Callback when icon selected (receives iconFilename)
      */
-    show(itemName, onSelect) {
+    async show(itemName, onSelect) {
         this.currentItem = itemName;
         this.onSelect = onSelect;
 
@@ -34,12 +34,12 @@ export class IconPicker {
             this._createModal();
         }
 
-        // Populate icons
-        this._populateIcons();
-
-        // Show modal
+        // Show modal with loading state
         this.modal.classList.add('visible');
         this.modal.querySelector('.icon-picker-title').textContent = `Select icon for "${itemName}"`;
+
+        // Populate icons (async)
+        await this._populateIcons();
     }
 
     /**
@@ -94,14 +94,16 @@ export class IconPicker {
     /**
      * Populate the icon grid
      */
-    _populateIcons() {
+    async _populateIcons() {
         const grid = this.modal.querySelector('.icon-picker-grid');
-        const icons = this.iconManager.getAvailableIcons(this.currentItem);
+        grid.innerHTML = '<div class="icon-picker-loading">Loading icons...</div>';
+
+        const icons = await this.iconManager.getAvailableIcons(this.currentItem);
 
         grid.innerHTML = icons.map(icon => `
             <button class="icon-option ${icon.isAssigned ? 'selected' : ''}"
                     data-filename="${icon.filename}"
-                    title="${icon.filename.replace('.jpeg', '')}">
+                    title="${icon.filename.replace(/\.[^.]+$/, '')}">
                 <img src="${icon.url}" alt="${icon.filename}" />
             </button>
         `).join('');

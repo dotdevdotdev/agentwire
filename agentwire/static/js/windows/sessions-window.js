@@ -14,9 +14,9 @@ let iconPicker = null;
  * Get icon URL for a session by name (uses IconManager for persistence)
  * Use this for terminal/chat windows where icon should be consistent for a session name.
  * @param {string} sessionName - Session name
- * @returns {string} Icon URL
+ * @returns {Promise<string>} Icon URL
  */
-export function getSessionIconByName(sessionName) {
+export async function getSessionIconByName(sessionName) {
     return sessionIcons.getIcon(sessionName);
 }
 
@@ -159,7 +159,7 @@ async function fetchSessions() {
 
     // Get session names and assign icons (uses IconManager with persistence)
     const sessionNames = allSessions.map(s => s.name);
-    const iconUrls = sessionIcons.getIconsForItems(sessionNames);
+    const iconUrls = await sessionIcons.getIconsForItems(sessionNames);
 
     return allSessions.map((s) => ({
         name: s.name,

@@ -55,7 +55,7 @@ async function fetchMachines() {
     machines.sort((a, b) => a.id.localeCompare(b.id));
     // Get icons using IconManager (persistent, name-matched or random)
     const machineIds = machines.map(m => m.id);
-    const iconUrls = machineIcons.getIconsForItems(machineIds);
+    const iconUrls = await machineIcons.getIconsForItems(machineIds);
     return machines.map((m) => ({ ...m, iconUrl: iconUrls[m.id] }));
 }
 

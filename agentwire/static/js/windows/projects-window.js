@@ -129,7 +129,7 @@ async function fetchProjects() {
 
     // Get icons using IconManager (persistent, name-matched or random)
     const projectNames = projects.map(p => p.name);
-    const iconUrls = projectIcons.getIconsForItems(projectNames);
+    const iconUrls = await projectIcons.getIconsForItems(projectNames);
     projects.forEach((p) => {
         p.iconUrl = iconUrls[p.name];
     });

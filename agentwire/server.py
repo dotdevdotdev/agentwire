@@ -182,6 +182,8 @@ class AgentWireServer:
         self.app.router.add_post("/api/config", self.api_save_config)
         self.app.router.add_post("/api/config/reload", self.api_reload_config)
         self.app.router.add_post("/api/sessions/refresh", self.api_refresh_sessions)
+        # Icon listing for dynamic icon picker
+        self.app.router.add_get("/api/icons/{category}", self.api_icons)
         # Permission request handling (from Claude Code hook)
         # Note: respond route must come first as aiohttp matches in order
         self.app.router.add_post("/api/permission/{name:.+}/respond", self.api_permission_respond)
@@ -1867,6 +1869,24 @@ class AgentWireServer:
         """Get available TTS voices."""
         voices = await self._get_voices()
         return web.json_response(voices)
+
+    async def api_icons(self, request: web.Request) -> web.Response:
+        """Get list of icon files for a category (sessions, machines, projects)."""
+        category = request.match_info["category"]
+        if category not in ("sessions", "machines", "projects"):
+            return web.json_response({"error": "Invalid category"}, status=400)
+
+        icons_dir = Path(__file__).parent / "static" / "icons" / category
+        if not icons_dir.exists():
+            return web.json_response([])
+
+        # List image files (png, jpeg, jpg)
+        icons = []
+        for f in sorted(icons_dir.iterdir()):
+            if f.suffix.lower() in (".png", ".jpeg", ".jpg"):
+                icons.append(f.name)
+
+        return web.json_response(icons)
 
     async def api_machines(self, request: web.Request) -> web.Response:
         """Get list of all machines (local + configured remotes)."""
