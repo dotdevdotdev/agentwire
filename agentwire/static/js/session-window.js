@@ -463,7 +463,13 @@ export class SessionWindow {
             } else {
                 this._updateStatus('error', 'Connection lost');
             }
-            this._showDisconnectOverlay();
+
+            // Local sessions: close window when WebSocket closes (session died)
+            // Remote sessions: don't close - we detect disconnect via terminal output patterns
+            if (!this.machine) {
+                console.log(`[SessionWindow] Local session WebSocket closed, closing window`);
+                this.close();
+            }
         };
 
         // For terminal mode, send input to WebSocket
