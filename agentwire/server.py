@@ -940,6 +940,13 @@ class AgentWireServer:
                             data = await data_queue.get()
                             if data is None:  # EOF signal
                                 logger.info(f"[Terminal] Received EOF from PTY for {session_name}")
+                                # For remote sessions, send disconnect message before closing
+                                if is_remote and not ws.closed:
+                                    try:
+                                        await ws.send_json({"type": "remote_disconnected", "session": session_name})
+                                        logger.info(f"[Terminal] Sent remote_disconnected to browser for {session_name}")
+                                    except Exception as e:
+                                        logger.warning(f"[Terminal] Failed to send disconnect message: {e}")
                                 break
                             logger.debug(f"[Terminal] Read {len(data)} bytes from PTY for {session_name}")
                             if not ws.closed:
