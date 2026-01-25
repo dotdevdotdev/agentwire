@@ -999,13 +999,21 @@ class AgentWireServer:
                                     # Terminal input from browser
                                     input_data = payload.get("data", "")
                                     if input_data:
-                                        if master_fd is not None:
-                                            # Local: write to PTY master
-                                            os.write(master_fd, input_data.encode())
-                                        elif proc.stdin:
-                                            # Remote: write to subprocess stdin
-                                            proc.stdin.write(input_data.encode())
-                                            await proc.stdin.drain()
+                                        # Filter out terminal capability responses that xterm sends
+                                        # These look like: ESC[?1;2c (Primary DA) or ESC[>0;276;0c (Secondary DA)
+                                        # They get typed as input to Claude Code which is annoying
+                                        filtered_data = re.sub(r'\x1b\[\?[0-9;]*c', '', input_data)  # Primary DA
+                                        filtered_data = re.sub(r'\x1b\[>[0-9;]*c', '', filtered_data)  # Secondary DA
+                                        filtered_data = re.sub(r'\x1b\[[0-9;]*c', '', filtered_data)  # Generic DA
+
+                                        if filtered_data:
+                                            if master_fd is not None:
+                                                # Local: write to PTY master
+                                                os.write(master_fd, filtered_data.encode())
+                                            elif proc.stdin:
+                                                # Remote: write to subprocess stdin
+                                                proc.stdin.write(filtered_data.encode())
+                                                await proc.stdin.drain()
 
                                 elif msg_type == "resize":
                                     # Terminal resize
