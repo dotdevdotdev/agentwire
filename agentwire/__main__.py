@@ -71,7 +71,7 @@ def _check_config_exists() -> bool:
 class AgentCommand:
     """Result of building an agent command."""
     command: str  # The shell command to execute
-    role_instructions: str | None = None  # For OpenCode: prepend to first message (legacy)
+    role_instructions: str | None = None  # For OpenCode: prepend to first message
     temp_file: str | None = None  # Temp file to clean up after agent starts
     opencode_agent: str | None = None  # OpenCode agent name (if using --agent)
 
@@ -2497,7 +2497,7 @@ def cmd_list(args) -> int:
             if not machine_id:
                 continue
 
-            # Skip "local" machine (legacy Docker config)
+            # Skip "local" machine (reserved for future use)
             if machine_id == "local":
                 continue
 
