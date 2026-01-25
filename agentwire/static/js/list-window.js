@@ -26,7 +26,7 @@ export class ListWindow {
     constructor(options) {
         this.id = options.id;
         this.title = options.title;
-        this.icon = options.icon || '/static/favicon-green.jpeg';
+        this.icon = options.icon || '/static/agentwire-favicon-transparent.png';
         this.fetchData = options.fetchData;
         this.renderItem = options.renderItem;
         this.onItemAction = options.onItemAction || (() => {});
