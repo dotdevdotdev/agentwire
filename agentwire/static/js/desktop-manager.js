@@ -252,8 +252,24 @@ class DesktopManager {
                 break;
 
             case 'audio':
-                this._playAudio(msg.data, msg.session);
+                // Dashboard no longer receives audio data - only session-specific WebSockets do
+                // This case handles legacy or direct audio messages
+                if (msg.data) {
+                    this._playAudio(msg.data, msg.session);
+                }
                 this.emit('audio', { session: msg.session });
+                break;
+
+            case 'audio_playing':
+                // Lightweight notification that audio is playing (no data)
+                // Used for activity indicators without triggering playback
+                this.emit('audio', { session: msg.session });
+                break;
+
+            case 'audio_done':
+                // Server notification that audio playback should be complete
+                // Used for activity indicators on devices that didn't play the audio
+                this.emit('audio_ended', { session: msg.session });
                 break;
 
             default:
@@ -426,6 +442,26 @@ class DesktopManager {
      */
     hasWindow(id) {
         return this.windows.has(id);
+    }
+
+    /**
+     * Check if a session window (terminal/monitor) is open for a session.
+     * Used to prevent double audio playback from dashboard + session window.
+     * @param {string} session - Session name
+     * @returns {boolean}
+     */
+    _hasSessionWindow(session) {
+        // Session windows are registered with their session name as ID
+        // Also check for @machine variants
+        if (this.windows.has(session)) return true;
+
+        // Check if any window key starts with the session name (handles session@machine)
+        for (const key of this.windows.keys()) {
+            if (key === session || key.startsWith(`${session}@`)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

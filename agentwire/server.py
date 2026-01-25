@@ -3292,11 +3292,23 @@ projects:
             if audio_data:
                 # Prepend silence to prevent first syllable cutoff
                 audio_data = self._prepend_silence(audio_data, ms=300)
-                # Send base64 encoded audio to all clients
                 audio_b64 = base64.b64encode(audio_data).decode()
                 logger.info(f"[{session_name}] Broadcasting audio ({len(audio_b64)} bytes b64)")
+
+                # Send audio to session clients only (terminal/monitor/chat windows for this session)
+                # These have dedicated WebSocket connections to /ws/{session}
                 await self._broadcast(session, {"type": "audio", "session": session_name, "data": audio_b64})
-                await self.broadcast_dashboard("audio", {"session": session_name, "data": audio_b64})
+
+                # Notify dashboard that audio is playing (for activity indicators)
+                # but DON'T send the actual audio data - prevents double playback
+                # when user has both dashboard and session window open, or multiple dashboards
+                await self.broadcast_dashboard("audio_playing", {"session": session_name})
+
+                # Estimate audio duration and schedule audio_done notification
+                # WAV header: 44 bytes, then 16-bit stereo 24kHz = 96000 bytes/sec
+                audio_bytes = len(audio_data)
+                duration_sec = max(0.5, (audio_bytes - 44) / 96000)
+                asyncio.create_task(self._send_audio_done_delayed(session_name, duration_sec))
                 return True
             else:
                 logger.warning(f"[{session_name}] TTS returned no audio data")
@@ -3305,6 +3317,11 @@ projects:
         except Exception as e:
             logger.error(f"TTS failed for {session_name}: {e}")
             return False
+
+    async def _send_audio_done_delayed(self, session_name: str, delay_sec: float) -> None:
+        """Send audio_done to dashboard after estimated playback duration."""
+        await asyncio.sleep(delay_sec)
+        await self.broadcast_dashboard("audio_done", {"session": session_name})
 
 
 async def run_server(config: Config):
