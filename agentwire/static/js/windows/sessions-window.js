@@ -234,9 +234,9 @@ function formatPath(path) {
  */
 function handleSessionAction(action, item) {
     if (action === 'monitor') {
-        openSessionTerminal(item.name, 'monitor');
+        openSessionTerminal(item.name, 'monitor', item.machine);
     } else if (action === 'connect') {
-        openSessionTerminal(item.name, 'terminal');
+        openSessionTerminal(item.name, 'terminal', item.machine);
     } else if (action === 'chat') {
         openSessionChat(item.name);
     } else if (action === 'close') {
@@ -249,10 +249,11 @@ function handleSessionAction(action, item) {
  * Uses the exported function from desktop.js for proper taskbar integration
  * @param {string} session - Session name
  * @param {string} mode - 'monitor' or 'terminal'
+ * @param {string|null} machine - Remote machine ID (optional)
  */
-function openSessionTerminal(session, mode) {
+function openSessionTerminal(session, mode, machine = null) {
     import('../desktop.js').then(({ openSessionTerminal: openTerminal }) => {
-        openTerminal(session, mode);
+        openTerminal(session, mode, machine);
     });
 }
 
