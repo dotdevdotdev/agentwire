@@ -1107,30 +1107,46 @@ def cmd_tts_restart(args) -> int:
     """Restart TTS server with optional venv override.
 
     Used by CLI when venv_mismatch occurs during TTS request.
+    Supports both local and remote TTS servers.
     """
     from .network import NetworkContext
+    import time
 
     ctx = NetworkContext.from_config()
     session_name = get_tts_session_name()
 
-    # Get venv override if specified
+    # Get overrides from args
     venv_override = getattr(args, "venv", None)
+    backend = getattr(args, "backend", None)
 
     if ctx.is_local("tts"):
         # Stop if running
         if tmux_session_exists(session_name):
             print("Stopping TTS server...")
             subprocess.run(["tmux", "kill-session", "-t", session_name])
-            # Brief pause to ensure clean shutdown
-            import time
             time.sleep(1)
 
         # Start with new venv
         return _start_tts_local(args, venv_override=venv_override)
 
-    # Remote TTS - not yet implemented for venv switching
-    print("Remote TTS restart with venv switching not yet supported.", file=sys.stderr)
-    return 1
+    # Remote TTS
+    ssh_target = ctx.get_ssh_target("tts")
+    machine_id = ctx.get_machine_for_service("tts")
+
+    if not ssh_target or not machine_id:
+        print("TTS configured for remote machine but machine not found.", file=sys.stderr)
+        return 1
+
+    # Determine backend and venv
+    if not backend:
+        config = load_config()
+        backend = config.get("tts", {}).get("backend", "chatterbox")
+
+    venv = venv_override or _get_venv_for_backend(backend)
+
+    print(f"Restarting TTS on {machine_id} with backend '{backend}'...")
+    success = _restart_tts_remote_for_venv(ssh_target, machine_id, venv, backend)
+    return 0 if success else 1
 
 
 def cmd_tts_status(args) -> int:
@@ -1882,8 +1898,8 @@ def _handle_voice_notifications(text: str, voice: str, args, session: str | None
             pass  # Don't fail the say command if notification fails
 
 
-def _restart_tts_for_venv(venv: str, backend: str) -> bool:
-    """Restart TTS server with specific venv (non-interactive).
+def _restart_tts_local_for_venv(venv: str, backend: str) -> bool:
+    """Restart local TTS server with specific venv (non-interactive).
 
     Returns True if restart succeeded, False otherwise.
     """
@@ -1936,6 +1952,79 @@ def _restart_tts_for_venv(venv: str, backend: str) -> bool:
 
     print("Warning: Server may not be fully ready yet.", file=sys.stderr)
     return True  # Continue anyway, it might just be slow to load models
+
+
+def _restart_tts_remote_for_venv(ssh_target: str, machine_id: str, venv: str, backend: str) -> bool:
+    """Restart remote TTS server with specific venv/backend.
+
+    Returns True if restart succeeded, False otherwise.
+    """
+    import time
+    import urllib.request
+    session_name = get_tts_session_name()
+    config = load_config()
+    tts_config = config.get("tts", {})
+    port = tts_config.get("port", 8100)
+    host = tts_config.get("host", "0.0.0.0")
+
+    # Stop existing server
+    kill_cmd = f"tmux kill-session -t {session_name} 2>/dev/null || true"
+    subprocess.run(["ssh", ssh_target, kill_cmd], capture_output=True)
+    time.sleep(1)
+
+    # Start with new backend (venv is determined by backend on remote)
+    # Use agentwire tts start which handles venv selection
+    start_cmd = f"~/.local/bin/agentwire tts start --backend {backend}"
+    result = subprocess.run(
+        ["ssh", ssh_target, start_cmd],
+        capture_output=True,
+        text=True,
+    )
+
+    if result.returncode != 0 and "already running" not in result.stdout:
+        # Check if it failed for a real reason (not just "already running")
+        if "not a terminal" not in result.stdout and "not a terminal" not in result.stderr:
+            print(f"Failed to start TTS on {machine_id}: {result.stderr}", file=sys.stderr)
+            return False
+
+    # Wait for server to be ready (check via tunnel)
+    url = f"http://localhost:{port}/health"
+    for _ in range(60):  # Wait up to 60 seconds for remote (models take time)
+        time.sleep(1)
+        try:
+            with urllib.request.urlopen(url, timeout=2) as resp:
+                if resp.status == 200:
+                    return True
+        except Exception:
+            pass
+
+    print("Warning: Remote server may not be fully ready yet.", file=sys.stderr)
+    return True  # Continue anyway
+
+
+def _restart_tts_for_venv(venv: str, backend: str) -> bool:
+    """Restart TTS server with specific venv (non-interactive).
+
+    Handles both local and remote TTS servers.
+    Returns True if restart succeeded, False otherwise.
+    """
+    from .network import NetworkContext
+
+    ctx = NetworkContext.from_config()
+
+    if ctx.is_local("tts"):
+        return _restart_tts_local_for_venv(venv, backend)
+
+    # Remote TTS
+    ssh_target = ctx.get_ssh_target("tts")
+    machine_id = ctx.get_machine_for_service("tts")
+
+    if not ssh_target or not machine_id:
+        print("TTS configured for remote machine but machine not found.", file=sys.stderr)
+        return False
+
+    print(f"Restarting TTS on {machine_id} with backend '{backend}'...")
+    return _restart_tts_remote_for_venv(ssh_target, machine_id, venv, backend)
 
 
 def _local_say(
