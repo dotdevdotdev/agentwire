@@ -19,7 +19,8 @@ export class IconManager {
     constructor(type) {
         this.type = type;
         this.storageKey = `agentwire_icons_${type}`;
-        this.availableIcons = [];
+        this.customIcons = [];   // For name matching (from /custom/ subfolder)
+        this.defaultIcons = [];  // For random assignment (from main folder)
         this.basePath = `/static/icons/${type}/`;
         this._iconsLoaded = false;
         this._loadPromise = null;
@@ -27,11 +28,11 @@ export class IconManager {
 
     /**
      * Fetch available icons from server (cached after first call)
-     * @returns {Promise<string[]>} Array of icon filenames
+     * @returns {Promise<void>}
      */
     async fetchIcons() {
         if (this._iconsLoaded) {
-            return this.availableIcons;
+            return;
         }
 
         // Prevent multiple concurrent fetches
@@ -43,17 +44,27 @@ export class IconManager {
             try {
                 const response = await fetch(`/api/icons/${this.type}`);
                 if (response.ok) {
-                    this.availableIcons = await response.json();
+                    const data = await response.json();
+                    this.customIcons = data.custom || [];
+                    this.defaultIcons = data.default || [];
                 }
             } catch (e) {
                 console.warn(`[IconManager] Failed to fetch ${this.type} icons:`, e);
             }
             this._iconsLoaded = true;
             this._loadPromise = null;
-            return this.availableIcons;
         })();
 
         return this._loadPromise;
+    }
+
+    /**
+     * Get all available icons with paths (custom/ prefix for custom icons)
+     * @returns {string[]}
+     */
+    get availableIcons() {
+        const custom = this.customIcons.map(f => `custom/${f}`);
+        return [...custom, ...this.defaultIcons];
     }
 
     /**
@@ -177,18 +188,36 @@ export class IconManager {
     /**
      * Get available icons for picker UI
      * @param {string} currentItem - Currently selected item (to highlight its icon)
-     * @returns {Promise<Array>} Array of { filename, url, isAssigned }
+     * @returns {Promise<Array>} Array of { filename, url, isAssigned, isCustom }
      */
     async getAvailableIcons(currentItem = null) {
         await this.fetchIcons();
         const assignments = this.loadAssignments();
         const currentIcon = assignments[currentItem];
 
-        return this.availableIcons.map(filename => ({
-            filename,
-            url: this.basePath + filename,
-            isAssigned: filename === currentIcon
-        }));
+        // Custom icons first, then default
+        const icons = [];
+
+        for (const filename of this.customIcons) {
+            const path = `custom/${filename}`;
+            icons.push({
+                filename: path,
+                url: this.basePath + path,
+                isAssigned: path === currentIcon,
+                isCustom: true
+            });
+        }
+
+        for (const filename of this.defaultIcons) {
+            icons.push({
+                filename,
+                url: this.basePath + filename,
+                isAssigned: filename === currentIcon,
+                isCustom: false
+            });
+        }
+
+        return icons;
     }
 
     /**
@@ -207,9 +236,9 @@ export class IconManager {
     }
 
     /**
-     * Find an icon that matches the item name
+     * Find an icon that matches the item name (searches custom icons only)
      * @param {string} itemName - Item name to match
-     * @returns {string|null} Matching icon filename or null
+     * @returns {string|null} Matching icon path (e.g., 'custom/agentwire.png') or null
      */
     _findNameMatch(itemName) {
         // Strip @machine suffix for remote sessions (e.g., "agentwire-tts@dotdev-pc" → "agentwire-tts")
@@ -217,34 +246,35 @@ export class IconManager {
         // Normalize: lowercase, remove non-alphanumeric (hyphens, etc.)
         const normalizedName = baseName.toLowerCase().replace(/[^a-z0-9]/g, '');
 
-        for (const icon of this.availableIcons) {
+        // Only search custom icons for name matching
+        for (const icon of this.customIcons) {
             // Same normalization for icon filename
             const iconName = icon.replace(/\.[^.]+$/, '').toLowerCase().replace(/[^a-z0-9]/g, '');
             if (iconName === normalizedName) {
-                return icon;
+                return `custom/${icon}`;
             }
         }
         return null;
     }
 
     /**
-     * Get a random icon, preferring unused ones
+     * Get a random icon from default icons, preferring unused ones
      * @param {Set|Array} usedIcons - Icons already in use
      * @returns {string} Icon filename
      */
     _getRandomIcon(usedIcons) {
         const usedSet = usedIcons instanceof Set ? usedIcons : new Set(usedIcons);
 
-        // Find unused icons
-        const unused = this.availableIcons.filter(icon => !usedSet.has(icon));
+        // Find unused default icons (exclude custom icons from random pool)
+        const unused = this.defaultIcons.filter(icon => !usedSet.has(icon));
 
         if (unused.length > 0) {
             // Random from unused
             return unused[Math.floor(Math.random() * unused.length)];
         }
 
-        // All icons used, pick random (allows duplicates for large lists)
-        return this.availableIcons[Math.floor(Math.random() * this.availableIcons.length)];
+        // All default icons used, pick random (allows duplicates for large lists)
+        return this.defaultIcons[Math.floor(Math.random() * this.defaultIcons.length)];
     }
 }
 

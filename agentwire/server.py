@@ -1871,22 +1871,35 @@ class AgentWireServer:
         return web.json_response(voices)
 
     async def api_icons(self, request: web.Request) -> web.Response:
-        """Get list of icon files for a category (sessions, machines, projects)."""
+        """Get list of icon files for a category (sessions, machines, projects).
+
+        Returns { custom: [...], default: [...] } where:
+        - custom: icons in /custom/ subfolder (used for name matching)
+        - default: icons in main folder (used for random assignment)
+        """
         category = request.match_info["category"]
         if category not in ("sessions", "machines", "projects"):
             return web.json_response({"error": "Invalid category"}, status=400)
 
         icons_dir = Path(__file__).parent / "static" / "icons" / category
         if not icons_dir.exists():
-            return web.json_response([])
+            return web.json_response({"custom": [], "default": []})
 
-        # List image files (png, jpeg, jpg)
-        icons = []
-        for f in sorted(icons_dir.iterdir()):
-            if f.suffix.lower() in (".png", ".jpeg", ".jpg"):
-                icons.append(f.name)
+        def list_images(directory: Path) -> list[str]:
+            if not directory.exists():
+                return []
+            return sorted([
+                f.name for f in directory.iterdir()
+                if f.is_file() and f.suffix.lower() in (".png", ".jpeg", ".jpg")
+            ])
 
-        return web.json_response(icons)
+        # Custom icons for name matching
+        custom_icons = list_images(icons_dir / "custom")
+
+        # Default icons for random assignment (main folder only)
+        default_icons = list_images(icons_dir)
+
+        return web.json_response({"custom": custom_icons, "default": default_icons})
 
     async def api_machines(self, request: web.Request) -> web.Response:
         """Get list of all machines (local + configured remotes)."""
