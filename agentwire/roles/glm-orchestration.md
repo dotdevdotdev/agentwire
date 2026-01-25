@@ -521,7 +521,7 @@ Before reporting completion to main orchestrator:
 
 Only then:
 ```bash
-agentwire say -v worker3 --notify agentwire "Feature complete, tested in Chrome"
+agentwire say -v may --notify agentwire "Feature complete, tested in Chrome"
 ```
 
 ---

@@ -214,7 +214,7 @@ type: claude-bypass
 roles:
   - voice-orchestrator
   - glm-orchestration
-voice: worker3
+voice: may
 parent: agentwire  # Notify main orchestrator when idle
 ```
 

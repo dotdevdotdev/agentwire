@@ -95,9 +95,9 @@ npm run dev &
 ## Voice
 
 ```bash
-agentwire say -v worker3 "Starting mission"
-agentwire say -v worker3 "Workers complete, testing now"
-agentwire say -v worker3 --notify agentwire "Mission complete"
+agentwire say -v may "Starting mission"
+agentwire say -v may "Workers complete, testing now"
+agentwire say -v may --notify agentwire "Mission complete"
 ```
 
 ## Remember

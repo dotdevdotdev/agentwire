@@ -16,7 +16,7 @@ When your task is complete, you MUST signal completion:
 
 **Claude Code workers:**
 ```bash
-agentwire say -v worker5 "Task complete - [brief summary]"
+agentwire say -v lisa "Task complete - [brief summary]"
 ```
 
 **OpenCode/GLM workers:**
@@ -51,7 +51,7 @@ TASK COMPLETE: Created TimerDisplay component with MM:SS formatting
 
 Or for Claude Code with voice:
 ```bash
-agentwire say -v worker5 "TimerDisplay done - shows time in MM:SS format"
+agentwire say -v lisa "TimerDisplay done - shows time in MM:SS format"
 ```
 
 ---
@@ -111,7 +111,7 @@ FILE: /path/to/SessionCounter.tsx
 # Worker works...
 
 # Worker signals completion with voice
-agentwire say -v worker5 "SessionCounter done - shows completed pomodoros"
+agentwire say -v lisa "SessionCounter done - shows completed pomodoros"
 ```
 
 ## Example: OpenCode/GLM Worker
