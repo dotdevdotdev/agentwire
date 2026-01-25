@@ -175,7 +175,8 @@ def build_agent_command(session_type: str, roles: list[RoleConfig] | None = None
         elif session_type == "opencode-prompted":
             parts.append('OPENCODE_PERMISSION=\'{"*":"ask"}\'')
         elif session_type == "opencode-restricted":
-            parts.append('OPENCODE_PERMISSION=\'{"bash":"allow","question":"deny"}\'')
+            # Read-only mode: deny file edits, restrict bash to safe commands
+            parts.append('OPENCODE_PERMISSION=\'{"edit":"deny","bash":{"*":"deny","git status":"allow","git diff *":"allow","git log *":"allow","ls *":"allow","cat *":"allow","head *":"allow","tail *":"allow","grep *":"allow","find *":"allow","pwd":"allow","echo *":"allow","agentwire *":"allow"},"question":"deny"}\'')
 
         parts.append("opencode")
 
