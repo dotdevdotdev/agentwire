@@ -41,7 +41,8 @@ Thumbs.db
 .env.*
 
 # Voice clones (user-specific, not distributed)
-voices/
+# Note: /voices/ ignores root only; agentwire/voices/ contains bundled synthetic voices
+/voices/
 
 # Test outputs
 test_*.wav
