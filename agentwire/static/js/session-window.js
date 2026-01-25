@@ -410,9 +410,15 @@ export class SessionWindow {
                                 return;
                             } else if (msg.type === 'session_unlocked' || msg.type === 'session_locked') {
                                 return; // Ignore lock messages
+                            } else if (msg.type === 'remote_session_ended') {
+                                // Clean exit - tmux session ended, close window like local
+                                console.log('[SessionWindow] Remote session ended cleanly:', msg.session);
+                                this.close();
+                                return;
                             } else if (msg.type === 'remote_disconnected') {
-                                console.log('[SessionWindow] Remote session disconnected:', msg.session);
-                                this._updateStatus('disconnected', 'Remote session disconnected');
+                                // Connection issue - show overlay for reconnect
+                                console.log('[SessionWindow] Remote connection lost:', msg.session);
+                                this._updateStatus('disconnected', 'Connection lost');
                                 this._showDisconnectOverlay();
                                 return;
                             }

@@ -944,11 +944,21 @@ class AgentWireServer:
                             data = await data_queue.get()
                             if data is None:  # EOF signal
                                 logger.info(f"[Terminal] Received EOF from PTY for {session_name}")
-                                # For remote sessions, send disconnect message before closing
+                                # For remote sessions, check exit code to determine message type
                                 if is_remote and not ws.closed:
                                     try:
-                                        await ws.send_json({"type": "remote_disconnected", "session": session_name})
-                                        logger.info(f"[Terminal] Sent remote_disconnected to browser for {session_name}")
+                                        # Wait for SSH process to exit and get return code
+                                        exit_code = await proc.wait() if proc else None
+                                        logger.info(f"[Terminal] SSH exit code for {session_name}: {exit_code}")
+
+                                        if exit_code == 0:
+                                            # Clean exit - tmux session ended normally, close window
+                                            await ws.send_json({"type": "remote_session_ended", "session": session_name})
+                                            logger.info(f"[Terminal] Sent remote_session_ended to browser for {session_name}")
+                                        else:
+                                            # Non-zero exit - connection issue, show reconnect overlay
+                                            await ws.send_json({"type": "remote_disconnected", "session": session_name})
+                                            logger.info(f"[Terminal] Sent remote_disconnected to browser for {session_name}")
                                     except Exception as e:
                                         logger.warning(f"[Terminal] Failed to send disconnect message: {e}")
                                 break
