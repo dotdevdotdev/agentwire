@@ -168,7 +168,11 @@ export class SessionWindow {
      * Get the full session identifier (includes machine if remote).
      */
     get sessionId() {
-        return this.machine ? `${this.session}@${this.machine}` : this.session;
+        // Avoid doubling machine suffix if session name already includes it
+        if (this.machine && !this.session.endsWith(`@${this.machine}`)) {
+            return `${this.session}@${this.machine}`;
+        }
+        return this.session;
     }
 
     // Private methods
@@ -685,8 +689,10 @@ export class SessionWindow {
         if (this.machine) {
             try {
                 const response = await fetch(`/api/sessions/remote`);
-                const sessions = await response.json();
-                const sessionExists = sessions.some(s =>
+                const data = await response.json();
+                // Flatten sessions from all machines: {machines: [{sessions: [...]}]} -> [...]
+                const allSessions = (data.machines || []).flatMap(m => m.sessions || []);
+                const sessionExists = allSessions.some(s =>
                     s.name === this.session && s.machine === this.machine
                 );
 
