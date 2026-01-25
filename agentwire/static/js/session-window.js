@@ -723,6 +723,11 @@ export class SessionWindow {
             this.ws = null;
         }
 
+        // Clear terminal to avoid escape sequence garbage on reconnect
+        if (this.terminal) {
+            this.terminal.clear();
+        }
+
         // Reconnect
         this._connectWebSocket();
     }
