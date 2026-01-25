@@ -1,0 +1,74 @@
+# Local Self-Hosted TTS - Chatterbox with Voice Cloning + Whisper
+# Run on any machine with NVIDIA GPU + Docker
+#
+# Build:
+#   docker build -f Dockerfile.local -t agentwire-tts-local --build-arg HF_TOKEN=$HF_TOKEN .
+#
+# Run:
+#   docker run --gpus all -p 8100:8100 -v ~/.agentwire/voices:/voices agentwire-tts-local
+
+FROM nvidia/cuda:12.1.0-cudnn8-runtime-ubuntu22.04
+
+# Prevent interactive prompts during build
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install Python 3.11 and essentials
+RUN apt-get update && apt-get install -y \
+    python3.11 \
+    python3.11-dev \
+    python3-pip \
+    git \
+    ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set Python 3.11 as default
+RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1 && \
+    update-alternatives --install /usr/bin/python python /usr/bin/python3.11 1
+
+# Upgrade pip
+RUN python3 -m pip install --upgrade pip
+
+# Set working directory
+WORKDIR /app
+
+# Install Python dependencies for HTTP server
+RUN pip install --no-cache-dir \
+    torch>=2.0.0 \
+    torchaudio>=2.0.0 \
+    fastapi \
+    uvicorn[standard] \
+    faster-whisper \
+    pydantic \
+    python-multipart
+
+# Install Chatterbox TTS
+RUN pip install --no-cache-dir git+https://github.com/resemble-ai/chatterbox.git
+
+# Copy AgentWire source code
+COPY agentwire/ ./agentwire/
+
+# Pre-download models (requires HF_TOKEN for Chatterbox)
+ARG HF_TOKEN
+ENV HF_TOKEN=${HF_TOKEN}
+ENV HF_HOME=/app/.cache/huggingface
+
+# Download Chatterbox model
+RUN python3 -c "from chatterbox.tts_turbo import ChatterboxTurboTTS; ChatterboxTurboTTS.from_pretrained(device='cpu')" || \
+    echo "Warning: Model download failed, will retry at runtime"
+
+# Download Whisper large-v3 model
+RUN python3 -c "from faster_whisper import WhisperModel; WhisperModel('large-v3', device='cpu', compute_type='int8')" || \
+    echo "Warning: Whisper download failed, will retry at runtime"
+
+# Copy bundled voices (can override at runtime with -v mount)
+COPY voices/ /voices/
+
+# Environment
+ENV PYTHONUNBUFFERED=1
+ENV VOICES_DIR=/voices
+
+# Expose HTTP port
+EXPOSE 8100
+
+# Run FastAPI server
+CMD ["python3", "-m", "uvicorn", "agentwire.tts_server:app", "--host", "0.0.0.0", "--port", "8100"]

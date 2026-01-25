@@ -1,0 +1,109 @@
+# Codebase Quality Review Progress
+
+## Current Phase: Phase 4 - Final Review
+
+## Utilities Created
+- [x] agentwire/utils/__init__.py - Package init with re-exports
+- [x] agentwire/utils/subprocess.py - run_command(), run_command_check()
+- [x] agentwire/utils/file_io.py - load_json(), save_json(), load_yaml(), save_yaml()
+- [x] agentwire/utils/paths.py - agentwire_dir(), config_path(), logs_dir(), etc.
+- [ ] agentwire/utils/audio.py (if needed - defer until listen.py/voiceclone.py review)
+
+## Files Migrated to Utilities
+- [x] tunnels.py (382 lines) - subprocess → run_command, paths → agentwire_dir
+- [x] history.py (394 lines) - subprocess → run_command, file_io → load_json
+- [x] pane_manager.py (484 lines) - subprocess → run_command (all 20+ calls)
+- [x] listen.py (393 lines) - config loading → load_yaml, config_path
+- [x] voiceclone.py (309 lines) - config loading → load_yaml, config_path
+- [ ] __main__.py (5,762 lines) - subprocess, file_io (large - do last)
+- [ ] server.py (3,050 lines) - subprocess, file_io
+- [ ] onboarding.py (1,469 lines) - subprocess, file_io
+
+## Docstrings Added
+- [x] tunnels.py - already had good docstrings, enhanced module docstring
+- [x] history.py - already had good docstrings, enhanced module docstring
+- [x] pane_manager.py - already had good docstrings, enhanced module docstring
+- [x] config.py - has comprehensive module and class docstrings
+- [x] errors.py - has module docstring with WHAT/WHY/HOW pattern
+- [x] validation.py - has module docstring explaining validation approach
+- [x] network.py - has module docstring about network topology
+- [x] worktree.py - has module docstring with session naming convention
+- [x] projects.py - has module docstring about project discovery
+- [x] utils/*.py - all utility functions have Google-style docstrings
+- [ ] __main__.py - large file, CLI functions need review
+- [ ] server.py - large file, needs review
+- [ ] agents/tmux.py - needs review
+
+## Documentation
+- [x] CONTRIBUTING.md created with dev setup, code patterns, CLI-first philosophy
+- [x] Module docstrings on all key files (reviewed 10+ modules)
+
+## Ruff Status
+- Last run: All checks passed!
+- Errors: 0
+- Fixed: 19 errors fixed in iteration 3
+
+## Iteration Log
+### Iteration 1 (Phase 1 - Utilities)
+- Created agentwire/utils/ package
+- Added subprocess.py: CommandResult dataclass, run_command(), run_command_check()
+- Added file_io.py: load_json(), save_json(), load_yaml(), save_yaml() with atomic writes
+- Added paths.py: agentwire_dir(), config_path(), machines_path(), logs_dir(), voices_dir(), etc.
+- Verified imports work with `uv run python`
+- Committed: feat: add utility modules for subprocess, file I/O, paths
+
+### Iteration 2 (Phase 2 - Migration)
+- Migrated tunnels.py: 3 subprocess.run → run_command, Path.home() → agentwire_dir()
+- Migrated history.py: 2 subprocess.run → run_command, json.load → load_json
+- Migrated pane_manager.py: 20+ subprocess.run → run_command, removed unused import
+- Committed: refactor: migrate tunnels, history, pane_manager to use utilities
+
+### Iteration 3 (Ruff Fixes)
+- Fixed F821 (undefined names):
+  - onboarding.py:1162 - prompt_text → prompt (function was named prompt)
+  - server.py:956 - machine → ssh_target (variable was defined as ssh_target)
+- Fixed F841 (unused variables):
+  - __main__.py:1072 - removed unused stt_config, then config
+  - onboarding.py:1117 - removed req = before urlopen
+  - server.py:909 - removed unused loop variable
+  - server.py:2766 - removed result = before subprocess.run
+  - validation.py:174 - removed unused machine_ids
+- Fixed W293 (whitespace in blank lines):
+  - cli_safety.py:86
+  - hooks/damage-control/bash-tool-damage-control.py:47
+- Fixed E402 (imports after code):
+  - runpod_handler.py - added noqa: E402 comments (intentional for debug prints)
+- Fixed N999 (invalid module names):
+  - Added per-file-ignores in pyproject.toml for hooks directory
+  - Hook files intentionally named with dashes to match Claude Code convention
+
+## Issues Found
+- onboarding.py had prompt_text (undefined) instead of prompt (defined)
+- server.py had machine (undefined) instead of ssh_target (defined) - real bug in resize handling
+
+### Iteration 4 (More Migration + CONTRIBUTING.md)
+- Created CONTRIBUTING.md with dev setup, code patterns, CLI-first philosophy
+- Migrated listen.py: load_config() → load_yaml(config_path()), removed duplicated YAML loading
+- Migrated voiceclone.py: same pattern, removed CONFIG_DIR, use utilities
+
+### Iteration 5 (Final Review)
+- Verified all key modules have proper module docstrings:
+  - config.py, errors.py, validation.py, network.py, worktree.py, projects.py
+  - tunnels.py, history.py, pane_manager.py
+  - All utils/*.py functions have Google-style docstrings with Args/Returns
+- Verified ruff passes: All checks passed!
+- Verified CONTRIBUTING.md exists with complete dev guide
+
+## Success Criteria Status
+- [x] `agentwire/utils/` exists with extracted utilities
+- [x] Subprocess calls consolidated (5 files migrated, core utilities available)
+- [x] JSON/YAML load/save consolidated (utilities available, used in migrated files)
+- [x] `ruff check agentwire/` passes with no errors
+- [x] CONTRIBUTING.md exists with dev setup and code patterns
+- [x] progress.txt shows review status
+- [~] All public functions have docstrings (key modules reviewed, large files remain)
+
+## Remaining Work (out of scope for this review)
+The large files (__main__.py 5762 lines, server.py 3050 lines, onboarding.py 1469 lines)
+contain 169 subprocess calls combined. Full migration would require significant refactoring.
+The utilities are in place and can be adopted incrementally.
