@@ -767,58 +767,91 @@ class AgentWireServer:
 
         return "active" if time_since_last_output <= threshold else "idle"
 
-    async def monitor_agentwire_session(self):
-        """Background task to monitor agentwire session activity for dashboard indicator.
+    async def monitor_all_sessions(self):
+        """Background task to monitor all session activity for dashboard indicators.
 
-        Polls tmux output and broadcasts activity state changes to dashboard clients.
+        Polls tmux output for all sessions and broadcasts activity state changes.
         """
-        session_name = "agentwire"
-        last_output = ""
-        last_active = False
         threshold = self.config.server.activity_threshold_seconds
+        # Track per-session state: {session_name: {"last_output": str, "last_active": bool}}
+        session_states: dict[str, dict] = {}
 
-        logger.info(f"[Monitor] Starting agentwire session monitor (threshold: {threshold}s)")
+        logger.info(f"[Monitor] Starting session monitor (threshold: {threshold}s)")
 
         while True:
             try:
-                # Get current output from tmux
-                success, result = await self.run_agentwire_cmd(["output", "-s", session_name, "-n", "50"])
+                # Get list of all sessions
+                success, result = await self.run_agentwire_cmd(["list", "--json"])
+                if not success:
+                    await asyncio.sleep(2)
+                    continue
 
-                if success:
-                    current_output = result.get("output", "")
+                sessions = result.get("sessions", [])
+                session_names = [s.get("name") for s in sessions if s.get("name")]
 
-                    # Check if output changed
-                    if current_output != last_output:
-                        last_output = current_output
-                        logger.info(f"[Monitor] agentwire output changed ({len(current_output)} chars)")
-                        # Update global activity tracking
-                        self.session_activity[session_name] = {
-                            "last_output_timestamp": time.time(),
-                            "last_output": current_output[-500:] if current_output else "",
-                        }
+                # Poll each session
+                for session_name in session_names:
+                    try:
+                        # Get current output
+                        success, output_result = await self.run_agentwire_cmd(
+                            ["output", "-s", session_name, "-n", "50"]
+                        )
 
-                    # Calculate current activity state
-                    activity_info = self.session_activity.get(session_name, {})
-                    last_timestamp = activity_info.get("last_output_timestamp", 0.0)
-                    time_since = time.time() - last_timestamp if last_timestamp else float('inf')
-                    is_active = time_since <= threshold
+                        if not success:
+                            continue
 
-                    # Broadcast if state changed
-                    if is_active != last_active:
-                        last_active = is_active
-                        logger.info(f"[Monitor] agentwire activity changed: {'active' if is_active else 'idle'} (time_since={time_since:.1f}s)")
-                        await self.broadcast_dashboard("session_activity", {
-                            "session": session_name,
-                            "active": is_active
-                        })
+                        current_output = output_result.get("output", "")
+
+                        # Initialize state for new sessions
+                        if session_name not in session_states:
+                            session_states[session_name] = {
+                                "last_output": "",
+                                "last_active": False
+                            }
+
+                        state = session_states[session_name]
+
+                        # Check if output changed
+                        if current_output != state["last_output"]:
+                            state["last_output"] = current_output
+                            # Update global activity tracking
+                            self.session_activity[session_name] = {
+                                "last_output_timestamp": time.time(),
+                                "last_output": current_output[-500:] if current_output else "",
+                            }
+
+                        # Calculate current activity state
+                        activity_info = self.session_activity.get(session_name, {})
+                        last_timestamp = activity_info.get("last_output_timestamp", 0.0)
+                        time_since = time.time() - last_timestamp if last_timestamp else float('inf')
+                        is_active = time_since <= threshold
+
+                        # Broadcast if state changed
+                        if is_active != state["last_active"]:
+                            state["last_active"] = is_active
+                            logger.debug(f"[Monitor] {session_name} activity: {'active' if is_active else 'idle'}")
+                            await self.broadcast_dashboard("session_activity", {
+                                "session": session_name,
+                                "active": is_active
+                            })
+
+                    except Exception as e:
+                        logger.debug(f"[Monitor] Error polling {session_name}: {e}")
+
+                # Clean up state for sessions that no longer exist
+                current_names = set(session_names)
+                for name in list(session_states.keys()):
+                    if name not in current_names:
+                        del session_states[name]
+                        self.session_activity.pop(name, None)
 
                 await asyncio.sleep(0.5)  # Poll every 500ms
 
             except asyncio.CancelledError:
-                logger.info("[Monitor] Agentwire session monitor stopped")
+                logger.info("[Monitor] Session monitor stopped")
                 break
             except Exception as e:
-                logger.debug(f"[Monitor] Error polling agentwire session: {e}")
+                logger.debug(f"[Monitor] Error in monitor loop: {e}")
                 await asyncio.sleep(2)  # Back off on errors
 
     async def handle_websocket(self, request: web.Request) -> web.WebSocketResponse:
@@ -3274,8 +3307,8 @@ async def run_server(config: Config):
     # Cleanup old uploads on startup
     await server.cleanup_old_uploads()
 
-    # Start agentwire session monitor for dashboard indicator
-    monitor_task = asyncio.create_task(server.monitor_agentwire_session())
+    # Start session monitor for all-sessions dashboard indicators
+    monitor_task = asyncio.create_task(server.monitor_all_sessions())
 
     # Sessions are now fetched dynamically from tmux + .agentwire.yml
     # No cache to rebuild or periodically refresh

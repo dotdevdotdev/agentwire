@@ -52,6 +52,24 @@ let sessionsWindow = null;
 /** @type {Function|null} */
 let unsubscribe = null;
 
+/** @type {Function|null} - Activity event unsubscribe */
+let unsubscribeActivity = null;
+
+/** @type {Function|null} - TTS start event unsubscribe */
+let unsubscribeTtsStart = null;
+
+/** @type {Function|null} - Audio event unsubscribe */
+let unsubscribeAudio = null;
+
+/** @type {Function|null} - Audio ended event unsubscribe */
+let unsubscribeAudioEnded = null;
+
+/** @type {Map<string, string>} - Activity state per session */
+const sessionActivityStates = new Map();
+
+/** @type {Map<string, number>} - Activity timeout per session */
+const sessionActivityTimeouts = new Map();
+
 /**
  * Open the Sessions window
  * @returns {ListWindow} The sessions window instance
@@ -76,12 +94,53 @@ export function openSessionsWindow() {
             unsubscribe();
             unsubscribe = null;
         }
+        if (unsubscribeActivity) {
+            unsubscribeActivity();
+            unsubscribeActivity = null;
+        }
+        if (unsubscribeTtsStart) {
+            unsubscribeTtsStart();
+            unsubscribeTtsStart = null;
+        }
+        if (unsubscribeAudio) {
+            unsubscribeAudio();
+            unsubscribeAudio = null;
+        }
+        if (unsubscribeAudioEnded) {
+            unsubscribeAudioEnded();
+            unsubscribeAudioEnded = null;
+        }
+        // Clear activity tracking
+        sessionActivityStates.clear();
+        sessionActivityTimeouts.forEach(t => clearTimeout(t));
+        sessionActivityTimeouts.clear();
         sessionsWindow = null;
     };
 
     // Auto-refresh when sessions change via WebSocket
     unsubscribe = desktop.on('sessions', () => {
         sessionsWindow?.refresh();
+    });
+
+    // Subscribe to activity events
+    unsubscribeActivity = desktop.on('session_activity', ({ session, active }) => {
+        updateSessionActivityIndicator(session, active ? 'processing' : 'idle');
+    });
+
+    unsubscribeTtsStart = desktop.on('tts_start', ({ session }) => {
+        updateSessionActivityIndicator(session, 'generating');
+    });
+
+    unsubscribeAudio = desktop.on('audio', ({ session }) => {
+        updateSessionActivityIndicator(session, 'playing');
+    });
+
+    unsubscribeAudioEnded = desktop.on('audio_ended', ({ session }) => {
+        // Return to idle (or processing if recently active)
+        const currentState = sessionActivityStates.get(session);
+        if (currentState === 'generating' || currentState === 'playing') {
+            updateSessionActivityIndicator(session, 'idle');
+        }
     });
 
     sessionsWindow.open();
@@ -145,7 +204,9 @@ async function fetchSessions() {
  * @returns {string} HTML string for the session item
  */
 function renderSessionItem(session) {
-    const statusClass = session.active ? 'active' : 'idle';
+    // Get stored activity state or default to session's initial state
+    const activityState = sessionActivityStates.get(session.name) || (session.active ? 'processing' : 'idle');
+
     const chatButton = session.hasVoice
         ? '<button class="btn btn-small" data-action="chat">Chat</button>'
         : '';
@@ -164,11 +225,6 @@ function renderSessionItem(session) {
     // Use pre-assigned icon URL based on list position
     const iconUrl = session.iconUrl;
 
-    // Machine badge for remote sessions
-    const machineBadge = session.machine
-        ? `<span class="machine-badge" title="Remote: ${session.machine}">@${session.machine}</span>`
-        : '';
-
     // Build meta info line
     const metaParts = [];
     if (session.machine) {
@@ -184,12 +240,17 @@ function renderSessionItem(session) {
         ? `<div class="session-meta">${metaParts.join(' · ')}</div>`
         : '';
 
+    // Activity indicator HTML based on state
+    const activityIndicatorHtml = getActivityIndicatorHtml(activityState);
+
     return `
-        <div class="session-card ${statusClass}">
+        <div class="session-card" data-session-name="${session.name}">
             <div class="session-card-top">
                 <div class="session-icon-wrapper">
                     <img src="${iconUrl}" alt="" class="session-icon" />
-                    <span class="session-status-dot ${statusClass}"></span>
+                    <div class="session-activity-indicator ${activityState}" data-session="${session.name}">
+                        ${activityIndicatorHtml}
+                    </div>
                 </div>
                 <div class="session-content">
                     <div class="session-header">
@@ -207,6 +268,48 @@ function renderSessionItem(session) {
             </div>
         </div>
     `;
+}
+
+/**
+ * Get inner HTML for activity indicator based on state
+ * @param {string} state - Activity state
+ * @returns {string} Inner HTML
+ */
+function getActivityIndicatorHtml(state) {
+    switch (state) {
+        case 'processing':
+            return '<div class="spinner"></div>';
+        case 'generating':
+            return '<div class="generating-dots"><span></span><span></span><span></span></div>';
+        case 'playing':
+            return '<div class="audio-wave"><span></span><span></span><span></span><span></span><span></span></div>';
+        default:  // idle
+            return '<div class="stop-icon"></div>';
+    }
+}
+
+/**
+ * Update activity indicator for a session in the list
+ * @param {string} session - Session name
+ * @param {string} state - New activity state
+ */
+function updateSessionActivityIndicator(session, state) {
+    // Don't downgrade from TTS states unless explicitly going to idle
+    const currentState = sessionActivityStates.get(session);
+    if ((currentState === 'generating' || currentState === 'playing') && state === 'processing') {
+        return;
+    }
+
+    // Store the state
+    sessionActivityStates.set(session, state);
+
+    // Find and update the indicator in the DOM
+    const indicator = document.querySelector(`.session-activity-indicator[data-session="${session}"]`);
+    if (indicator) {
+        indicator.classList.remove('idle', 'processing', 'generating', 'playing');
+        indicator.classList.add(state);
+        indicator.innerHTML = getActivityIndicatorHtml(state);
+    }
 }
 
 /**

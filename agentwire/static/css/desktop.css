@@ -963,21 +963,79 @@ body {
     object-fit: cover;
 }
 
-.session-status-dot {
+/* Session list activity indicator - positioned in corner of icon */
+.session-icon-wrapper .session-activity-indicator {
     position: absolute;
-    bottom: -2px;
-    right: -2px;
-    width: 12px;
-    height: 12px;
+    bottom: -4px;
+    right: -4px;
+    width: 18px;
+    height: 18px;
     border-radius: 50%;
-    background: var(--text-muted);
+    background: var(--surface);
     border: 2px solid var(--surface);
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
-.session-status-dot.active {
-    background: var(--accent);
-    box-shadow: 0 0 6px var(--accent);
+.session-icon-wrapper .session-activity-indicator .stop-icon {
+    width: 6px;
+    height: 6px;
+    background: var(--muted-foreground, #64748b);
+    border-radius: 1px;
+    opacity: 0.5;
 }
+
+.session-icon-wrapper .session-activity-indicator .spinner {
+    width: 10px;
+    height: 10px;
+    border: 2px solid var(--muted, #334155);
+    border-top-color: var(--primary, #3b82f6);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+.session-icon-wrapper .session-activity-indicator .generating-dots {
+    display: flex;
+    gap: 2px;
+    align-items: center;
+}
+
+.session-icon-wrapper .session-activity-indicator .generating-dots span {
+    width: 3px;
+    height: 3px;
+    background: var(--warning, #f59e0b);
+    border-radius: 50%;
+    animation: bounce 1.2s ease-in-out infinite;
+}
+
+.session-icon-wrapper .session-activity-indicator .generating-dots span:nth-child(2) {
+    animation-delay: 0.2s;
+}
+
+.session-icon-wrapper .session-activity-indicator .generating-dots span:nth-child(3) {
+    animation-delay: 0.4s;
+}
+
+.session-icon-wrapper .session-activity-indicator .audio-wave {
+    display: flex;
+    gap: 1px;
+    align-items: flex-end;
+    height: 10px;
+}
+
+.session-icon-wrapper .session-activity-indicator .audio-wave span {
+    width: 2px;
+    background: var(--success, #22c55e);
+    border-radius: 1px;
+    animation: wave 0.8s ease-in-out infinite;
+}
+
+.session-icon-wrapper .session-activity-indicator .audio-wave span:nth-child(1) { animation-delay: 0.0s; height: 3px; }
+.session-icon-wrapper .session-activity-indicator .audio-wave span:nth-child(2) { animation-delay: 0.1s; height: 5px; }
+.session-icon-wrapper .session-activity-indicator .audio-wave span:nth-child(3) { animation-delay: 0.2s; height: 8px; }
+.session-icon-wrapper .session-activity-indicator .audio-wave span:nth-child(4) { animation-delay: 0.3s; height: 5px; }
+.session-icon-wrapper .session-activity-indicator .audio-wave span:nth-child(5) { animation-delay: 0.4s; height: 3px; }
 
 .session-content {
     flex: 1;
