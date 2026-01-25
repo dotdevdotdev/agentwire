@@ -65,6 +65,8 @@ export class SessionWindow {
         if (this.mode === 'terminal') {
             this._setupPTT(container);
         }
+        // Set up reconnect button handler
+        this._setupReconnectButton(container);
 
         this.isOpen = true;
     }
@@ -177,6 +179,12 @@ export class SessionWindow {
             // Monitor mode: simple pre element for text output
             container.innerHTML = `
                 <pre class="session-output"></pre>
+                <div class="session-disconnect-overlay hidden">
+                    <div class="disconnect-content">
+                        <div class="disconnect-message">Session Disconnected</div>
+                        <button class="btn btn-primary reconnect-btn">Reconnect</button>
+                    </div>
+                </div>
                 <div class="session-status-bar">
                     <span class="status-indicator connecting"></span>
                     <span class="status-text">Connecting...</span>
@@ -189,6 +197,12 @@ export class SessionWindow {
                 <button class="ptt-button" title="Hold to record voice input">
                     <span class="ptt-icon">🎤</span>
                 </button>
+                <div class="session-disconnect-overlay hidden">
+                    <div class="disconnect-content">
+                        <div class="disconnect-message">Session Disconnected</div>
+                        <button class="btn btn-primary reconnect-btn">Reconnect</button>
+                    </div>
+                </div>
                 <div class="session-status-bar">
                     <span class="status-indicator connecting"></span>
                     <span class="status-text">Connecting...</span>
@@ -361,6 +375,7 @@ export class SessionWindow {
         this.ws.onopen = () => {
             console.log(`[SessionWindow] Connected: ${this.sessionId}`);
             this._updateStatus('connected', 'Connected');
+            this._hideDisconnectOverlay();
 
             // Send initial terminal size (both modes need it for proper display)
             this._sendResize();
@@ -436,6 +451,7 @@ export class SessionWindow {
             } else {
                 this._updateStatus('error', 'Connection lost');
             }
+            this._showDisconnectOverlay();
         };
 
         // For terminal mode, send input to WebSocket
@@ -626,6 +642,44 @@ export class SessionWindow {
         }
     }
 
+    _showDisconnectOverlay() {
+        if (!this.winbox) return;
+        const container = this.winbox.body;
+        if (!container) return;
+
+        const overlay = container.querySelector('.session-disconnect-overlay');
+        if (overlay) {
+            overlay.classList.remove('hidden');
+        }
+    }
+
+    _hideDisconnectOverlay() {
+        if (!this.winbox) return;
+        const container = this.winbox.body;
+        if (!container) return;
+
+        const overlay = container.querySelector('.session-disconnect-overlay');
+        if (overlay) {
+            overlay.classList.add('hidden');
+        }
+    }
+
+    _reconnect() {
+        console.log(`[SessionWindow] Reconnecting to ${this.sessionName}...`);
+        this._hideDisconnectOverlay();
+        this._updateStatus('connecting', 'Reconnecting...');
+
+        // Close existing connection if any
+        if (this.ws) {
+            this.ws.onclose = null; // Prevent triggering overlay again
+            this.ws.close();
+            this.ws = null;
+        }
+
+        // Reconnect
+        this._connectWebSocket();
+    }
+
     /**
      * Convert ANSI escape codes to HTML for monitor mode display.
      * Supports basic colors, 256-color, and true color (24-bit).
@@ -740,6 +794,15 @@ export class SessionWindow {
 
         // Wrap in initial span and close at end
         return `<span>${html}</span>`;
+    }
+
+    // Reconnect button handler
+
+    _setupReconnectButton(container) {
+        const reconnectBtn = container.querySelector('.reconnect-btn');
+        if (reconnectBtn) {
+            reconnectBtn.addEventListener('click', () => this._reconnect());
+        }
     }
 
     // PTT (Push-to-talk) Methods
