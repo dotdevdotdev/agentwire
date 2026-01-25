@@ -60,8 +60,9 @@ RUN python3 -c "from chatterbox.tts_turbo import ChatterboxTurboTTS; ChatterboxT
 RUN python3 -c "from faster_whisper import WhisperModel; WhisperModel('large-v3', device='cpu', compute_type='int8')" || \
     echo "Warning: Whisper download failed, will retry at runtime"
 
-# Copy bundled voices (can override at runtime with -v mount)
-COPY voices/ /voices/
+# Copy bundled synthetic voices (can override at runtime with -v mount)
+# Includes: default, jeremy, darren, jessica, lisa, may
+COPY agentwire/voices/ /voices/
 
 # Environment
 ENV PYTHONUNBUFFERED=1

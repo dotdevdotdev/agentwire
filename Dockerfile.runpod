@@ -47,9 +47,9 @@ ENV HF_HOME=/app/.cache/huggingface
 RUN python3 -c "from chatterbox.tts_turbo import ChatterboxTurboTTS; ChatterboxTurboTTS.from_pretrained(device='cpu')" || \
     echo "Warning: Model download failed, will retry at runtime"
 
-# Copy bundled voices (included in repo)
-# Default voice (dotdev.wav) is committed to voices/ directory
-COPY voices/ /voices/
+# Copy bundled synthetic voices (included in repo)
+# Default voice is jeremy (AI-generated, safe for distribution)
+COPY agentwire/voices/ /voices/
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
