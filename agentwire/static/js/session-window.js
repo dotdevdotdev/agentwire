@@ -1078,7 +1078,8 @@ export class SessionWindow {
                 break;
             case 'processing':
                 this.pttButton.classList.add('processing');
-                this.pttButton.querySelector('.ptt-icon').textContent = '⏳';
+                // Keep mic icon - spinning border shows processing state
+                this.pttButton.querySelector('.ptt-icon').textContent = '🎤';
                 break;
             default:
                 this.pttButton.querySelector('.ptt-icon').textContent = '🎤';

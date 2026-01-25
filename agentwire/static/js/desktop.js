@@ -482,7 +482,8 @@ function updateGlobalPttState(state) {
             break;
         case 'processing':
             btn.classList.add('processing');
-            if (icon) icon.textContent = '⏳';
+            // Keep mic icon - spinning border shows processing state
+            if (icon) icon.textContent = '🎤';
             break;
         default:
             if (icon) icon.textContent = '🎤';

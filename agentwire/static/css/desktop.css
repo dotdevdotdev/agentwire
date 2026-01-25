@@ -477,8 +477,9 @@ body {
 }
 
 .tray-ptt.processing {
-    border-color: var(--warning);
-    opacity: 0.7;
+    border-color: var(--warning, #f59e0b);
+    background: rgba(245, 158, 11, 0.15);
+    animation: ptt-processing-pulse 1s ease-in-out infinite;
 }
 
 .tray-ptt .ptt-icon {
@@ -1282,8 +1283,9 @@ body {
 }
 
 .ptt-button.processing {
-    border-color: #f59e0b;
-    background: rgba(245, 158, 11, 0.2);
+    border-color: var(--warning, #f59e0b);
+    background: rgba(245, 158, 11, 0.15);
+    animation: ptt-processing-pulse 1s ease-in-out infinite;
 }
 
 .ptt-button:disabled {
@@ -1300,18 +1302,6 @@ body {
     color: var(--error);
 }
 
-.ptt-button.processing .ptt-icon::after {
-    content: '';
-    display: inline-block;
-    width: 16px;
-    height: 16px;
-    border: 2px solid #f59e0b;
-    border-top-color: transparent;
-    border-radius: 50%;
-    animation: ptt-spin 0.8s linear infinite;
-    position: absolute;
-}
-
 @keyframes ptt-pulse {
     0%, 100% {
         box-shadow: 0 0 0 0 rgba(248, 81, 73, 0.4);
@@ -1321,9 +1311,12 @@ body {
     }
 }
 
-@keyframes ptt-spin {
-    to {
-        transform: rotate(360deg);
+@keyframes ptt-processing-pulse {
+    0%, 100% {
+        box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.4);
+    }
+    50% {
+        box-shadow: 0 0 0 8px rgba(245, 158, 11, 0);
     }
 }
 
@@ -1479,8 +1472,9 @@ body {
 }
 
 .chat-ptt.processing {
-    border-color: #f59e0b;
-    background: rgba(245, 158, 11, 0.2);
+    border-color: var(--warning, #f59e0b);
+    background: rgba(245, 158, 11, 0.15);
+    animation: ptt-processing-pulse 1s ease-in-out infinite;
 }
 
 /* Orb area */
