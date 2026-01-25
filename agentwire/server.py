@@ -780,14 +780,22 @@ class AgentWireServer:
 
         while True:
             try:
-                # Get list of all sessions
-                success, result = await self.run_agentwire_cmd(["list", "--json"])
-                if not success:
-                    await asyncio.sleep(2)
-                    continue
+                # Get list of all sessions (local and remote)
+                session_names = []
 
-                sessions = result.get("sessions", [])
-                session_names = [s.get("name") for s in sessions if s.get("name")]
+                # Local sessions
+                success, result = await self.run_agentwire_cmd(["list", "--local", "--sessions", "--json"])
+                if success:
+                    for s in result.get("sessions", []):
+                        if s.get("name"):
+                            session_names.append(s["name"])
+
+                # Remote sessions (names already include @machine suffix)
+                success, result = await self.run_agentwire_cmd(["list", "--remote", "--sessions", "--json"])
+                if success:
+                    for s in result.get("sessions", []):
+                        if s.get("name"):
+                            session_names.append(s["name"])
 
                 # Poll each session
                 for session_name in session_names:
