@@ -759,6 +759,11 @@ body {
     opacity: 0.8;
 }
 
+.session-machine {
+    color: var(--warning, #f59e0b);
+    font-weight: 500;
+}
+
 /* Session card layout */
 .session-card {
     display: flex;

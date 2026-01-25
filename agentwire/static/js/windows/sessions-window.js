@@ -89,19 +89,47 @@ export function openSessionsWindow() {
 }
 
 /**
- * Fetch local sessions from fast API endpoint
+ * Fetch all sessions (local and remote) from API endpoints
  * @returns {Promise<Array>} Array of session objects
  */
 async function fetchSessions() {
-    const response = await fetch('/api/sessions/local');
-    const data = await response.json();
-    // Sort alphabetically so icons are stable
-    const sessions = (data.sessions || []).sort((a, b) => a.name.localeCompare(b.name));
-    return sessions.map((s, index) => ({
+    // Fetch local and remote sessions in parallel
+    const [localResponse, remoteResponse] = await Promise.all([
+        fetch('/api/sessions/local'),
+        fetch('/api/sessions/remote')
+    ]);
+
+    const localData = await localResponse.json();
+    const remoteData = await remoteResponse.json();
+
+    // Get local sessions
+    const localSessions = (localData.sessions || []).map(s => ({
+        ...s,
+        machine: null
+    }));
+
+    // Get remote sessions from all machines
+    const remoteSessions = [];
+    for (const machine of (remoteData.machines || [])) {
+        for (const s of (machine.sessions || [])) {
+            remoteSessions.push({
+                ...s,
+                machine: machine.id
+            });
+        }
+    }
+
+    // Combine and sort alphabetically so icons are stable
+    const allSessions = [...localSessions, ...remoteSessions].sort((a, b) =>
+        a.name.localeCompare(b.name)
+    );
+
+    return allSessions.map((s, index) => ({
         name: s.name,
         active: s.activity === 'active',
         type: s.type || 'bare',
         path: s.path || null,
+        machine: s.machine || null,
         // Chat button shown for agent session types (not bare)
         hasVoice: s.type && (s.type.startsWith('claude-') || s.type.startsWith('opencode-')),
         // Attached client count for presence indicator
@@ -136,8 +164,16 @@ function renderSessionItem(session) {
     // Use pre-assigned icon URL based on list position
     const iconUrl = session.iconUrl;
 
+    // Machine badge for remote sessions
+    const machineBadge = session.machine
+        ? `<span class="machine-badge" title="Remote: ${session.machine}">@${session.machine}</span>`
+        : '';
+
     // Build meta info line
     const metaParts = [];
+    if (session.machine) {
+        metaParts.push(`<span class="session-machine">@${session.machine}</span>`);
+    }
     if (session.type && session.type !== 'bare') {
         metaParts.push(`<span class="session-type">${session.type}</span>`);
     }

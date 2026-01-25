@@ -2,10 +2,12 @@
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Iterator
+from typing import TYPE_CHECKING, Iterator
 
-import torch
 from pydantic import BaseModel
+
+if TYPE_CHECKING:
+    import torch
 
 
 @dataclass
@@ -46,7 +48,7 @@ class TTSRequest(BaseModel):
 class TTSResult:
     """Result of TTS generation."""
 
-    audio: torch.Tensor  # Shape: (1, samples)
+    audio: "torch.Tensor"  # Shape: (1, samples)
     sample_rate: int
 
 

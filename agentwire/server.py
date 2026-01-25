@@ -25,6 +25,7 @@ import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import aiohttp
 import aiohttp_jinja2
 import jinja2
 from aiohttp import web
@@ -129,9 +130,9 @@ class AgentWireServer:
         self.session_activity: dict[str, dict] = {}  # Global activity tracking for all sessions
         self.dashboard_clients: set = set()  # WebSocket clients for dashboard updates
         self.session_client_counts: dict[str, int] = {}  # Attached tmux client counts per session
-        self.tts = None
         self.stt = None
         self.agent = None
+        self._http_session: aiohttp.ClientSession | None = None  # For TTS HTTP calls
         self.app = web.Application()
         self._setup_jinja2()
         self._setup_routes()
@@ -224,9 +225,7 @@ class AgentWireServer:
         # Import and initialize backends
         from .agents import get_agent_backend
         from .stt import get_stt_backend
-        from .tts import get_tts_backend
 
-        self.tts = get_tts_backend(config_dict)
         try:
             self.stt = get_stt_backend(self.config)
         except ValueError as e:
@@ -236,13 +235,66 @@ class AgentWireServer:
             self.stt = NoSTT()
         self.agent = get_agent_backend(config_dict)
 
-        logger.info(f"TTS backend: {type(self.tts).__name__}")
+        # Create HTTP session for TTS server calls
+        self._http_session = aiohttp.ClientSession()
+
+        logger.info(f"TTS URL: {self.config.tts.url}")
         logger.info(f"STT backend: {type(self.stt).__name__}")
 
     async def close_backends(self):
         """Clean up backend resources."""
-        if self.tts:
-            await self.tts.close()
+        if self._http_session:
+            await self._http_session.close()
+
+    async def _tts_generate(
+        self,
+        text: str,
+        voice: str,
+        exaggeration: float = 0.5,
+        cfg_weight: float = 0.5,
+    ) -> bytes | None:
+        """Generate TTS audio via HTTP call to TTS server."""
+        if not self._http_session:
+            return None
+
+        try:
+            async with self._http_session.post(
+                f"{self.config.tts.url}/tts",
+                json={
+                    "text": text,
+                    "voice": voice,
+                    "exaggeration": exaggeration,
+                    "cfg_weight": cfg_weight,
+                },
+                timeout=aiohttp.ClientTimeout(total=60),
+            ) as resp:
+                if resp.status == 200:
+                    return await resp.read()
+                else:
+                    logger.warning(f"TTS request failed: {resp.status}")
+                    return None
+        except Exception as e:
+            logger.warning(f"TTS request error: {e}")
+            return None
+
+    async def _tts_get_voices(self) -> list[str]:
+        """Get available TTS voices via HTTP call to TTS server."""
+        if not self._http_session:
+            return [self.config.tts.default_voice]
+
+        try:
+            async with self._http_session.get(
+                f"{self.config.tts.url}/voices",
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    return data.get("voices", [self.config.tts.default_voice])
+                else:
+                    return [self.config.tts.default_voice]
+        except Exception as e:
+            logger.warning(f"TTS voices request error: {e}")
+            return [self.config.tts.default_voice]
 
     async def cleanup_old_uploads(self):
         """Delete uploads older than cleanup_days."""
@@ -462,12 +514,7 @@ class AgentWireServer:
 
     async def _get_voices(self) -> list[str]:
         """Get available TTS voices."""
-        if self.tts:
-            try:
-                return await self.tts.get_voices()
-            except Exception:
-                pass
-        return [self.config.tts.default_voice]
+        return await self._tts_get_voices()
 
     async def run_agentwire_cmd(self, args: list[str]) -> tuple[bool, dict]:
         """Run agentwire CLI command, parse JSON output.
@@ -2226,14 +2273,8 @@ projects:
 
             logger.info(f"[{name}] Local TTS: {text[:50]}... (voice={voice})")
 
-            # Use the TTS backend (handles RunPod, Chatterbox, etc.)
-            if not self.tts:
-                return web.json_response(
-                    {"success": False, "error": "TTS backend not configured"},
-                    status=500
-                )
-
-            audio_data = await self.tts.generate(
+            # Generate audio via TTS server HTTP call
+            audio_data = await self._tts_generate(
                 text=text,
                 voice=voice,
                 exaggeration=exaggeration,
@@ -3095,9 +3136,9 @@ projects:
         await self._broadcast(session, {"type": "tts_start", "text": text})
 
         try:
-            # Generate audio
+            # Generate audio via TTS server HTTP call
             logger.info(f"[{session_name}] TTS voice: {voice}")
-            audio_data = await self.tts.generate(
+            audio_data = await self._tts_generate(
                 text=text,
                 voice=voice,
                 exaggeration=exaggeration,
