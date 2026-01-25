@@ -147,39 +147,6 @@ body {
     margin: 4px 0;
 }
 
-.sessions-list,
-.machines-list {
-    max-height: 300px;
-    overflow-y: auto;
-}
-
-.session-item,
-.machine-item {
-    padding: var(--spacing-base) 12px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-}
-
-.session-item:hover,
-.machine-item:hover {
-    background: var(--hover);
-}
-
-.session-item .session-name {
-    font-weight: 500;
-}
-
-.session-item .session-status {
-    font-size: 11px;
-    color: var(--text-muted);
-}
-
-.session-item .session-status.active {
-    color: var(--accent);
-}
-
 .voice-select {
     width: calc(100% - 24px);
     margin: 4px 12px var(--spacing-base);
@@ -889,24 +856,6 @@ body {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-}
-
-.session-status {
-    flex-shrink: 0;
-    font-size: 10px;
-    color: var(--text-muted);
-}
-
-.session-status.active {
-    color: var(--accent);
-}
-
-.session-summary {
-    margin-top: 6px;
-    font-size: 11px;
-    color: var(--text-muted);
-    line-height: 1.4;
-    word-break: break-word;
 }
 
 .session-type {
