@@ -675,7 +675,79 @@ body {
 .winbox .wb-title {
     font-size: 13px;
     color: var(--text) !important;
+    display: flex;
+    align-items: center;
+    gap: 8px;
 }
+
+/* Session Activity Indicator in title bar */
+.session-activity-indicator {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+}
+
+.session-activity-indicator .stop-icon {
+    width: 8px;
+    height: 8px;
+    background: var(--muted-foreground, #64748b);
+    border-radius: 2px;
+    opacity: 0.4;
+}
+
+.session-activity-indicator .spinner {
+    width: 12px;
+    height: 12px;
+    border: 2px solid var(--muted, #334155);
+    border-top-color: var(--primary, #3b82f6);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+.session-activity-indicator .generating-dots {
+    display: flex;
+    gap: 2px;
+    align-items: center;
+}
+
+.session-activity-indicator .generating-dots span {
+    width: 3px;
+    height: 3px;
+    background: var(--warning, #f59e0b);
+    border-radius: 50%;
+    animation: bounce 1.2s ease-in-out infinite;
+}
+
+.session-activity-indicator .generating-dots span:nth-child(2) {
+    animation-delay: 0.2s;
+}
+
+.session-activity-indicator .generating-dots span:nth-child(3) {
+    animation-delay: 0.4s;
+}
+
+.session-activity-indicator .audio-wave {
+    display: flex;
+    gap: 1px;
+    align-items: flex-end;
+    height: 12px;
+}
+
+.session-activity-indicator .audio-wave span {
+    width: 2px;
+    background: var(--success, #22c55e);
+    border-radius: 1px;
+    animation: wave 0.8s ease-in-out infinite;
+}
+
+.session-activity-indicator .audio-wave span:nth-child(1) { animation-delay: 0.0s; height: 4px; }
+.session-activity-indicator .audio-wave span:nth-child(2) { animation-delay: 0.1s; height: 7px; }
+.session-activity-indicator .audio-wave span:nth-child(3) { animation-delay: 0.2s; height: 10px; }
+.session-activity-indicator .audio-wave span:nth-child(4) { animation-delay: 0.3s; height: 7px; }
+.session-activity-indicator .audio-wave span:nth-child(5) { animation-delay: 0.4s; height: 4px; }
 
 .winbox .wb-body {
     background: var(--background);

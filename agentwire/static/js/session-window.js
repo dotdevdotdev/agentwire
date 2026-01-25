@@ -44,6 +44,15 @@ export class SessionWindow {
         this.audioChunks = [];
         this.pttState = 'idle'; // idle | recording | processing
 
+        // Activity indicator state
+        this.activityIndicator = null;
+        this.activityState = 'idle'; // idle | processing | generating | playing
+        this._activityHandler = null;
+        this._ttsStartHandler = null;
+        this._audioHandler = null;
+        this._audioEndedHandler = null;
+        this._activityTimeout = null;
+        this._activityThreshold = 3000; // ms before considered idle
     }
 
     /**
@@ -69,6 +78,8 @@ export class SessionWindow {
         }
         // Set up reconnect button handler
         this._setupReconnectButton(container);
+        // Set up activity indicator in title bar
+        this._setupActivityIndicator();
 
         this.isOpen = true;
     }
@@ -90,6 +101,28 @@ export class SessionWindow {
             document.removeEventListener('keydown', this._pttKeyHandler);
             document.removeEventListener('keyup', this._pttKeyHandler);
             this._pttKeyHandler = null;
+        }
+
+        // Clean up activity indicator event handlers
+        if (this._activityHandler) {
+            desktop.off('session_activity', this._activityHandler);
+            this._activityHandler = null;
+        }
+        if (this._ttsStartHandler) {
+            desktop.off('tts_start', this._ttsStartHandler);
+            this._ttsStartHandler = null;
+        }
+        if (this._audioHandler) {
+            desktop.off('audio', this._audioHandler);
+            this._audioHandler = null;
+        }
+        if (this._audioEndedHandler) {
+            desktop.off('audio_ended', this._audioEndedHandler);
+            this._audioEndedHandler = null;
+        }
+        if (this._activityTimeout) {
+            clearTimeout(this._activityTimeout);
+            this._activityTimeout = null;
         }
 
         // Cancel any active recording
@@ -437,6 +470,8 @@ export class SessionWindow {
                 } else {
                     this.terminal.write(data);
                 }
+                // Mark activity when terminal data received
+                this._markActivity();
             } else {
                 // Monitor mode: JSON messages to pre element
                 if (!this.outputEl) return;
@@ -448,6 +483,8 @@ export class SessionWindow {
                         // Convert ANSI to HTML and display
                         this.outputEl.innerHTML = this._ansiToHtml(msg.data);
                         this.outputEl.scrollTop = this.outputEl.scrollHeight;
+                        // Mark activity when output received
+                        this._markActivity();
                     }
                 } catch (e) {
                     // Fallback: display as plain text
@@ -1046,6 +1083,125 @@ export class SessionWindow {
             default:
                 this.pttButton.querySelector('.ptt-icon').textContent = '🎤';
         }
+    }
+
+    // Activity Indicator Methods
+
+    _setupActivityIndicator() {
+        if (!this.winbox) return;
+
+        // Find the title element in WinBox and add indicator after it
+        const titleEl = this.winbox.window.querySelector('.wb-title');
+        if (!titleEl) return;
+
+        // Create indicator element
+        this.activityIndicator = document.createElement('div');
+        this.activityIndicator.className = 'session-activity-indicator idle';
+        this.activityIndicator.innerHTML = '<div class="stop-icon"></div>';
+        this.activityIndicator.title = 'Session idle';
+
+        // Insert after title text
+        titleEl.appendChild(this.activityIndicator);
+
+        // Get the base session name (without @machine suffix) for matching events
+        const baseSession = this.session.split('@')[0];
+
+        // Subscribe to activity events for this session
+        this._activityHandler = ({ session, active }) => {
+            // Match on base session name (events come with just session name)
+            if (session === baseSession || session === this.session) {
+                // Only update if not in TTS states
+                if (this.activityState !== 'generating' && this.activityState !== 'playing') {
+                    this._updateActivityIndicator(active ? 'processing' : 'idle');
+                }
+            }
+        };
+        desktop.on('session_activity', this._activityHandler);
+
+        // Subscribe to TTS events for this session
+        this._ttsStartHandler = ({ session }) => {
+            if (session === baseSession || session === this.session) {
+                this._updateActivityIndicator('generating');
+            }
+        };
+        desktop.on('tts_start', this._ttsStartHandler);
+
+        this._audioHandler = ({ session }) => {
+            if (session === baseSession || session === this.session) {
+                this._updateActivityIndicator('playing');
+            }
+        };
+        desktop.on('audio', this._audioHandler);
+
+        this._audioEndedHandler = ({ session }) => {
+            if (session === baseSession || session === this.session) {
+                // Return to processing if timeout is active (recent activity), else idle
+                if (this._activityTimeout) {
+                    this._updateActivityIndicator('processing');
+                } else {
+                    this._updateActivityIndicator('idle');
+                }
+            }
+        };
+        desktop.on('audio_ended', this._audioEndedHandler);
+    }
+
+    _updateActivityIndicator(state) {
+        if (!this.activityIndicator) return;
+
+        this.activityState = state;
+        this.activityIndicator.classList.remove('idle', 'processing', 'generating', 'playing');
+
+        switch (state) {
+            case 'processing':
+                this.activityIndicator.innerHTML = '<div class="spinner"></div>';
+                this.activityIndicator.title = 'Session working...';
+                this.activityIndicator.classList.add('processing');
+                break;
+            case 'generating':
+                this.activityIndicator.innerHTML = '<div class="generating-dots"><span></span><span></span><span></span></div>';
+                this.activityIndicator.title = 'Generating speech...';
+                this.activityIndicator.classList.add('generating');
+                break;
+            case 'playing':
+                this.activityIndicator.innerHTML = '<div class="audio-wave"><span></span><span></span><span></span><span></span><span></span></div>';
+                this.activityIndicator.title = 'Playing audio';
+                this.activityIndicator.classList.add('playing');
+                break;
+            default:  // idle
+                this.activityIndicator.innerHTML = '<div class="stop-icon"></div>';
+                this.activityIndicator.title = 'Session idle';
+                this.activityIndicator.classList.add('idle');
+        }
+    }
+
+    /**
+     * Mark session as active (received data).
+     * Schedules transition to idle after threshold.
+     */
+    _markActivity() {
+        // Don't interrupt TTS states
+        if (this.activityState === 'generating' || this.activityState === 'playing') {
+            return;
+        }
+
+        // Show processing state
+        if (this.activityState !== 'processing') {
+            this._updateActivityIndicator('processing');
+        }
+
+        // Clear existing timeout
+        if (this._activityTimeout) {
+            clearTimeout(this._activityTimeout);
+        }
+
+        // Schedule transition to idle
+        this._activityTimeout = setTimeout(() => {
+            // Don't go idle if in TTS states
+            if (this.activityState !== 'generating' && this.activityState !== 'playing') {
+                this._updateActivityIndicator('idle');
+            }
+        }, this._activityThreshold);
     }
 
 }
