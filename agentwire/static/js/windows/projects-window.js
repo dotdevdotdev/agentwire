@@ -3,31 +3,11 @@
  */
 
 import { ListWindow } from '../list-window.js';
+import { projectIcons } from '../icon-manager.js';
+import { IconPicker } from '../components/icon-picker.js';
 
-/** Project icon filenames (12 cute monsters, wraps for more projects) */
-const PROJECT_ICONS = [
-    'blob.png',
-    'cloud.png',
-    'crystal.png',
-    'cyclops.png',
-    'flame.png',
-    'fuzzy.png',
-    'horned.png',
-    'moon.png',
-    'slime.png',
-    'star.png',
-    'tentacle.png',
-    'winged.png'
-];
-
-/**
- * Get icon URL for a project by list index (wraps after 12)
- * @param {number} index - Position in the list
- * @returns {string} Icon URL
- */
-function getProjectIconUrl(index) {
-    return `/static/icons/projects/${PROJECT_ICONS[index % PROJECT_ICONS.length]}`;
-}
+/** @type {IconPicker|null} */
+let iconPicker = null;
 
 /** @type {ListWindow|null} */
 let projectsWindow = null;
@@ -144,10 +124,14 @@ async function fetchProjects() {
     const data = await response.json();
     const projects = data.projects || [];
 
-    // Sort alphabetically so icons are stable, then assign by index
+    // Sort alphabetically
     projects.sort((a, b) => a.name.localeCompare(b.name));
-    projects.forEach((p, index) => {
-        p.iconUrl = getProjectIconUrl(index);
+
+    // Get icons using IconManager (persistent, name-matched or random)
+    const projectNames = projects.map(p => p.name);
+    const iconUrls = projectIcons.getIconsForItems(projectNames);
+    projects.forEach((p) => {
+        p.iconUrl = iconUrls[p.name];
     });
 
     // Cache for detail view
@@ -222,8 +206,9 @@ function renderProjectItem(project) {
         : '';
 
     return `
-        <div class="project-card" data-path="${project.path}" data-machine="${project.machine}">
+        <div class="project-card" data-path="${project.path}" data-machine="${project.machine}" data-name="${project.name}">
             <div class="project-icon-wrapper">
+                <button class="icon-edit-btn" data-action="edit-icon" title="Change icon">⚙</button>
                 <img src="${iconUrl}" alt="" class="project-icon" />
             </div>
             <div class="project-content">
@@ -239,7 +224,7 @@ function renderProjectItem(project) {
 
 /**
  * Handle action on project items
- * @param {string} action - The action type ('select')
+ * @param {string} action - The action type ('select', 'edit-icon')
  * @param {Object} item - The project data object
  */
 function handleProjectAction(action, item) {
@@ -249,7 +234,23 @@ function handleProjectAction(action, item) {
     if (action === 'select') {
         selectedProject = item;
         showDetailView(item);
+    } else if (action === 'edit-icon') {
+        openIconPicker(item.name);
     }
+}
+
+/**
+ * Open the icon picker for a project
+ * @param {string} projectName - Project name
+ */
+function openIconPicker(projectName) {
+    if (!iconPicker) {
+        iconPicker = new IconPicker(projectIcons);
+    }
+    iconPicker.show(projectName, () => {
+        // Refresh the list after icon change
+        projectsWindow?.refresh();
+    });
 }
 
 /**

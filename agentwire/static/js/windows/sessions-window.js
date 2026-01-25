@@ -4,46 +4,20 @@
 
 import { ListWindow } from '../list-window.js';
 import { desktop } from '../desktop-manager.js';
+import { sessionIcons } from '../icon-manager.js';
+import { IconPicker } from '../components/icon-picker.js';
 
-/** Session icon filenames (12 animal silhouettes, wraps for more sessions) */
-const SESSION_ICONS = [
-    'bear.png',
-    'cat.png',
-    'deer.png',
-    'eagle.png',
-    'fox.png',
-    'hawk.png',
-    'horse.png',
-    'lion.png',
-    'owl.png',
-    'rabbit.png',
-    'tiger.png',
-    'wolf.png'
-];
+/** @type {IconPicker|null} */
+let iconPicker = null;
 
 /**
- * Get icon URL for a session by list index (wraps after 12)
- * @param {number} index - Position in the list
- * @returns {string} Icon URL
- */
-export function getSessionIconUrl(index) {
-    return `/static/icons/sessions/${SESSION_ICONS[index % SESSION_ICONS.length]}`;
-}
-
-/**
- * Get icon URL for a session by name (hash-based, consistent per session)
+ * Get icon URL for a session by name (uses IconManager for persistence)
  * Use this for terminal/chat windows where icon should be consistent for a session name.
  * @param {string} sessionName - Session name
  * @returns {string} Icon URL
  */
 export function getSessionIconByName(sessionName) {
-    let hash = 0;
-    for (let i = 0; i < sessionName.length; i++) {
-        hash = ((hash << 5) - hash) + sessionName.charCodeAt(i);
-        hash = hash & hash;
-    }
-    const index = Math.abs(hash) % SESSION_ICONS.length;
-    return `/static/icons/sessions/${SESSION_ICONS[index]}`;
+    return sessionIcons.getIcon(sessionName);
 }
 
 /** @type {ListWindow|null} */
@@ -178,12 +152,16 @@ async function fetchSessions() {
         }
     }
 
-    // Combine and sort alphabetically so icons are stable
+    // Combine and sort alphabetically
     const allSessions = [...localSessions, ...remoteSessions].sort((a, b) =>
         a.name.localeCompare(b.name)
     );
 
-    return allSessions.map((s, index) => ({
+    // Get session names and assign icons (uses IconManager with persistence)
+    const sessionNames = allSessions.map(s => s.name);
+    const iconUrls = sessionIcons.getIconsForItems(sessionNames);
+
+    return allSessions.map((s) => ({
         name: s.name,
         active: s.activity === 'active',
         type: s.type || 'bare',
@@ -193,8 +171,8 @@ async function fetchSessions() {
         hasVoice: s.type && (s.type.startsWith('claude-') || s.type.startsWith('opencode-')),
         // Attached client count for presence indicator
         clientCount: s.client_count || 0,
-        // Icon URL based on list index (wraps after 12)
-        iconUrl: getSessionIconUrl(index)
+        // Icon URL from IconManager (persistent, name-matched or random)
+        iconUrl: iconUrls[s.name]
     }));
 }
 
@@ -247,6 +225,7 @@ function renderSessionItem(session) {
         <div class="session-card" data-session-name="${session.name}">
             <div class="session-card-top">
                 <div class="session-icon-wrapper">
+                    <button class="icon-edit-btn" data-action="edit-icon" title="Change icon">⚙</button>
                     <img src="${iconUrl}" alt="" class="session-icon" />
                     <div class="session-activity-indicator ${activityState}" data-session="${session.name}">
                         ${activityIndicatorHtml}
@@ -332,7 +311,7 @@ function formatPath(path) {
 
 /**
  * Handle action button clicks on session items
- * @param {string} action - The action type ('monitor', 'connect', or 'chat')
+ * @param {string} action - The action type ('monitor', 'connect', 'chat', 'edit-icon')
  * @param {Object} item - The session data object
  */
 function handleSessionAction(action, item) {
@@ -344,7 +323,23 @@ function handleSessionAction(action, item) {
         openSessionChat(item.name);
     } else if (action === 'close') {
         closeSession(item.name);
+    } else if (action === 'edit-icon') {
+        openIconPicker(item.name);
     }
+}
+
+/**
+ * Open the icon picker for a session
+ * @param {string} sessionName - Session name
+ */
+function openIconPicker(sessionName) {
+    if (!iconPicker) {
+        iconPicker = new IconPicker(sessionIcons);
+    }
+    iconPicker.show(sessionName, () => {
+        // Refresh the list after icon change
+        sessionsWindow?.refresh();
+    });
 }
 
 /**

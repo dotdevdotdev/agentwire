@@ -3,31 +3,11 @@
  */
 
 import { ListWindow } from '../list-window.js';
+import { machineIcons } from '../icon-manager.js';
+import { IconPicker } from '../components/icon-picker.js';
 
-/** Machine icon filenames (12 robot/android icons, wraps for more machines) */
-const MACHINE_ICONS = [
-    'android.png',
-    'automaton.png',
-    'bot.png',
-    'cyborg.png',
-    'droid.png',
-    'drone.png',
-    'guardian.png',
-    'mech.png',
-    'probe.png',
-    'robot.png',
-    'sentinel.png',
-    'unit.png'
-];
-
-/**
- * Get icon URL for a machine by list index (wraps after 12)
- * @param {number} index - Position in the list
- * @returns {string} Icon URL
- */
-function getMachineIconUrl(index) {
-    return `/static/icons/machines/${MACHINE_ICONS[index % MACHINE_ICONS.length]}`;
-}
+/** @type {IconPicker|null} */
+let iconPicker = null;
 
 /** @type {ListWindow|null} */
 let machinesWindow = null;
@@ -47,7 +27,7 @@ export function openMachinesWindow() {
         title: 'Machines',
         fetchData: fetchMachines,
         renderItem: renderMachineItem,
-        onItemAction: null,  // Display only for now
+        onItemAction: handleMachineAction,
         emptyMessage: 'No machines configured'
     });
 
@@ -71,9 +51,12 @@ async function fetchMachines() {
     const response = await fetch('/api/machines');
     const machines = await response.json();
     if (!Array.isArray(machines)) return [];
-    // Sort alphabetically so icons are stable
+    // Sort alphabetically
     machines.sort((a, b) => a.id.localeCompare(b.id));
-    return machines.map((m, index) => ({ ...m, iconUrl: getMachineIconUrl(index) }));
+    // Get icons using IconManager (persistent, name-matched or random)
+    const machineIds = machines.map(m => m.id);
+    const iconUrls = machineIcons.getIconsForItems(machineIds);
+    return machines.map((m) => ({ ...m, iconUrl: iconUrls[m.id] }));
 }
 
 /**
@@ -88,8 +71,9 @@ function renderMachineItem(machine) {
     const iconUrl = machine.iconUrl;
 
     return `
-        <div class="machine-card">
+        <div class="machine-card" data-machine-id="${machine.id}">
             <div class="machine-icon-wrapper">
+                <button class="icon-edit-btn" data-action="edit-icon" title="Change icon">⚙</button>
                 <img src="${iconUrl}" alt="" class="machine-icon" />
                 <span class="machine-status-dot ${statusClass}"></span>
             </div>
@@ -104,6 +88,31 @@ function renderMachineItem(machine) {
             </div>
         </div>
     `;
+}
+
+/**
+ * Handle action on machine items
+ * @param {string} action - The action type
+ * @param {Object} item - The machine data object
+ */
+function handleMachineAction(action, item) {
+    if (action === 'edit-icon') {
+        openIconPicker(item.id);
+    }
+}
+
+/**
+ * Open the icon picker for a machine
+ * @param {string} machineId - Machine ID
+ */
+function openIconPicker(machineId) {
+    if (!iconPicker) {
+        iconPicker = new IconPicker(machineIcons);
+    }
+    iconPicker.show(machineId, () => {
+        // Refresh the list after icon change
+        machinesWindow?.refresh();
+    });
 }
 
 /**
