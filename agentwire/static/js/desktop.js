@@ -23,6 +23,9 @@ let globalPttState = 'idle';  // idle | recording | processing
 let globalMediaRecorder = null;
 let globalAudioChunks = [];
 
+// AgentWire session activity state
+let agentwireSessionActive = false;
+
 // DOM Elements (simplified - only what we need)
 const elements = {
     desktopArea: document.getElementById('desktopArea'),
@@ -31,6 +34,7 @@ const elements = {
     connectionStatus: document.getElementById('connectionStatus'),
     sessionCount: document.getElementById('sessionCount'),
     globalPtt: document.getElementById('globalPtt'),
+    voiceIndicator: document.getElementById('voiceIndicator'),
 };
 
 // Initialize
@@ -54,8 +58,49 @@ async function init() {
     desktop.on('session_renamed', handleSessionRenamed);
     desktop.on('window_activity', handleWindowActivity);
 
+    // Handle TTS/audio events for voice indicator
+    desktop.on('tts_start', ({ session }) => {
+        if (session === 'agentwire') updateVoiceIndicator('generating');
+    });
+    desktop.on('audio', ({ session }) => {
+        if (session === 'agentwire') updateVoiceIndicator('playing');
+    });
+    desktop.on('audio_ended', ({ session }) => {
+        if (session === 'agentwire') {
+            // Return to processing if session still active, else idle
+            updateVoiceIndicator(agentwireSessionActive ? 'processing' : 'idle');
+        }
+    });
+
+    // Track agentwire session processing state (triggered when message sent)
+    desktop.on('session_processing', ({ session, processing }) => {
+        if (session === 'agentwire') {
+            agentwireSessionActive = processing;
+            // Only update to processing if not in TTS states (generating/playing take priority)
+            const indicator = elements.voiceIndicator;
+            if (processing && indicator && !indicator.classList.contains('generating') && !indicator.classList.contains('playing')) {
+                updateVoiceIndicator('processing');
+            }
+        }
+    });
+
+    // Track agentwire session activity for processing state
+    desktop.on('session_activity', ({ session, active }) => {
+        if (session === 'agentwire') {
+            agentwireSessionActive = active;
+            // Only update indicator if not currently in TTS states
+            const indicator = elements.voiceIndicator;
+            if (indicator && !indicator.classList.contains('generating') && !indicator.classList.contains('playing')) {
+                updateVoiceIndicator(active ? 'processing' : 'idle');
+            }
+        }
+    });
+
     await desktop.connect();
     updateConnectionStatus(true);
+
+    // Set initial voice indicator state
+    updateVoiceIndicator('idle');
 
     // Fetch initial data (will emit events to listeners above)
     await desktop.fetchSessions();
@@ -222,6 +267,36 @@ function updateConnectionStatus(connected) {
 function updateSessionCount(sessions) {
     const count = sessions?.length || 0;
     elements.sessionCount.innerHTML = `<span class="count">${count}</span><span class="count-label"> session${count !== 1 ? 's' : ''}</span>`;
+}
+
+// Voice indicator - shows agentwire session and TTS activity state
+function updateVoiceIndicator(state) {
+    const indicator = elements.voiceIndicator;
+    if (!indicator) return;
+
+    indicator.classList.remove('idle', 'processing', 'generating', 'playing');
+
+    switch (state) {
+        case 'processing':
+            indicator.innerHTML = '<div class="spinner"></div>';
+            indicator.title = 'AgentWire is working...';
+            indicator.classList.add('processing');
+            break;
+        case 'generating':
+            indicator.innerHTML = '<div class="generating-dots"><span></span><span></span><span></span></div>';
+            indicator.title = 'Generating speech...';
+            indicator.classList.add('generating');
+            break;
+        case 'playing':
+            indicator.innerHTML = '<div class="audio-wave"><span></span><span></span><span></span><span></span><span></span></div>';
+            indicator.title = 'Playing audio';
+            indicator.classList.add('playing');
+            break;
+        default:  // idle
+            indicator.innerHTML = '<div class="stop-icon"></div>';
+            indicator.title = 'AgentWire idle';
+            indicator.classList.add('idle');
+    }
 }
 
 /**

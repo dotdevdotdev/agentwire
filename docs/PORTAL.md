@@ -57,6 +57,31 @@ The portal provides an OS-like desktop interface using WinBox.js for window mana
 
 **Chat button** appears in the Sessions window for voice-enabled sessions (`claude-*` types). Opens a voice chat window with orb visualization.
 
+### Taskbar
+
+The taskbar at the bottom shows open session windows and a system tray with:
+
+| Element | Description |
+|---------|-------------|
+| **PTT Button** | Hold to talk to agentwire session (Ctrl+Space shortcut) |
+| **Voice Indicator** | Shows agentwire session activity state |
+
+**Voice Indicator States:**
+
+| State | Visual | Meaning |
+|-------|--------|---------|
+| Idle | Gray square | No activity for `activity_threshold_seconds` (default 3s) |
+| Processing | Spinning circle | Session has output activity |
+| Generating | Bouncing dots | TTS generating speech |
+| Playing | Audio wave bars | Audio playing in browser |
+
+TTS states (generating/playing) take priority over processing state. Configure threshold in `config.yaml`:
+
+```yaml
+server:
+  activity_threshold_seconds: 3  # Seconds before idle
+```
+
 ### Projects Window
 
 Projects are folders with `.agentwire.yml` files, discovered from `projects.dir` config. Click a project to see details and create new sessions.

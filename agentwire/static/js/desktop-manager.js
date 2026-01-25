@@ -247,6 +247,11 @@ class DesktopManager {
                 this.emit('window_activity', { session: msg.session });
                 break;
 
+            case 'session_processing':
+                console.log('[DesktopManager] Session processing:', msg.session, msg.processing);
+                this.emit('session_processing', { session: msg.session, processing: msg.processing });
+                break;
+
             case 'tts_start':
                 console.log('[DesktopManager] TTS starting for session:', msg.session);
                 this.emit('tts_start', { session: msg.session, text: msg.text });

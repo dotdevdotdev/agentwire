@@ -613,6 +613,20 @@ class AgentWireServer:
 
             machines_data = await self._get_machines_data()
             await ws.send_json({"type": "machines_update", "machines": machines_data})
+
+            # Send current agentwire session activity state
+            agentwire_activity = self.session_activity.get("agentwire", {})
+            if agentwire_activity:
+                last_timestamp = agentwire_activity.get("last_output_timestamp", 0.0)
+                time_since = time.time() - last_timestamp if last_timestamp else float('inf')
+                threshold = self.config.server.activity_threshold_seconds
+                is_active = time_since <= threshold
+                await ws.send_json({
+                    "type": "session_activity",
+                    "session": "agentwire",
+                    "active": is_active
+                })
+                logger.info(f"[Dashboard] Sent initial agentwire activity: {'active' if is_active else 'idle'}")
         except Exception as e:
             logger.error(f"Failed to send initial dashboard state: {e}")
 
@@ -752,6 +766,60 @@ class AgentWireServer:
         threshold = self.config.server.activity_threshold_seconds
 
         return "active" if time_since_last_output <= threshold else "idle"
+
+    async def monitor_agentwire_session(self):
+        """Background task to monitor agentwire session activity for dashboard indicator.
+
+        Polls tmux output and broadcasts activity state changes to dashboard clients.
+        """
+        session_name = "agentwire"
+        last_output = ""
+        last_active = False
+        threshold = self.config.server.activity_threshold_seconds
+
+        logger.info(f"[Monitor] Starting agentwire session monitor (threshold: {threshold}s)")
+
+        while True:
+            try:
+                # Get current output from tmux
+                success, result = await self.run_agentwire_cmd(["output", "-s", session_name, "-n", "50"])
+
+                if success:
+                    current_output = result.get("output", "")
+
+                    # Check if output changed
+                    if current_output != last_output:
+                        last_output = current_output
+                        logger.info(f"[Monitor] agentwire output changed ({len(current_output)} chars)")
+                        # Update global activity tracking
+                        self.session_activity[session_name] = {
+                            "last_output_timestamp": time.time(),
+                            "last_output": current_output[-500:] if current_output else "",
+                        }
+
+                    # Calculate current activity state
+                    activity_info = self.session_activity.get(session_name, {})
+                    last_timestamp = activity_info.get("last_output_timestamp", 0.0)
+                    time_since = time.time() - last_timestamp if last_timestamp else float('inf')
+                    is_active = time_since <= threshold
+
+                    # Broadcast if state changed
+                    if is_active != last_active:
+                        last_active = is_active
+                        logger.info(f"[Monitor] agentwire activity changed: {'active' if is_active else 'idle'} (time_since={time_since:.1f}s)")
+                        await self.broadcast_dashboard("session_activity", {
+                            "session": session_name,
+                            "active": is_active
+                        })
+
+                await asyncio.sleep(0.5)  # Poll every 500ms
+
+            except asyncio.CancelledError:
+                logger.info("[Monitor] Agentwire session monitor stopped")
+                break
+            except Exception as e:
+                logger.debug(f"[Monitor] Error polling agentwire session: {e}")
+                await asyncio.sleep(2)  # Back off on errors
 
     async def handle_websocket(self, request: web.Request) -> web.WebSocketResponse:
         """Handle WebSocket connections for a session."""
@@ -1314,6 +1382,7 @@ class AgentWireServer:
             except Exception:
                 dead_clients.add(client)
         session.clients -= dead_clients
+
 
     # API Handlers
 
@@ -2141,6 +2210,9 @@ projects:
 
             if not text:
                 return web.json_response({"error": "No text provided"})
+
+            # Notify dashboard that session is now processing (for agentwire indicator)
+            await self.broadcast_dashboard("session_processing", {"session": name, "processing": True})
 
             # Use CLI: agentwire send -s <session> <text>
             success, result = await self.run_agentwire_cmd(["send", "-s", name, text])
@@ -3161,8 +3233,10 @@ projects:
         exaggeration = session.config.exaggeration
         cfg_weight = session.config.cfg_weight
 
-        # Notify clients TTS is starting
-        await self._broadcast(session, {"type": "tts_start", "text": text})
+        # Notify clients TTS is starting (session clients + dashboard)
+        tts_start_msg = {"type": "tts_start", "session": session_name, "text": text}
+        await self._broadcast(session, tts_start_msg)
+        await self.broadcast_dashboard("tts_start", {"session": session_name, "text": text})
 
         try:
             # Generate audio via TTS server HTTP call
@@ -3177,10 +3251,11 @@ projects:
             if audio_data:
                 # Prepend silence to prevent first syllable cutoff
                 audio_data = self._prepend_silence(audio_data, ms=300)
-                # Send base64 encoded audio to session clients only
+                # Send base64 encoded audio to all clients
                 audio_b64 = base64.b64encode(audio_data).decode()
-                logger.info(f"[{session_name}] Broadcasting audio to session ({len(audio_b64)} bytes b64)")
-                await self._broadcast(session, {"type": "audio", "data": audio_b64})
+                logger.info(f"[{session_name}] Broadcasting audio ({len(audio_b64)} bytes b64)")
+                await self._broadcast(session, {"type": "audio", "session": session_name, "data": audio_b64})
+                await self.broadcast_dashboard("audio", {"session": session_name, "data": audio_b64})
                 return True
             else:
                 logger.warning(f"[{session_name}] TTS returned no audio data")
@@ -3198,6 +3273,9 @@ async def run_server(config: Config):
 
     # Cleanup old uploads on startup
     await server.cleanup_old_uploads()
+
+    # Start agentwire session monitor for dashboard indicator
+    monitor_task = asyncio.create_task(server.monitor_agentwire_session())
 
     # Sessions are now fetched dynamically from tmux + .agentwire.yml
     # No cache to rebuild or periodically refresh
@@ -3229,6 +3307,11 @@ async def run_server(config: Config):
         while True:
             await asyncio.sleep(3600)
     finally:
+        monitor_task.cancel()
+        try:
+            await monitor_task
+        except asyncio.CancelledError:
+            pass
         await server.close_backends()
         await runner.cleanup()
 

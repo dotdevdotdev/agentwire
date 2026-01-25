@@ -148,6 +148,7 @@ Per-session config (type, roles, voice) lives in `.agentwire.yml` in each projec
 server:
   host: "0.0.0.0"
   port: 8765
+  activity_threshold_seconds: 3  # Seconds before session considered idle
   ssl:
     cert: "~/.agentwire/cert.pem"
     key: "~/.agentwire/key.pem"

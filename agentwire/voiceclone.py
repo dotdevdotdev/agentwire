@@ -176,7 +176,7 @@ def start_recording() -> int:
     LOCK_FILE.touch()
     beep("start")
 
-    # Record audio at native sample rate, apply filters, server resamples to 24kHz
+    # Record audio at native sample rate, apply filters, resample to 24kHz before upload
     device = get_audio_device()
 
     if sys.platform == "darwin":
@@ -271,27 +271,51 @@ def stop_recording(voice_name: str) -> int:
     except (ValueError, AttributeError):
         log("WARNING: Could not determine audio duration")
 
+    # Resample to 24kHz mono (required by Chatterbox TTS)
+    log("Resampling to 24kHz...")
+    resampled_file = Path("/tmp/agentwire-voiceclone-24k.wav")
+    resample_result = subprocess.run(
+        ["ffmpeg", "-y", "-i", str(AUDIO_FILE),
+         "-ar", "24000", "-ac", "1",
+         str(resampled_file)],
+        capture_output=True, text=True
+    )
+    if resample_result.returncode != 0:
+        log(f"ERROR: Resample failed - {resample_result.stderr}")
+        notify("Resample failed")
+        beep("error")
+        AUDIO_FILE.unlink(missing_ok=True)
+        return 1
+
+    # Use resampled file for upload
+    upload_file = resampled_file
+
     log("Uploading voice clone...")
     notify("Uploading voice clone...")
     print(f"Uploading voice '{voice_name}'...")
 
+    # Cleanup helper
+    def cleanup():
+        AUDIO_FILE.unlink(missing_ok=True)
+        upload_file.unlink(missing_ok=True)
+
     # Upload based on backend
     if is_runpod_backend():
         # Upload to RunPod
-        success, message = upload_voice_runpod(voice_name, AUDIO_FILE)
+        success, message = upload_voice_runpod(voice_name, upload_file)
         if success:
             beep("done")
             log(f"SUCCESS: Voice '{voice_name}' created via RunPod")
             notify(f"Voice '{voice_name}' created!")
             print(f"Voice '{voice_name}' created successfully")
-            AUDIO_FILE.unlink(missing_ok=True)
+            cleanup()
             return 0
         else:
             beep("error")
             log(f"ERROR: RunPod upload failed - {message}")
             notify(f"Upload failed: {message}")
             print(f"Upload failed: {message}")
-            AUDIO_FILE.unlink(missing_ok=True)
+            cleanup()
             return 1
     else:
         # Upload to self-hosted TTS server
@@ -301,9 +325,10 @@ def stop_recording(voice_name: str) -> int:
             log("ERROR: tts.url not configured")
             notify("TTS URL not configured")
             print("Error: tts.url not configured in config.yaml")
+            cleanup()
             return 1
         try:
-            with open(AUDIO_FILE, "rb") as f:
+            with open(upload_file, "rb") as f:
                 response = requests.post(
                     f"{tts_url}/voices/{voice_name}",
                     files={"file": (f"{voice_name}.wav", f, "audio/wav")}
@@ -316,7 +341,7 @@ def stop_recording(voice_name: str) -> int:
                 log(f"SUCCESS: Voice '{voice_name}' created ({duration}s)")
                 notify(f"Voice '{voice_name}' created!")
                 print(f"Voice '{voice_name}' created successfully ({duration}s)")
-                AUDIO_FILE.unlink(missing_ok=True)
+                cleanup()
                 return 0
             else:
                 error = response.json().get("detail", response.text)
@@ -324,7 +349,7 @@ def stop_recording(voice_name: str) -> int:
                 notify(f"Upload failed: {error}")
                 beep("error")
                 print(f"Upload failed: {error}")
-                AUDIO_FILE.unlink(missing_ok=True)
+                cleanup()
                 return 1
 
         except requests.RequestException as e:
@@ -332,7 +357,7 @@ def stop_recording(voice_name: str) -> int:
             notify("Connection to TTS server failed")
             beep("error")
             print(f"Connection failed: {e}")
-            AUDIO_FILE.unlink(missing_ok=True)
+            cleanup()
             return 1
 
 
