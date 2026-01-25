@@ -308,11 +308,9 @@ export class SessionWindow {
         if (document.fonts && document.fonts.load) {
             // Wait for font to load, then fit
             document.fonts.load(`${fontSize}px ${fontFamily}`).then(() => {
-                console.log('[SessionWindow] Font loaded, fitting terminal');
                 doInitialFit(true);
             }).catch(() => {
                 // Font load failed, fit anyway with fallback font
-                console.warn('[SessionWindow] Font load failed, using fallback');
                 doInitialFit(false);
             });
         } else {
@@ -402,8 +400,6 @@ export class SessionWindow {
 
         const url = `${protocol}//${location.host}${endpoint}`;
 
-        console.log(`[SessionWindow] Connecting to ${url} (${this.mode} mode)`);
-
         this.ws = new WebSocket(url);
 
         if (this.mode === 'terminal') {
@@ -412,7 +408,6 @@ export class SessionWindow {
         }
 
         this.ws.onopen = () => {
-            console.log(`[SessionWindow] Connected: ${this.sessionId}`);
             this._updateStatus('connected', 'Connected');
             this._hideDisconnectOverlay();
 
@@ -432,25 +427,20 @@ export class SessionWindow {
                     if (data.includes('"type"')) {
                         try {
                             const msg = JSON.parse(data);
-                            console.log('[SessionWindow] JSON message received:', msg.type);
 
                             if (msg.type === 'audio' && msg.data) {
-                                console.log('[SessionWindow] Audio received, forwarding to device');
                                 desktop._playAudio(msg.data, this.sessionId);
                                 return;
                             } else if (msg.type === 'tts_start') {
-                                console.log('[SessionWindow] TTS starting:', msg.text);
                                 return;
                             } else if (msg.type === 'session_unlocked' || msg.type === 'session_locked') {
                                 return; // Ignore lock messages
                             } else if (msg.type === 'remote_session_ended') {
                                 // Clean exit - tmux session ended, close window like local
-                                console.log('[SessionWindow] Remote session ended cleanly:', msg.session);
                                 this.close();
                                 return;
                             } else if (msg.type === 'remote_disconnected') {
                                 // Connection issue - show overlay for reconnect
-                                console.log('[SessionWindow] Remote connection lost:', msg.session);
                                 this._updateStatus('disconnected', 'Connection lost');
                                 this._showDisconnectOverlay();
                                 return;
@@ -458,7 +448,6 @@ export class SessionWindow {
                             // Other JSON messages - don't write to terminal
                             return;
                         } catch (e) {
-                            console.warn('[SessionWindow] JSON parse failed:', e.message);
                             // Fall through to terminal
                         }
                     }
@@ -499,7 +488,6 @@ export class SessionWindow {
         };
 
         this.ws.onclose = (event) => {
-            console.log(`[SessionWindow] WebSocket closed: ${event.code}`);
             if (event.code === 1000) {
                 this._updateStatus('disconnected', 'Disconnected');
             } else {
@@ -509,7 +497,6 @@ export class SessionWindow {
             // Local sessions: close window when WebSocket closes (session died)
             // Remote sessions: don't close - we detect disconnect via terminal output patterns
             if (!this.machine) {
-                console.log(`[SessionWindow] Local session WebSocket closed, closing window`);
                 this.close();
             }
         };
@@ -577,16 +564,12 @@ export class SessionWindow {
 
         const doFit = () => {
             try {
-                const container = this.winbox?.body?.querySelector('.session-terminal');
-                console.log('[SessionWindow] Fullscreen container:', container?.offsetWidth, 'x', container?.offsetHeight);
-
                 const fontFamily = '"FiraMono Nerd Font Mono", Menlo, Monaco, "Courier New", monospace';
                 const fontSize = 14;
                 this.terminal.options.fontFamily = fontFamily;
                 this.terminal.options.fontSize = fontSize;
                 this.fitAddon.fit();
                 this._sendResize();
-                console.log('[SessionWindow] Fullscreen terminal:', this.terminal.cols, 'x', this.terminal.rows);
             } catch (err) {
                 console.error('[SessionWindow] Fullscreen fit error:', err);
             }
@@ -595,7 +578,6 @@ export class SessionWindow {
         // fullscreenchange fires AFTER the browser completes the fullscreen transition
         const onFullscreenChange = () => {
             document.removeEventListener('fullscreenchange', onFullscreenChange);
-            console.log('[SessionWindow] fullscreenchange fired, isFullscreen:', !!document.fullscreenElement);
 
             // Multiple fits with increasing delays to ensure it sticks
             setTimeout(doFit, 50);
@@ -608,7 +590,6 @@ export class SessionWindow {
         // Fallback: if fullscreenchange doesn't fire within 1s, force fit
         setTimeout(() => {
             document.removeEventListener('fullscreenchange', onFullscreenChange);
-            console.log('[SessionWindow] Fullscreen fallback triggered');
             doFit();
             setTimeout(doFit, 200);
         }, 1000);
@@ -620,10 +601,6 @@ export class SessionWindow {
 
         const doFit = () => {
             try {
-                const container = this.winbox.body.querySelector('.session-terminal');
-                console.log('[SessionWindow] Container dimensions:', container?.offsetWidth, container?.offsetHeight);
-                console.log('[SessionWindow] Terminal before fit:', this.terminal.cols, 'x', this.terminal.rows);
-
                 // Ensure font options are set before fitting (in case they weren't applied correctly)
                 const fontFamily = '"FiraMono Nerd Font Mono", Menlo, Monaco, "Courier New", monospace';
                 const fontSize = 14;
@@ -631,7 +608,6 @@ export class SessionWindow {
                 this.terminal.options.fontSize = fontSize;
 
                 this.fitAddon.fit();
-                console.log('[SessionWindow] Terminal after fit:', this.terminal.cols, 'x', this.terminal.rows);
                 this._sendResize();
             } catch (err) {
                 console.error('[SessionWindow] Fit error:', err);
@@ -642,7 +618,6 @@ export class SessionWindow {
         let handled = false;
 
         const onTransitionEnd = (e) => {
-            console.log('[SessionWindow] transitionend:', e.propertyName, e.target);
             if (e.target === winboxEl && (e.propertyName === 'width' || e.propertyName === 'height')) {
                 handled = true;
                 winboxEl.removeEventListener('transitionend', onTransitionEnd);
@@ -655,7 +630,6 @@ export class SessionWindow {
         // Fallback: if transitionend doesn't fire within 500ms, force fit
         setTimeout(() => {
             if (!handled) {
-                console.log('[SessionWindow] transitionend timeout - forcing fit');
                 winboxEl.removeEventListener('transitionend', onTransitionEnd);
                 doFit();
             }
@@ -670,15 +644,7 @@ export class SessionWindow {
                 cols: this.terminal.cols,
                 rows: this.terminal.rows,
             };
-            console.log('[SessionWindow] Sending resize:', msg);
             this.ws.send(JSON.stringify(msg));
-        } else {
-            console.log('[SessionWindow] Cannot send resize:', {
-                mode: this.mode,
-                wsExists: !!this.ws,
-                wsState: this.ws?.readyState,
-                terminalExists: !!this.terminal
-            });
         }
     }
 
@@ -725,7 +691,6 @@ export class SessionWindow {
     }
 
     async _reconnect() {
-        console.log(`[SessionWindow] Reconnecting to ${this.sessionId}...`);
         this._updateStatus('connecting', 'Checking session...');
 
         // For remote sessions, check if the session still exists before reconnecting
@@ -740,7 +705,6 @@ export class SessionWindow {
                 );
 
                 if (!sessionExists) {
-                    console.log(`[SessionWindow] Remote session ${this.sessionId} no longer exists, closing window`);
                     this.close();
                     return;
                 }
@@ -980,7 +944,6 @@ export class SessionWindow {
 
             this.mediaRecorder.start();
             this._setPTTState('recording');
-            console.log('[SessionWindow] Recording started');
 
         } catch (err) {
             console.error('[SessionWindow] Failed to start recording:', err);
@@ -994,7 +957,6 @@ export class SessionWindow {
 
         this._setPTTState('processing');
         this.mediaRecorder.stop();
-        console.log('[SessionWindow] Recording stopped, processing...');
     }
 
     _cancelRecording() {
@@ -1003,7 +965,6 @@ export class SessionWindow {
         this.audioChunks = [];
         this.mediaRecorder.stop();
         this._setPTTState('idle');
-        console.log('[SessionWindow] Recording cancelled');
     }
 
     async _processRecording(blob) {
@@ -1030,8 +991,6 @@ export class SessionWindow {
                 return;
             }
 
-            console.log('[SessionWindow] Transcribed:', text);
-
             // Step 2: Send to session with voice prompt hint
             const sendRes = await fetch(`/send/${this.sessionId}`, {
                 method: 'POST',
@@ -1047,7 +1006,6 @@ export class SessionWindow {
                 throw new Error(sendData.error);
             }
 
-            console.log('[SessionWindow] Sent to session:', this.sessionId);
             this._updateStatus('connected', `Sent: "${text.substring(0, 30)}${text.length > 30 ? '...' : ''}"`);
 
             // Reset status after a moment

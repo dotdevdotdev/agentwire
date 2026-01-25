@@ -111,8 +111,6 @@ async function init() {
  * Closes the session window if open and refreshes the sessions list.
  */
 function handleSessionClosed({ session }) {
-    console.log('[Desktop] Session closed:', session);
-
     // Close the session window if it's open
     if (sessionWindows.has(session)) {
         const sw = sessionWindows.get(session);
@@ -130,7 +128,6 @@ function handleSessionClosed({ session }) {
  * Sessions list will be updated automatically via sessions_update.
  */
 function handleSessionCreated({ session }) {
-    console.log('[Desktop] Session created:', session);
     // Sessions list will be updated by the sessions_update event
 }
 
@@ -139,7 +136,6 @@ function handleSessionCreated({ session }) {
  * Refreshes session info to update pane counts.
  */
 function handlePaneDied({ session, pane_id }) {
-    console.log('[Desktop] Pane died:', session, pane_id);
     // Sessions list (with pane counts) will be updated by sessions_update event
 }
 
@@ -148,8 +144,6 @@ function handlePaneDied({ session, pane_id }) {
  * Updates open windows and taskbar buttons with new session name.
  */
 function handleSessionRenamed({ old_name, new_name }) {
-    console.log('[Desktop] Session renamed:', old_name, '->', new_name);
-
     // Update session window if open
     if (old_name && sessionWindows.has(old_name)) {
         const sw = sessionWindows.get(old_name);
@@ -169,8 +163,6 @@ function handleSessionRenamed({ old_name, new_name }) {
  * Shows desktop notification for background session activity.
  */
 function handleWindowActivity({ session }) {
-    console.log('[Desktop] Window activity:', session);
-
     // Only notify if session window is not focused
     if (desktop.getActiveWindow() !== session) {
         // Request notification permission if needed
@@ -458,7 +450,6 @@ async function processGlobalRecording() {
                     text: `[User said: '${text}' - respond using CLI: agentwire say 'your message']`
                 })
             });
-            console.log('[GlobalPTT] Sent to agentwire:', text);
         }
     } catch (err) {
         console.error('[GlobalPTT] Processing failed:', err);

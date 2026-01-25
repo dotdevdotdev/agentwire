@@ -90,13 +90,11 @@ class DesktopManager {
         }
 
         this.ws.onopen = () => {
-            console.log('[DesktopManager] WebSocket connected');
             this.reconnectAttempts = 0;
             this.emit('connect');
         };
 
         this.ws.onclose = (event) => {
-            console.log('[DesktopManager] WebSocket disconnected:', event.code, event.reason);
             this.ws = null;
             this.emit('disconnect');
 
@@ -152,8 +150,6 @@ class DesktopManager {
 
         const delay = this.getReconnectDelay();
         this.reconnectAttempts++;
-
-        console.log(`[DesktopManager] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`);
 
         this.reconnectTimeout = setTimeout(() => {
             this.reconnectTimeout = null;
@@ -248,23 +244,20 @@ class DesktopManager {
                 break;
 
             case 'session_processing':
-                console.log('[DesktopManager] Session processing:', msg.session, msg.processing);
                 this.emit('session_processing', { session: msg.session, processing: msg.processing });
                 break;
 
             case 'tts_start':
-                console.log('[DesktopManager] TTS starting for session:', msg.session);
                 this.emit('tts_start', { session: msg.session, text: msg.text });
                 break;
 
             case 'audio':
-                console.log('[DesktopManager] Audio received for session:', msg.session, 'length:', msg.data?.length);
                 this._playAudio(msg.data, msg.session);
                 this.emit('audio', { session: msg.session });
                 break;
 
             default:
-                console.log('[DesktopManager] Unknown message type:', msg.type);
+                // Unknown message types are silently ignored
         }
     }
 
@@ -415,7 +408,6 @@ class DesktopManager {
         }
 
         keysToRemove.forEach(key => localStorage.removeItem(key));
-        console.log(`[DesktopManager] Cleared ${keysToRemove.length} window state(s)`);
     }
 
     /**
@@ -687,7 +679,6 @@ class DesktopManager {
 
         // Skip if same audio within 2 seconds (multiple windows, same device)
         if (audioHash === this._lastAudioHash && (now - this._lastAudioTime) < 2000) {
-            console.log('[DesktopManager] Skipping duplicate audio (already playing on this device)');
             return;
         }
 
@@ -718,13 +709,10 @@ class DesktopManager {
 
             // Emit audio_ended when playback finishes
             source.onended = () => {
-                console.log('[DesktopManager] Audio playback ended for session:', session);
                 this.emit('audio_ended', { session });
             };
 
             source.start(0);
-
-            console.log('[DesktopManager] Audio playback started, duration:', audioBuffer.duration.toFixed(2), 's');
         } catch (err) {
             console.error('[DesktopManager] Audio playback failed:', err);
         }

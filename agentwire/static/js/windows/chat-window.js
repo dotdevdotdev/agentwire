@@ -251,7 +251,6 @@ class ChatWindow {
 
         // Listen for TTS events to update orb state
         const unsubTtsStart = desktop.on('tts_start', (data) => {
-            console.log('[ChatWindow] tts_start received:', data, 'selectedSession:', this.selectedSession);
             const { session, text } = data || {};
             // Match session name (could be exact or the selected session could be a prefix)
             if (session && this.selectedSession &&
@@ -370,11 +369,10 @@ class ChatWindow {
         const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
         const url = `${protocol}//${location.host}/ws/${this.selectedSession}`;
 
-        console.log('[ChatWindow] Connecting to session WebSocket:', url);
         this.sessionWs = new WebSocket(url);
 
         this.sessionWs.onopen = () => {
-            console.log('[ChatWindow] Session WebSocket connected:', this.selectedSession);
+            // Connected
         };
 
         this.sessionWs.onmessage = (event) => {
@@ -383,7 +381,6 @@ class ChatWindow {
 
                 // Handle tts_start - set orb to speaking and add message
                 if (msg.type === 'tts_start') {
-                    console.log('[ChatWindow] TTS start from session WS:', msg.text);
                     this._setOrbState('speaking');
                     if (msg.text) {
                         this._addMessage('assistant', msg.text);
@@ -392,7 +389,6 @@ class ChatWindow {
 
                 // Handle audio messages - play via desktop manager
                 if (msg.type === 'audio' && msg.data) {
-                    console.log('[ChatWindow] Audio received, playing via desktop manager');
                     desktop._playAudio(msg.data, this.selectedSession);
                 }
 
@@ -410,7 +406,7 @@ class ChatWindow {
         };
 
         this.sessionWs.onclose = () => {
-            console.log('[ChatWindow] Session WebSocket closed');
+            // Disconnected
         };
     }
 
