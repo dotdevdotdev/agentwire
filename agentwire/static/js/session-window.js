@@ -42,6 +42,10 @@ export class SessionWindow {
         this.mediaRecorder = null;
         this.audioChunks = [];
         this.pttState = 'idle'; // idle | recording | processing
+
+        // Remote disconnect detection
+        this._recentOutput = '';  // Buffer for detecting disconnect patterns
+        this._disconnectDetected = false;
     }
 
     /**
@@ -377,6 +381,10 @@ export class SessionWindow {
             this._updateStatus('connected', 'Connected');
             this._hideDisconnectOverlay();
 
+            // Reset disconnect detection state for remote sessions
+            this._disconnectDetected = false;
+            this._recentOutput = '';
+
             // Send initial terminal size (both modes need it for proper display)
             this._sendResize();
         };
@@ -419,6 +427,10 @@ export class SessionWindow {
                     this.terminal.write(new Uint8Array(data));
                 } else {
                     this.terminal.write(data);
+                    // For remote sessions, detect SSH disconnect pattern
+                    if (this.machine && typeof data === 'string') {
+                        this._checkRemoteDisconnect(data);
+                    }
                 }
             } else {
                 // Monitor mode: JSON messages to pre element
@@ -664,8 +676,30 @@ export class SessionWindow {
         }
     }
 
-    _reconnect() {
-        console.log(`[SessionWindow] Reconnecting to ${this.sessionName}...`);
+    async _reconnect() {
+        console.log(`[SessionWindow] Reconnecting to ${this.sessionId}...`);
+        this._updateStatus('connecting', 'Checking session...');
+
+        // For remote sessions, check if the session still exists before reconnecting
+        if (this.machine) {
+            try {
+                const response = await fetch(`/api/sessions/remote`);
+                const sessions = await response.json();
+                const sessionExists = sessions.some(s =>
+                    s.name === this.session && s.machine === this.machine
+                );
+
+                if (!sessionExists) {
+                    console.log(`[SessionWindow] Remote session ${this.sessionId} no longer exists, closing window`);
+                    this.close();
+                    return;
+                }
+            } catch (err) {
+                console.error('[SessionWindow] Failed to check session:', err);
+                // Continue with reconnect attempt anyway
+            }
+        }
+
         this._hideDisconnectOverlay();
         this._updateStatus('connecting', 'Reconnecting...');
 
@@ -678,6 +712,42 @@ export class SessionWindow {
 
         // Reconnect
         this._connectWebSocket();
+    }
+
+    /**
+     * Detect SSH disconnect patterns in terminal output for remote sessions.
+     * Shows reconnect overlay when disconnect is detected.
+     * Uses a buffer since disconnect messages may arrive in chunks.
+     * @param {string} data - Terminal output data
+     */
+    _checkRemoteDisconnect(data) {
+        // Already detected, don't re-trigger
+        if (this._disconnectDetected) return;
+
+        // Append to buffer (keep last 500 chars to catch multi-line patterns)
+        this._recentOutput += data;
+        if (this._recentOutput.length > 500) {
+            this._recentOutput = this._recentOutput.slice(-500);
+        }
+
+        // Match patterns like "[exited]" or "Connection to X.X.X.X closed."
+        const disconnectPatterns = [
+            /\[exited\]/i,
+            /Connection to .+ closed\./i,
+            /Connection reset by peer/i,
+            /Connection refused/i,
+            /broken pipe/i
+        ];
+
+        for (const pattern of disconnectPatterns) {
+            if (pattern.test(this._recentOutput)) {
+                console.log(`[SessionWindow] Remote disconnect detected: ${pattern}`);
+                this._disconnectDetected = true;
+                this._updateStatus('disconnected', 'Remote session disconnected');
+                this._showDisconnectOverlay();
+                break;
+            }
+        }
     }
 
     /**
