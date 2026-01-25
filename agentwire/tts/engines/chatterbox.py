@@ -14,7 +14,9 @@ class ChatterboxEngine(TTSEngine):
     Supports:
     - Voice cloning from reference audio
     - Paralinguistic tags: [laugh], [chuckle], [cough], [sigh], [gasp]
-    - Exaggeration and CFG weight controls
+
+    Note: Turbo model does NOT support exaggeration, cfg_weight, or min_p.
+    These parameters are accepted but ignored for API compatibility.
     """
 
     def __init__(self, device: str = "cuda", voices_dir: Path | None = None):
@@ -47,10 +49,10 @@ class ChatterboxEngine(TTSEngine):
         return self._model.sr
 
     def generate(self, request: TTSRequest) -> TTSResult:
-        """Generate audio using Chatterbox.
+        """Generate audio using Chatterbox Turbo.
 
         Args:
-            request: TTS request with text, voice, exaggeration, cfg_weight
+            request: TTS request with text and voice
 
         Returns:
             TTSResult with audio tensor
@@ -61,11 +63,11 @@ class ChatterboxEngine(TTSEngine):
             if voice_file.exists():
                 voice_path = str(voice_file)
 
+        # Turbo model only supports text and audio_prompt_path
+        # exaggeration, cfg_weight, min_p are NOT supported
         wav = self._model.generate(
             request.text,
             audio_prompt_path=voice_path,
-            exaggeration=request.exaggeration,
-            cfg_weight=request.cfg_weight,
         )
 
         return TTSResult(audio=wav, sample_rate=self._model.sr)
@@ -126,11 +128,10 @@ class ChatterboxStreamingEngine(TTSEngine):
             if voice_file.exists():
                 voice_path = str(voice_file)
 
+        # Turbo model only supports text and audio_prompt_path
         wav = self._model.generate(
             request.text,
             audio_prompt_path=voice_path,
-            exaggeration=request.exaggeration,
-            cfg_weight=request.cfg_weight,
         )
 
         return TTSResult(audio=wav, sample_rate=self._model.sr)
@@ -146,11 +147,10 @@ class ChatterboxStreamingEngine(TTSEngine):
             if voice_file.exists():
                 voice_path = str(voice_file)
 
+        # Turbo model only supports text and audio_prompt_path
         for audio_chunk, metrics in self._model.generate_stream(
             request.text,
             audio_prompt_path=voice_path,
-            exaggeration=request.exaggeration,
-            cfg_weight=request.cfg_weight,
         ):
             # Convert chunk to WAV bytes
             buffer = io.BytesIO()
