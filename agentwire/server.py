@@ -922,6 +922,10 @@ class AgentWireServer:
                         if data:
                             # Schedule putting data in queue from event loop
                             asyncio.create_task(data_queue.put(data))
+                        else:
+                            # Empty read = EOF (process exited)
+                            logger.info(f"[Terminal] PTY EOF (empty read) for {session_name}")
+                            asyncio.create_task(data_queue.put(None))
                     except OSError as e:
                         logger.info(f"[Terminal] PTY read error: {e}")
                         # Signal EOF
