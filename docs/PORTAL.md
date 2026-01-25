@@ -123,6 +123,46 @@ Multiple windows for the same session work together:
 - Local `tmux attach` works alongside portal windows
 - All use the same underlying tmux session
 
+### Icons
+
+Sessions, machines, and projects display icons in their list windows. Icons are assigned using a smart system:
+
+**Assignment Priority:**
+1. **Saved assignment** - Previously assigned icon from localStorage persists
+2. **Name match** - Item name matches icon filename in `custom/` folder (e.g., session "myapp" matches `custom/myapp.png`)
+3. **Random** - Unique icon from default folder, no duplicates within a list
+
+**Folder Structure:**
+```
+static/icons/
+├── sessions/
+│   ├── custom/          # Named icons for matching
+│   │   ├── agentwire.png
+│   │   └── myproject.jpeg
+│   ├── fox.jpeg         # Default icons for random
+│   ├── robot.jpeg
+│   └── ...
+├── machines/
+│   ├── custom/
+│   └── ...
+└── projects/
+    ├── custom/
+    └── ...
+```
+
+**Adding Custom Icons:**
+1. Drop an image into `static/icons/{category}/custom/`
+2. Name it to match the session/machine/project (e.g., `myproject.png` for a project named "myproject")
+3. Rebuild and restart portal
+4. Clear localStorage to trigger re-matching (or use the icon picker)
+
+**Icon Picker:** Click the gear icon on any item to manually select a different icon. Manual selections are saved to localStorage.
+
+**Name Matching Rules:**
+- Case insensitive: "MyProject" matches `myproject.png`
+- Ignores hyphens/special chars: "my-project" matches `myproject.png`
+- Strips `@machine` suffix for remote sessions: "myapp@gpu-server" matches `myapp.png`
+
 ---
 
 ## Voice Output
@@ -288,6 +328,12 @@ uploads:
 | `/api/config` | GET | Get current config |
 | `/api/config` | POST | Save config |
 | `/api/config/reload` | POST | Reload config from disk |
+
+### Icons
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/icons/{category}` | GET | List icons for category (sessions/machines/projects). Returns `{custom: [...], default: [...]}` |
 
 ### Permission Handling
 
