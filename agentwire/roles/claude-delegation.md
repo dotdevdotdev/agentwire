@@ -12,7 +12,11 @@ This role supplements `leader` with Claude Code-specific techniques.
 
 ---
 
-## Quick Reference Card
+## Quick Reference
+
+For detailed exit summary format, see `worker` role. Delegation roles focus on task communication, not summary format.
+
+### Spawn Command
 
 ### Spawn Command
 ```bash
@@ -31,6 +35,15 @@ Check the existing user model for context."
 - [ ] Context is provided (relevant files, patterns)
 - [ ] Constraints are explicit (what NOT to do)
 - [ ] Success criteria are testable
+
+### Check Completion
+
+Workers write exit summaries. Check for:
+```
+─── DONE ───      (success)
+─── BLOCKED ───   (needs help)
+─── ERROR ───     (failed)
+```
 
 ### API Concurrency Limits
 
@@ -219,18 +232,17 @@ Use the test fixtures in /tests/fixtures/."
 Workers write exit summaries. Check for:
 
 ```bash
-cat .agentwire/worker-1.md
-cat .agentwire/worker-2.md
+cat .agentwire/ses_*.md
 ```
 
 Look for:
-- **Status:** Complete → proceed, Blocked/Failed → address issues
+- **Status:** ── DONE ── → proceed, ── BLOCKED ── / ── ERROR ── → address issues
 - **Files Changed:** Review what was modified
 - **What Didn't Work:** Issues to fix
 
 ---
 
-## When Workers Get Stuck
+## Failure Patterns & Recovery
 
 ### Ambiguous Requirements
 
@@ -253,7 +265,7 @@ Check /models/membership.ts for the relationship."
 
 ```bash
 agentwire send --pane 1 "The refactoring went too far.
-Please focus only on splitting jwt.ts, session.ts, and password.ts.
+Please focus only on splitting jwt.ts, session.ts and password.ts.
 Don't touch the middleware or hooks.
 Roll back other changes and commit only the auth module split."
 ```
@@ -272,6 +284,28 @@ Here's what I need:
 - Integration test added for full flow
 Run: npm test
 Fix any failures before marking done."
+```
+
+### Recovery Patterns
+
+**Worker Failed or Blocked:**
+
+```bash
+# Read summary to understand what went wrong
+cat .agentwire/ses_*.md
+
+# Check "What Didn't Work" section
+# Spawn new worker with clarified requirements
+agentwire spawn --roles claude-worker
+agentwire send --pane 2 "[Clarified task based on failure]"
+```
+
+**Code Is Wrong:**
+
+```bash
+git diff  # Review changes
+git checkout -- /path/to/file.tsx  # Revert if needed
+# Spawn worker with better instructions
 ```
 
 ---
@@ -315,28 +349,21 @@ Make sure to:
 - Return appropriate HTTP status codes"
 ```
 
----
+### Success Checklist
 
-## Recovery Patterns
+Before reporting completion to main orchestrator:
 
-### Worker Failed or Blocked
+- [ ] All workers output exit summary (─── DONE ───)
+- [ ] `npm run build` passes (or equivalent)
+- [ ] Chrome screenshot looks correct (web projects)
+- [ ] No console errors
+- [ ] Interactive elements work
+- [ ] Edge cases handled (empty states, errors)
+- [ ] Git committed
 
+Only then:
 ```bash
-# Read the summary to understand what went wrong
-cat .agentwire/worker-1.md
-
-# Check the "What Didn't Work" section
-# Spawn new worker with clarified requirements
-agentwire spawn --roles worker
-agentwire send --pane 2 "[Clarified task based on failure]"
-```
-
-### Code Is Wrong
-
-```bash
-git diff  # Review changes
-git checkout -- /path/to/file.tsx  # Revert if needed
-# Spawn worker with better instructions
+agentwire say -v may --notify agentwire "Feature complete, tested in Chrome"
 ```
 
 ---

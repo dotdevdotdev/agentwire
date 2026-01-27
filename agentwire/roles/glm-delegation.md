@@ -12,7 +12,11 @@ This role supplements `leader` with GLM-specific techniques.
 
 ---
 
-## Quick Reference Card
+## Quick Reference
+
+For detailed exit summary format, see `worker` role. Delegation roles focus on task communication, not summary format.
+
+### Spawn Command
 
 ### Spawn Command
 ```bash
@@ -107,12 +111,47 @@ Workers auto-exit when idle. If a worker's summary shows failure or blocking iss
 
 ```bash
 # Read failed worker's summary
-cat .agentwire/worker-1.md
+cat .agentwire/ses_*.md
 
 # Spawn new worker with better instructions
 agentwire spawn --type opencode-bypass --roles glm-worker
 agentwire send --pane 1 "[improved task based on what failed]"
 ```
+
+---
+
+## Task Communication
+
+### Explicit Instructions Required
+
+GLM requires structured instructions. Use the task template from Quick Reference.
+
+**Key principles:**
+- Front-load critical rules (GLM weighs the start heavily)
+- Use firm language: "MUST", "STRICTLY", not "please try"
+- Absolute paths always
+- Explicit numbered steps
+
+**GLM vs Claude examples:**
+
+**GLM (literal executor):**
+```
+TASK: Add JWT authentication
+FILES: /absolute/path/to/auth/jwt.py
+STEPS:
+1. Read models/user.py
+2. Create jwt.py with token generation
+3. Add login/logout to routes/auth.py
+```
+
+**Claude (collaborator):**
+```
+Add JWT authentication to the API.
+We need login/logout endpoints and a verify middleware.
+Check the existing user model for context.
+```
+
+GLM cannot infer from context like Claude can - you must be explicit.
 
 ---
 
@@ -165,74 +204,6 @@ Wave 3: 2 workers (Nav + CTA)
 - Component B imports Component A
 - Page imports multiple components
 - Tests that need the code first
-
----
-
-## The Task Template
-
-### Full Template
-
-```bash
-agentwire send --pane 1 "CRITICAL RULES (follow STRICTLY):
-- ONLY modify files listed in FILES section
-- Use ABSOLUTE paths (not relative)
-- LANGUAGE: English only in all output and comments
-- NO placeholder code - implement fully
-- Output exit summary when done (see worker role for format)
-
-TASK: Create TimerDisplay component
-
-FILES:
-- /home/user/projects/pomodoro/src/components/TimerDisplay.tsx
-
-CONTEXT:
-- Project uses Next.js 14 with App Router
-- Tailwind CSS for styling
-- Dark theme with CSS variables: --primary, --secondary, --foreground
-- Other components use 'export function ComponentName' pattern
-
-STEPS (execute IN ORDER):
-1. Create the file at the exact path above
-2. Add interface for props: timeRemaining (number), mode ('work' | 'break')
-3. Format timeRemaining as MM:SS (e.g., 1500 seconds = '25:00')
-4. Use --primary color for work mode, --secondary for break mode
-5. Add mode label below timer ('Focus Time' or 'Break Time')
-6. Export as named export
-
-REQUIREMENTS:
-- TypeScript with explicit prop types
-- Tailwind classes only (no inline styles)
-- Large centered text (text-6xl or larger)
-- Tabular nums for consistent digit width
-
-DO NOT:
-- Import from files that don't exist yet
-- Add state or hooks (this is a display-only component)
-- Create additional files
-- Use relative imports
-
-SUCCESS CRITERIA:
-- File exists at specified path
-- Component accepts timeRemaining and mode props
-- Displays formatted time as MM:SS
-- Colors change based on mode
-- TypeScript compiles without errors"
-```
-
-### Minimal Template (for simple tasks)
-
-```bash
-agentwire send --pane 1 "TASK: Add formatTime utility
-
-FILE: /home/user/projects/myapp/src/utils/formatTime.ts
-
-Create a function that converts seconds to MM:SS format.
-- Input: seconds (number)
-- Output: string like '25:00'
-- Export as named export
-
-Output exit summary when done"
-```
 
 ---
 
@@ -323,7 +294,31 @@ FILE 3 - index.ts:
 
 ---
 
-## Failure Patterns & Fixes
+## Worker Tracking
+
+### Maintain a Task Map
+
+| Pane | Task | Status |
+|------|------|--------|
+| 1 | "Auth endpoints" | In progress |
+| 2 | "Docs update" | In progress |
+
+### Check Completion
+
+Workers write exit summaries. Check for:
+
+```bash
+cat .agentwire/ses_*.md
+```
+
+Look for:
+- **Status:** ── DONE ── → proceed, ── BLOCKED ── / ── ERROR ── → address issues
+- **Files Changed:** Review what was modified
+- **What Didn't Work:** Issues to fix
+
+---
+
+## Failure Patterns & Recovery
 
 ### 1. Worker Modifies Wrong Files
 
@@ -381,125 +376,17 @@ STYLING:
 When done, output your exit summary (see worker role for ─── DONE ─── format)
 ```
 
----
+### Recovery Patterns
 
-## Chrome Testing Protocol
-
-**REQUIRED for all web projects. Don't skip this.**
-
-### After Workers Complete
+**Worker Failed or Blocked:**
 
 ```bash
-# 1. Read worker summaries for status
-cat .agentwire/worker-1.md
-
-# 2. Start dev server
-npm run dev &
-
-# 3. Wait for server ready
-sleep 5
-
-# 4. Navigate and screenshot
-mcp__claude-in-chrome__tabs_context_mcp
-mcp__claude-in-chrome__navigate to localhost:3000
-mcp__claude-in-chrome__computer action=screenshot
-
-# 5. Check console
-mcp__claude-in-chrome__read_console_messages pattern="error|Error|warning"
-```
-
-### Testing Checklist
-
-- [ ] Page loads without white screen
-- [ ] No console errors
-- [ ] UI matches expected layout
-- [ ] Interactive elements are clickable
-- [ ] Data displays correctly
-
-### When Issues Found
-
-**Document the bug:**
-```
-BUG: Button not clickable
-LOCATION: Hero section, CTA button
-EXPECTED: Clicking navigates to /signup
-ACTUAL: Nothing happens
-LIKELY CAUSE: Missing onClick or Link wrapper
-```
-
-**Spawn fix worker:**
-```bash
-agentwire spawn --type opencode-bypass --roles glm-worker
-agentwire send --pane 2 "TASK: Fix Hero CTA button
-
-FILE: /path/to/Hero.tsx
-
-BUG: Button doesn't navigate on click
-FIX: Wrap button in Link from next/link to /signup
-
-Output exit summary when done"
-```
-
----
-
-## Parallel Execution Strategy
-
-### Wave Planning
-
-```
-Wave 1: Foundation (can be parallel if independent)
-├── Worker 1: useTimer hook
-├── Worker 2: API route /api/settings
-└── Worker 3: Database schema
-
-Wave 2: Components (parallel - no imports between them)
-├── Worker 4: TimerDisplay
-├── Worker 5: TimerControls
-├── Worker 6: Settings panel
-└── Worker 7: SessionCounter
-
-Wave 3: Integration (after Wave 2)
-└── Worker 8: Main page assembly
-
-Wave 4: Polish (parallel)
-├── Worker 9: Loading states
-└── Worker 10: Error handling
-```
-
-### Spawn All Independent Workers Together
-
-```bash
-# Wave 2 - all parallel
-agentwire spawn --type opencode-bypass --roles glm-worker  # pane 1
-agentwire spawn --type opencode-bypass --roles glm-worker  # pane 2
-agentwire spawn --type opencode-bypass --roles glm-worker  # pane 3
-agentwire spawn --type opencode-bypass --roles glm-worker  # pane 4
-
-agentwire send --pane 1 "[TimerDisplay task]"
-agentwire send --pane 2 "[TimerControls task]"
-agentwire send --pane 3 "[Settings task]"
-agentwire send --pane 4 "[SessionCounter task]"
-
-# Workers auto-exit when done
-# Read summaries: cat .agentwire/worker-{1,2,3,4}.md
-# Then proceed to Wave 3
-```
-
----
-
-## Recovery Patterns
-
-### Worker Failed or Blocked
-
-Workers auto-exit. Read their summary to understand what went wrong:
-
-```bash
-cat .agentwire/worker-1.md
+cat .agentwire/ses_*.md
 # Check "What Didn't Work" section
 # Spawn fresh worker with clearer instructions
 ```
 
-### Code Is Wrong
+**Code Is Wrong:**
 
 ```bash
 git diff path/to/file.tsx  # See what changed
@@ -507,7 +394,7 @@ git checkout -- path/to/file.tsx  # Revert
 # Spawn new worker with better instructions
 ```
 
-### Multiple Files Broken
+**Multiple Files Broken:**
 
 ```bash
 git stash  # Save current state
@@ -523,13 +410,13 @@ Before reporting completion to main orchestrator:
 
 - [ ] All workers output exit summary (─── DONE ───)
 - [ ] `npm run build` passes (or equivalent)
-- [ ] Chrome screenshot looks correct
+- [ ] Chrome screenshot looks correct (web projects)
 - [ ] No console errors
 - [ ] Interactive elements work
 - [ ] Edge cases handled (empty states, errors)
 - [ ] Git committed
 
-Only then:
+Only then (run via Bash tool - `agentwire say` is a CLI command):
 ```bash
 agentwire say -v may --notify agentwire "Feature complete, tested in Chrome"
 ```

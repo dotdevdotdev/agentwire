@@ -160,7 +160,7 @@ export const AgentWireNotifyPlugin: Plugin = async () => {
 [What you were asked to do]
 
 ## Status
-Complete | Blocked | Failed
+─── DONE ─── (success) | ─── BLOCKED ─── (needs help) | ─── ERROR ─── (failed)
 
 ## What I Did
 [Actions taken]

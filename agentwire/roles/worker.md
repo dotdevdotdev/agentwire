@@ -35,20 +35,18 @@ You have full tool access: Edit, Write, Read, Bash, Task (for sub-agents), Glob,
 
 Before stopping, you MUST write a summary file. The orchestrator reads this to know what happened.
 
-**Write to:** `.agentwire/worker-{pane}.md` (where `{pane}` is your pane number from `$TMUX_PANE`, e.g., `%1` → `worker-1.md`)
+**When you go idle, the plugin will instruct you to write a summary.** It will provide the exact filename (includes OpenCode session ID).
 
-```bash
-# Get pane number and write summary
-PANE_NUM=$(echo $TMUX_PANE | tr -d '%')
-mkdir -p .agentwire
-cat > .agentwire/worker-${PANE_NUM}.md << 'SUMMARY'
+Just write the summary when instructed, with these sections:
+
+```markdown
 # Worker Summary
 
 ## Task
 [What you were asked to do - copy the original task]
 
 ## Status
-Complete | Blocked | Failed
+─── DONE ─── (success) | ─── BLOCKED ─── (needs help) | ─── ERROR ─── (failed)
 
 ## What I Did
 - [Action 1]
@@ -68,7 +66,6 @@ Complete | Blocked | Failed
 
 ## Notes for Orchestrator
 [Anything the orchestrator should know for follow-up work]
-SUMMARY
 ```
 
 **After writing the summary, stop.** The system detects idle and you auto-exit. Do NOT call `exit` or `/exit` manually.
@@ -83,8 +80,15 @@ Follow `~/.claude/rules/` patterns. Key points:
 
 ## Specialized Worker Roles
 
-This is the base worker role. For agent-specific behavior, use:
-- `glm-worker` - For literal execution with GLM/OpenCode
-- `claude-worker` - For collaborative execution with Claude Code
+This is the base worker role. It provides general worker expectations (no voice, autonomous, exit summary).
 
-Specialized roles inherit from this base and add agent-specific guidance.
+**When to use base `worker` role:**
+- You don't care about model-specific guidance
+- Simple, generic tasks (e.g., "read these files and summarize")
+- Testing/debugging worker behavior
+
+**When to use specialized worker roles (recommended):**
+- `glm-worker` - For literal execution with GLM/OpenCode (needs explicit instructions)
+- `claude-worker` - For collaborative execution with Claude Code (infers from context)
+
+Specialized worker roles extend this base and add model-specific guidance. Use them for model-optimized behavior.
