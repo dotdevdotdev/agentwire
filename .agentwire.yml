@@ -1,3 +1,4 @@
-type: bare
+type: opencode-bypass
 roles:
-- agentwire
+- leader
+- glm-orchestration

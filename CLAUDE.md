@@ -209,13 +209,13 @@ Each project can have a `.agentwire.yml` in its root directory. This configures 
 **Format is FLAT (no nesting):**
 
 ```yaml
-# Voice-orchestrator session (project level)
+# Leader session (any level of hierarchy)
 type: claude-bypass
 roles:
-  - voice-orchestrator
+  - leader
   - glm-orchestration
 voice: may
-parent: agentwire  # Notify main orchestrator when idle
+parent: main  # Notify parent session when idle (optional)
 ```
 
 ```yaml
@@ -237,29 +237,32 @@ session:
 When a session goes idle, it notifies up the hierarchy via `agentwire alert` (text-only, no audio):
 
 ```
-agentwire (main orchestrator) ← receives "[ALERT from project] ..."
-    ↑ alert --to agentwire
-voice-orch (project session)  ← receives "[ALERT from session pane N] ..."
+parent leader ← receives "[ALERT from child] ..."
+    ↑ alert --to parent
+child leader   ← receives "[ALERT from pane N] ..."
     ↑ auto-notify pane 0
 worker panes
 ```
 
-**Auto-notification (queued to prevent collision):**
-- Worker panes (index > 0) automatically notify pane 0 (orchestrator) with last 20 lines of output
-- Notifications are queued and sent with 15-second gaps to prevent overwhelming orchestrator
-- Worker panes auto-kill after queuing notification
-- Use `parent: agentwire` in `.agentwire.yml` for voice-orch → main notifications
+**Worker summary files:**
+- Workers write summaries to `.agentwire/worker-{pane}.md` before going idle
+- Summaries include: task, status, what worked, what didn't, notes for orchestrator
+- Orchestrators read these files to understand worker results
+
+**Auto-exit (workers auto-kill on idle):**
+- Worker panes (index > 0) automatically exit when idle
+- Use `parent: <session-name>` in `.agentwire.yml` for child → parent notifications
 
 **Queue system files:**
 - `~/.agentwire/queue-processor.sh` - Processes queue with 15s delays between alerts
 - `~/.agentwire/queues/{session}.jsonl` - Per-session notification queues
 
 **Worker idle sequence:**
-1. `session.idle` fires → wait 2s (let OpenCode settle)
-2. Capture last 20 lines of output
+1. `session.idle` fires → wait 2s (let agent settle)
+2. Worker writes summary to `.agentwire/worker-{pane}.md`
 3. Queue notification to `{session}.jsonl`
 4. Start queue processor if not running
-5. Wait 1s → call `agentwire kill --pane N` (3s internal wait before kill)
+5. Worker auto-exits
 
 **Both Claude Code and OpenCode** support idle notifications:
 - Claude Code: via `~/.claude/hooks/suppress-bg-notifications.sh`
@@ -271,24 +274,23 @@ worker panes
 # Option 1: Create .agentwire.yml first, then create session
 echo "type: claude-bypass
 roles:
-  - voice-orchestrator
+  - leader
   - glm-orchestration" > ~/projects/myproject/.agentwire.yml
 
 agentwire new -s myproject -p ~/projects/myproject
 
 # Option 2: Specify roles on command line (saves to .agentwire.yml)
-agentwire new -s myproject -p ~/projects/myproject --roles voice-orchestrator,glm-orchestration
+agentwire new -s myproject -p ~/projects/myproject --roles leader,glm-orchestration
 ```
 
 ### Built-in Roles
 
 Roles are bundled in the `agentwire/roles/` package directory:
-- `agentwire.md` - Main orchestrator role (coordinates projects, uses dotdev voice)
-- `voice-orchestrator.md` - Project orchestrator (delegates to workers, waits for notifications)
-- `glm-orchestration.md` - Comprehensive GLM worker management guide (task templates, failure patterns)
-- `glm-worker.md` - GLM task executor (focused execution, system detects idle)
-- `voice-worker.md` - Worker that uses voice for status updates
-- `worker.md` - Basic worker pane role
+- `leader.md` - Orchestrator at any level (spawns workers, uses voice, can do direct work)
+- `glm-orchestration.md` - GLM-specific worker management (task templates, failure patterns)
+- `glm-worker.md` - GLM task executor (focused execution, outputs exit summary)
+- `worker.md` - Basic worker pane role (no voice, outputs exit summary)
+- `voice-worker.md` - Worker with voice capability
 - `chatbot.md` - Chatbot personality
 - `voice.md` - Voice input handling
 
@@ -296,12 +298,11 @@ Roles are bundled in the `agentwire/roles/` package directory:
 
 | Role | Use Case | Key Behavior |
 |------|----------|--------------|
-| `agentwire` | Main orchestrator | Uses `dotdev` voice, coordinates multiple projects |
-| `voice-orchestrator` | Project orchestrator | Spawns workers via `agentwire spawn`, waits for notifications |
-| `glm-worker` | Worker pane | Execute task, stop when done, system notifies orchestrator |
-| `worker` | Basic worker | No voice, no AskUserQuestion |
+| `leader` | Any orchestrator | Spawns workers, uses voice, can do direct work or delegate |
+| `glm-worker` | GLM worker pane | Execute task, output exit summary, system notifies leader |
+| `worker` | Basic worker | No voice, no AskUserQuestion, outputs exit summary |
 
-**For detailed GLM task templates:** Add `glm-orchestration` role to voice-orchestrator sessions.
+**For GLM workers:** Add `glm-orchestration` role to leader sessions for detailed task templates.
 
 ## Agent Parity
 

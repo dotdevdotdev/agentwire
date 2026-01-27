@@ -1,14 +1,14 @@
 ---
-name: glm-orchestration
-description: Guide for orchestrating GLM-4.7/OpenCode workers as literal task executors
+name: glm-delegation
+description: Guide for delegating tasks to GLM-4.7/OpenCode workers as focused executors
 model: inherit
 ---
 
-# GLM-4.7 Worker Orchestration
+# GLM-4.7 Task Delegation
 
-**GLM is a literal task executor.** It does exactly what you say - no more, no less. Your job is to write instructions so explicit that a machine following them character-by-character produces correct code.
+**GLM is a focused task executor.** It uses all its capabilities to complete tasks but needs clear guidance on goals and constraints. Your job is to provide clear goals and explicit constraints, then let GLM figure out the details.
 
-This role supplements `voice-orchestrator` with GLM-specific techniques.
+This role supplements `leader` with GLM-specific techniques.
 
 ---
 
@@ -16,7 +16,7 @@ This role supplements `voice-orchestrator` with GLM-specific techniques.
 
 ### Spawn Command
 ```bash
-agentwire spawn --type opencode-bypass --roles voice-worker
+agentwire spawn --type opencode-bypass --roles glm-worker
 ```
 
 ### Task Template (copy-paste this)
@@ -25,7 +25,7 @@ CRITICAL RULES (follow STRICTLY):
 - ONLY modify: [list files]
 - ABSOLUTE paths only
 - LANGUAGE: English only
-- When done: output "TASK COMPLETE"
+- Output exit summary when done
 
 TASK: [one sentence]
 
@@ -53,8 +53,12 @@ SUCCESS: [testable outcome]
 - [ ] SUCCESS is testable
 
 ### Check Completion
-```bash
-agentwire output --pane N | grep -i "complete\|error\|fail"
+
+Workers output structured exit summaries. Look for:
+```
+─── DONE ───      (success)
+─── BLOCKED ───   (needs help)
+─── ERROR ───     (failed)
 ```
 
 ### API Concurrency Limits (CRITICAL)
@@ -77,14 +81,17 @@ If you need more parallelism, mix worker types:
 
 ## Core Philosophy
 
-### GLM Is Not Claude
+### GLM vs Claude: Communication Style
 
 | Claude | GLM |
 |--------|-----|
-| Infers intent from context | Executes instructions literally |
-| Handles ambiguity well | Fails on ambiguity |
-| Can judge when to stop | Needs explicit boundaries |
-| Understands "good enough" | Only knows "done" or "not done" |
+| Infers intent from minimal context | Benefits from explicit context |
+| Handles ambiguity well | Needs clearer boundaries |
+| Can judge "good enough" vs "perfect" | May need guidance on when to stop |
+| Natural language tasks work well | Benefits from structured requirements |
+| Standard web search tools | Uses `zai-web-search_webSearchPrime` for web research |
+
+**Both agents can:** Use all their tools, make autonomous decisions, research, explore codebase, and complete tasks. The difference is communication style and tool access, not capabilities.
 
 ### Treat GLM Like a Junior Dev
 
@@ -96,13 +103,15 @@ If you need more parallelism, mix worker types:
 
 ### Workers Are Disposable
 
-Don't debug a struggling worker. Kill it, improve the instructions, spawn a new one.
+Workers auto-exit when idle. If a worker's summary shows failure or blocking issues, just spawn a new one with improved instructions.
 
 ```bash
-agentwire kill --pane 1
-# Rewrite task with better instructions
-agentwire spawn --type opencode-bypass --roles voice-worker
-agentwire send --pane 1 "[improved task]"
+# Read failed worker's summary
+cat .agentwire/worker-1.md
+
+# Spawn new worker with better instructions
+agentwire spawn --type opencode-bypass --roles glm-worker
+agentwire send --pane 1 "[improved task based on what failed]"
 ```
 
 ---
@@ -169,7 +178,7 @@ agentwire send --pane 1 "CRITICAL RULES (follow STRICTLY):
 - Use ABSOLUTE paths (not relative)
 - LANGUAGE: English only in all output and comments
 - NO placeholder code - implement fully
-- When done: output 'TASK COMPLETE: [summary]'
+- Output exit summary when done (see worker role for format)
 
 TASK: Create TimerDisplay component
 
@@ -222,7 +231,7 @@ Create a function that converts seconds to MM:SS format.
 - Output: string like '25:00'
 - Export as named export
 
-When done: output 'TASK COMPLETE'"
+Output exit summary when done"
 ```
 
 ---
@@ -235,7 +244,7 @@ When done: output 'TASK COMPLETE'"
 agentwire send --pane 1 "CRITICAL RULES:
 - ONLY create: /path/to/Component.tsx
 - ABSOLUTE paths only
-- When done: 'TASK COMPLETE'
+- Output exit summary when done
 
 TASK: Create [Component] component
 
@@ -265,7 +274,7 @@ DO NOT:
 agentwire send --pane 1 "CRITICAL RULES:
 - ONLY modify: /path/to/file.tsx
 - Do NOT change other files
-- When done: 'TASK COMPLETE'
+- Output exit summary when done
 
 TASK: Add error handling to [function]
 
@@ -291,7 +300,7 @@ KEEP UNCHANGED:
 agentwire send --pane 1 "CRITICAL RULES:
 - ONLY create files listed below
 - ABSOLUTE paths only
-- When done: 'TASK COMPLETE'
+- Output exit summary when done
 
 TASK: Create auth utilities
 
@@ -367,10 +376,9 @@ STYLING:
 
 **Symptom:** Worker finishes but no clear signal
 
-**Fix:** Require explicit completion message
+**Fix:** Worker roles now include exit summary format. If still missing, add:
 ```
-When task is complete, output exactly:
-TASK COMPLETE: [one sentence summary of what was done]
+When done, output your exit summary (see worker role for ─── DONE ─── format)
 ```
 
 ---
@@ -382,8 +390,8 @@ TASK COMPLETE: [one sentence summary of what was done]
 ### After Workers Complete
 
 ```bash
-# 1. Check worker output for errors
-agentwire output --pane 1 | grep -i "error\|fail\|cannot"
+# 1. Read worker summaries for status
+cat .agentwire/worker-1.md
 
 # 2. Start dev server
 npm run dev &
@@ -421,7 +429,7 @@ LIKELY CAUSE: Missing onClick or Link wrapper
 
 **Spawn fix worker:**
 ```bash
-agentwire spawn --type opencode-bypass --roles voice-worker
+agentwire spawn --type opencode-bypass --roles glm-worker
 agentwire send --pane 2 "TASK: Fix Hero CTA button
 
 FILE: /path/to/Hero.tsx
@@ -429,7 +437,7 @@ FILE: /path/to/Hero.tsx
 BUG: Button doesn't navigate on click
 FIX: Wrap button in Link from next/link to /signup
 
-When done: 'TASK COMPLETE: Fixed Hero button navigation'"
+Output exit summary when done"
 ```
 
 ---
@@ -462,18 +470,18 @@ Wave 4: Polish (parallel)
 
 ```bash
 # Wave 2 - all parallel
-agentwire spawn --type opencode-bypass --roles voice-worker  # pane 1
-agentwire spawn --type opencode-bypass --roles voice-worker  # pane 2
-agentwire spawn --type opencode-bypass --roles voice-worker  # pane 3
-agentwire spawn --type opencode-bypass --roles voice-worker  # pane 4
+agentwire spawn --type opencode-bypass --roles glm-worker  # pane 1
+agentwire spawn --type opencode-bypass --roles glm-worker  # pane 2
+agentwire spawn --type opencode-bypass --roles glm-worker  # pane 3
+agentwire spawn --type opencode-bypass --roles glm-worker  # pane 4
 
 agentwire send --pane 1 "[TimerDisplay task]"
 agentwire send --pane 2 "[TimerControls task]"
 agentwire send --pane 3 "[Settings task]"
 agentwire send --pane 4 "[SessionCounter task]"
 
-# Wait for all to complete
-# Check each worker's output
+# Workers auto-exit when done
+# Read summaries: cat .agentwire/worker-{1,2,3,4}.md
 # Then proceed to Wave 3
 ```
 
@@ -481,11 +489,13 @@ agentwire send --pane 4 "[SessionCounter task]"
 
 ## Recovery Patterns
 
-### Worker Stuck
+### Worker Failed or Blocked
+
+Workers auto-exit. Read their summary to understand what went wrong:
 
 ```bash
-agentwire output --pane 1  # Check what it's doing
-agentwire kill --pane 1    # If stuck, kill it
+cat .agentwire/worker-1.md
+# Check "What Didn't Work" section
 # Spawn fresh worker with clearer instructions
 ```
 
@@ -511,7 +521,7 @@ git stash  # Save current state
 
 Before reporting completion to main orchestrator:
 
-- [ ] All workers output "TASK COMPLETE"
+- [ ] All workers output exit summary (─── DONE ───)
 - [ ] `npm run build` passes (or equivalent)
 - [ ] Chrome screenshot looks correct
 - [ ] No console errors

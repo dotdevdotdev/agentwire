@@ -20,16 +20,12 @@ We use AI-generated footage for lifestyle/B-roll shots, combined with real scree
 
 ```
 Prompt:
-A person relaxed on a modern gray couch in a minimalist living room,
-holding a tablet computer, natural daylight from large windows,
-shallow depth of field, calm and focused expression,
-tech startup aesthetic, cinematic lighting, 4K quality
-
-Negative prompt (if supported):
-office setting, desk, keyboard, dark room, cluttered background
+Wide angle shot. A person relaxed on a modern gray couch in a minimalist
+living room, holding a tablet computer, natural daylight from large windows,
+shallow depth of field, calm and focused expression, tech startup aesthetic,
+cinematic lighting, 4K quality. The camera remains steady with minimal movement.
 ```
 
-**Camera:** Static or very slow push-in
 **Notes:** We'll composite the actual portal UI onto the tablet screen in post
 
 ---
@@ -40,16 +36,12 @@ office setting, desk, keyboard, dark room, cluttered background
 
 ```
 Prompt:
-Extreme close-up of hands holding a modern tablet,
-finger pressing on the touchscreen, shallow depth of field,
-soft natural lighting, clean minimal aesthetic,
-professional tech product video style
-
-Negative prompt:
-face visible, cluttered background, dark lighting
+Extreme close-up shot, macro lens. Hands holding a modern tablet,
+finger pressing and holding on the touchscreen, shallow depth of field,
+soft natural lighting, clean minimal aesthetic, professional tech product
+video style. The camera remains perfectly still, locked off on a tripod.
 ```
 
-**Camera:** Static, tight frame on hands and device
 **Notes:** Finger should be pressing/holding, not swiping
 
 ---
@@ -60,16 +52,12 @@ face visible, cluttered background, dark lighting
 
 ```
 Prompt:
-Medium shot of person on couch with tablet, giving a subtle satisfied nod,
-slight smile, relaxed posture, modern living room background,
-natural daylight, shallow depth of field,
-authentic casual moment, not posed
-
-Negative prompt:
-exaggerated expression, looking at camera, office setting
+Medium shot, 50mm lens. Person on couch with tablet giving a subtle satisfied
+nod, slight smile, relaxed posture, modern living room background, natural
+daylight, shallow depth of field, authentic casual moment, not posed, not
+looking at camera. The camera remains steady with minimal organic movement.
 ```
 
-**Camera:** Static or gentle movement
 **Notes:** Should feel like a genuine "that worked" moment
 
 ---
@@ -80,16 +68,13 @@ exaggerated expression, looking at camera, office setting
 
 ```
 Prompt:
-Person picking up coffee mug from side table while holding tablet,
-casual morning routine, modern minimalist interior,
-warm natural lighting, cozy tech lifestyle,
-shallow depth of field, cinematic
-
-Negative prompt:
-office, desk, keyboard, standing
+Medium close-up shot, 85mm lens. Person picking up coffee mug from side table
+while holding tablet in other hand, casual morning routine, modern minimalist
+interior, warm natural lighting, cozy tech lifestyle, shallow depth of field,
+cinematic. The camera moves forward slowly with smooth organic motion to push
+in slightly closer to the scene.
 ```
 
-**Camera:** Slow motion optional
 **Notes:** Reinforces "not at your desk" messaging
 
 ---
@@ -100,16 +85,13 @@ office, desk, keyboard, standing
 
 ```
 Prompt:
-Tablet laying on a wooden coffee table, modern living room,
-morning light streaming through window, minimal aesthetic,
-slight steam rising from coffee cup nearby,
-calm atmosphere, tech product photography style
-
-Negative prompt:
-office desk, cluttered, dark room
+Wide angle establishing shot, 35mm lens. Tablet laying on a wooden coffee
+table, modern living room, morning light streaming through window, minimal
+aesthetic, slight steam rising from coffee cup nearby, calm atmosphere, tech
+product photography style. The camera performs a slow gentle dolly movement
+from left to right, gliding smoothly past the scene.
 ```
 
-**Camera:** Static or slow dolly
 **Notes:** Could use as alternative opening before person picks it up
 
 ---
@@ -120,29 +102,34 @@ office desk, cluttered, dark room
 
 ```
 Prompt:
-Person walking through modern home hallway holding tablet,
-casual clothing, natural movement, soft lighting,
-following shot from behind,
-lifestyle tech commercial aesthetic
-
-Negative prompt:
-running, office corridor, formal clothing
+Wide angle shot, 35mm lens. Modern home hallway with soft natural lighting.
+Person walks casually through frame from left to right holding a tablet,
+casual clothing, relaxed pace. The camera remains completely static as
+the subject passes through the scene.
 ```
 
-**Camera:** Following/tracking shot
-**Notes:** Shows mobility - "code from anywhere"
+**Notes:** Shows mobility - "code from anywhere". Static camera with moving subject is more reliable than tracking shots.
 
 ---
 
-## Runway Gen-4 Settings
+## Camera Motion Language
 
-| Setting | Recommended Value |
-|---------|-------------------|
-| Aspect Ratio | 16:9 |
-| Duration | 5 seconds (extend if needed) |
-| Resolution | 720p for drafts, 1080p for final |
-| Motion | Low-Medium (we want subtle, not dynamic) |
-| Style | Cinematic / Film |
+Runway Gen-4.5 responds to natural camera direction in prompts. Use descriptive language:
+
+| Motion Type | Prompt Language |
+|-------------|-----------------|
+| **Static** | "The camera remains steady with minimal movement" or "locked off on a tripod" |
+| **Push in** | "The camera moves forward with smooth organic motion to push in closer" |
+| **Dolly** | "The camera performs a slow gentle dolly movement from left to right" |
+| **Tracking** | "The camera follows the subject with smooth steadicam motion" |
+| **Pull back** | "The camera slowly pulls back to reveal the wider scene" |
+| **Crane up** | "The camera rises smoothly upward in a crane motion" |
+
+**Lens language also helps:**
+- "Wide angle lens" / "35mm lens" - broader field of view
+- "50mm lens" - natural perspective
+- "85mm lens" / "telephoto" - compressed, shallow DOF
+- "Macro lens" - extreme close-up detail
 
 ---
 
@@ -199,11 +186,12 @@ To make AI-generated "person holding tablet" shots show actual AgentWire UI:
 
 ## Prompt Tips for Runway
 
-1. **Be specific about lighting** - "natural daylight" vs "studio lighting" matters
-2. **Describe the emotion** - "calm," "focused," "satisfied" guides the generation
-3. **Include camera direction** - "static shot," "slow push-in," "shallow depth of field"
-4. **Use negative prompts** - Exclude what you don't want
-5. **Reference style** - "tech product video," "Apple commercial aesthetic," "cinematic"
+1. **Start with shot type and lens** - "Wide angle shot, 35mm lens" or "Medium close-up, 85mm lens"
+2. **Be specific about lighting** - "natural daylight" vs "studio lighting" matters
+3. **Describe the emotion** - "calm," "focused," "satisfied" guides the generation
+4. **End with camera motion** - "The camera remains steady" or "The camera pushes in slowly"
+5. **Use descriptive motion language** - Full sentences describing what the camera does
+6. **Reference style** - "tech product video," "Apple commercial aesthetic," "cinematic"
 
 ---
 
