@@ -1540,6 +1540,29 @@ def _get_session_type_from_path(path: str) -> str | None:
     return None
 
 
+def _get_remote_session_type(machine_id: str, path: str) -> str | None:
+    """Read session type from .agentwire.yml on a remote machine.
+
+    Returns:
+        Session type (e.g., 'bare', 'claude-bypass') or None
+    """
+    import yaml
+
+    if not path or not machine_id:
+        return None
+
+    cmd = f"cat {path}/.agentwire.yml 2>/dev/null || echo ''"
+    result = _run_remote(machine_id, cmd)
+
+    if result.returncode == 0 and result.stdout.strip():
+        try:
+            config = yaml.safe_load(result.stdout) or {}
+            return config.get("type")
+        except Exception:
+            pass
+    return None
+
+
 def _infer_session_from_path() -> str | None:
     """Infer session name from current working directory.
 
@@ -2510,11 +2533,13 @@ def cmd_list(args) -> int:
                     if line:
                         parts = line.split(":", 2)
                         if len(parts) >= 2:
+                            remote_path = parts[2] if len(parts) > 2 else ""
                             session_info = {
                                 "name": f"{parts[0]}@{machine_id}",
                                 "windows": int(parts[1]) if parts[1].isdigit() else 1,
-                                "path": parts[2] if len(parts) > 2 else "",
+                                "path": remote_path,
                                 "machine": machine_id,
+                                "type": _get_remote_session_type(machine_id, remote_path),
                             }
                             machine_sessions.append(session_info)
                             all_sessions.append(session_info)
