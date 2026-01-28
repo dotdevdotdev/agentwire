@@ -189,16 +189,13 @@ function renderSessionItem(session) {
     // Format path for display
     const pathDisplay = formatPath(session.path);
 
-    // Build meta info line with spans
+    // Build meta info line with spans (path left, type right)
     const metaParts = [];
-    if (session.machine) {
-        metaParts.push(`<span class="session-machine">@${session.machine}</span>`);
-    }
-    if (session.type && session.type !== 'bare') {
-        metaParts.push(`<span class="session-type">${session.type}</span>`);
-    }
     if (pathDisplay) {
         metaParts.push(`<span class="session-path">${pathDisplay}</span>`);
+    }
+    if (session.type) {
+        metaParts.push(`<span class="session-type">${session.type}</span>`);
     }
 
     // Build actions array
@@ -211,13 +208,19 @@ function renderSessionItem(session) {
     actions.push({ label: 'Connect', action: 'connect', primary: true });
     actions.push({ label: '✕', action: 'close', danger: true, title: 'Close session' });
 
+    // Strip @machine suffix from name if present (it's shown as separate tag)
+    const displayName = session.machine && session.name.endsWith(`@${session.machine}`)
+        ? session.name.slice(0, -(session.machine.length + 1))
+        : session.name;
+
     return ListCard({
         id: session.name,
         iconUrl: session.iconUrl,
         activityState: activityState,
-        name: session.name,
+        name: displayName,
+        machineTag: session.machine ? `@${session.machine}` : null,
         clientCount: session.clientCount,
-        meta: metaParts.join(' · '),
+        meta: metaParts.join(' '),
         actions
     });
 }

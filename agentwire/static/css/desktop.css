@@ -655,6 +655,99 @@ body {
     gap: var(--spacing-base);
 }
 
+/* Modal overlay pattern (for delete modal, etc.) */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.8);
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal-overlay .modal {
+    display: block;
+    position: relative;
+    background: var(--chrome);
+    border: 1px solid var(--chrome-border);
+    border-radius: 8px;
+    width: 450px;
+    max-width: 90vw;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
+}
+
+.modal-overlay .modal-header h3 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.modal-overlay .modal-body p {
+    margin: 0 0 12px;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.modal-overlay .modal-body code {
+    background: var(--background);
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 12px;
+}
+
+.modal-overlay .delete-path {
+    background: var(--background);
+    padding: 8px 10px;
+    border-radius: 4px;
+    word-break: break-all;
+}
+
+.modal-overlay .delete-path code {
+    background: none;
+    padding: 0;
+}
+
+.modal-overlay .delete-option-select {
+    width: 100%;
+    padding: 10px 12px;
+    background: var(--background);
+    border: 1px solid var(--chrome-border);
+    border-radius: 4px;
+    color: var(--text);
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.modal-overlay .delete-option-select:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.modal-overlay .warning-text {
+    color: var(--warning, #f59e0b);
+    font-weight: 500;
+}
+
+.btn-danger {
+    background: var(--error);
+    border-color: var(--error);
+    color: white;
+}
+
+.btn-danger:hover {
+    background: #dc2626;
+    border-color: #dc2626;
+}
+
+.btn-danger:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 .form-row {
     margin-bottom: 12px;
 }
@@ -1128,11 +1221,22 @@ body {
 }
 
 .session-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
     font-size: 11px;
     color: var(--text-muted);
-    white-space: nowrap;
+}
+
+.session-meta .session-path {
     overflow: hidden;
     text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.session-meta .session-type {
+    flex-shrink: 0;
 }
 
 .session-actions {

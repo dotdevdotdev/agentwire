@@ -157,6 +157,7 @@ class AgentWireServer:
         self.app.router.add_get("/api/sessions/local", self.api_sessions_local)
         self.app.router.add_get("/api/sessions/remote", self.api_sessions_remote)
         self.app.router.add_get("/api/projects", self.api_projects)
+        self.app.router.add_post("/api/projects/delete", self.api_projects_delete)
         self.app.router.add_get("/api/machine/{machine_id}/status", self.api_machine_status)
         self.app.router.add_get("/api/check-path", self.api_check_path)
         self.app.router.add_get("/api/check-branches", self.api_check_branches)
@@ -1542,6 +1543,74 @@ class AgentWireServer:
         except Exception as e:
             logger.error(f"Failed to list projects: {e}")
             return web.json_response({"projects": []})
+
+    async def api_projects_delete(self, request: web.Request) -> web.Response:
+        """Delete a project (remove .agentwire.yml or entire folder).
+
+        Body:
+            {
+                "path": "/path/to/project",
+                "machine": "machine-id" or null for local,
+                "deleteType": "config" | "folder"
+            }
+
+        Response:
+            {"success": true} or {"success": false, "error": "message"}
+        """
+        try:
+            data = await request.json()
+            path = data.get("path")
+            machine = data.get("machine")
+            delete_type = data.get("deleteType")
+
+            if not path:
+                return web.json_response({"success": False, "error": "Missing path"})
+            if delete_type not in ("config", "folder"):
+                return web.json_response({"success": False, "error": "Invalid deleteType"})
+
+            # Build the delete command
+            if delete_type == "config":
+                cmd = f"rm -f '{path}/.agentwire.yml'"
+            else:
+                # Safety check: don't allow deleting root or home
+                if path in ("/", "/root", "/home") or path.rstrip("/") in ("~", "$HOME"):
+                    return web.json_response({"success": False, "error": "Cannot delete protected paths"})
+                cmd = f"rm -rf '{path}'"
+
+            # Execute locally or remotely
+            if machine and machine != "local":
+                # Remote machine
+                result = await asyncio.to_thread(
+                    subprocess.run,
+                    ["ssh", machine, cmd],
+                    capture_output=True,
+                    text=True,
+                    timeout=30
+                )
+            else:
+                # Local
+                result = await asyncio.to_thread(
+                    subprocess.run,
+                    cmd,
+                    shell=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=30
+                )
+
+            if result.returncode != 0:
+                return web.json_response({
+                    "success": False,
+                    "error": result.stderr or "Delete command failed"
+                })
+
+            return web.json_response({"success": True})
+
+        except asyncio.TimeoutError:
+            return web.json_response({"success": False, "error": "Operation timed out"})
+        except Exception as e:
+            logger.error(f"Failed to delete project: {e}")
+            return web.json_response({"success": False, "error": str(e)})
 
     async def api_machine_status(self, request: web.Request) -> web.Response:
         """Get status for a specific machine.

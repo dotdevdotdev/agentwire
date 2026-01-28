@@ -200,27 +200,29 @@ function renderProjectItem(project) {
 
     const pathDisplay = formatPath(project.path);
 
-    // Build meta with path and type
+    // Build meta with path left, type right
     const metaParts = [];
-    if (project.type && project.type !== 'bare') {
-        metaParts.push(`<span class="session-type">${project.type}</span>`);
-    }
     if (pathDisplay) {
         metaParts.push(`<span class="session-path">${pathDisplay}</span>`);
+    }
+    if (project.type) {
+        metaParts.push(`<span class="session-type">${project.type}</span>`);
     }
 
     return ListCard({
         id: project.name,
         iconUrl: project.iconUrl,
         name: project.name,
-        meta: metaParts.join(' · ')
-        // No actions - clicking opens detail view
+        meta: metaParts.join(' '),
+        actions: [
+            { label: '✕', action: 'delete', danger: true, title: 'Remove project' }
+        ]
     });
 }
 
 /**
  * Handle action on project items
- * @param {string} action - The action type ('select', 'edit-icon')
+ * @param {string} action - The action type ('select', 'edit-icon', 'delete')
  * @param {Object} item - The project data object
  */
 function handleProjectAction(action, item) {
@@ -232,6 +234,147 @@ function handleProjectAction(action, item) {
         showDetailView(item);
     } else if (action === 'edit-icon') {
         openIconPicker(item.name);
+    } else if (action === 'delete') {
+        showDeleteModal(item);
+    }
+}
+
+/**
+ * Show the delete project modal
+ * @param {Object} project - Project to delete
+ */
+function showDeleteModal(project) {
+    // Remove existing modal if any
+    const existing = document.querySelector('.delete-project-modal');
+    if (existing) existing.remove();
+
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay delete-project-modal';
+    modal.innerHTML = `
+        <div class="modal delete-modal">
+            <div class="modal-header">
+                <h3>Remove Project</h3>
+                <button class="modal-close" data-action="close">✕</button>
+            </div>
+            <div class="modal-body">
+                <p>This will remove <strong>${project.name}</strong> from AgentWire by deleting the <code>.agentwire.yml</code> file in:</p>
+                <p class="delete-path"><code>${project.path}</code></p>
+                <p>Select what you would like to delete:</p>
+                <select class="delete-option-select" required>
+                    <option value="">-- Select an option --</option>
+                    <option value="config">Just remove from AgentWire</option>
+                    <option value="folder">Delete the entire folder</option>
+                </select>
+            </div>
+            <div class="modal-footer">
+                <button class="btn" data-action="cancel">Cancel</button>
+                <button class="btn btn-danger" data-action="confirm" disabled>Remove</button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    const select = modal.querySelector('.delete-option-select');
+    const confirmBtn = modal.querySelector('[data-action="confirm"]');
+
+    // Enable confirm button when option selected
+    select.addEventListener('change', () => {
+        confirmBtn.disabled = !select.value;
+    });
+
+    // Handle modal actions
+    modal.addEventListener('click', async (e) => {
+        const action = e.target.dataset.action;
+        if (action === 'close' || action === 'cancel') {
+            modal.remove();
+        } else if (action === 'confirm' && select.value) {
+            showFinalConfirmation(project, select.value, modal);
+        }
+    });
+
+    // Close on overlay click
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) modal.remove();
+    });
+}
+
+/**
+ * Show final confirmation before delete
+ * @param {Object} project - Project to delete
+ * @param {string} deleteType - 'config' or 'folder'
+ * @param {HTMLElement} parentModal - Parent modal to replace
+ */
+function showFinalConfirmation(project, deleteType, parentModal) {
+    const actionText = deleteType === 'folder'
+        ? `permanently delete the entire folder at <code>${project.path}</code>`
+        : `remove <strong>${project.name}</strong> from AgentWire`;
+
+    parentModal.innerHTML = `
+        <div class="modal delete-modal">
+            <div class="modal-header">
+                <h3>Confirm Deletion</h3>
+            </div>
+            <div class="modal-body">
+                <p class="warning-text">⚠️ This will ${actionText}.</p>
+                <p><strong>This action cannot be undone. Are you sure?</strong></p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn" data-action="back">Back</button>
+                <button class="btn btn-danger" data-action="delete-confirmed">Yes, Delete</button>
+            </div>
+        </div>
+    `;
+
+    parentModal.addEventListener('click', async (e) => {
+        const action = e.target.dataset.action;
+        if (action === 'back') {
+            parentModal.remove();
+            showDeleteModal(project);
+        } else if (action === 'delete-confirmed') {
+            await executeDelete(project, deleteType, parentModal);
+        }
+    });
+}
+
+/**
+ * Execute the delete operation
+ * @param {Object} project - Project to delete
+ * @param {string} deleteType - 'config' or 'folder'
+ * @param {HTMLElement} modal - Modal to close
+ */
+async function executeDelete(project, deleteType, modal) {
+    const confirmBtn = modal.querySelector('[data-action="delete-confirmed"]');
+    if (confirmBtn) {
+        confirmBtn.disabled = true;
+        confirmBtn.textContent = 'Deleting...';
+    }
+
+    try {
+        const response = await fetch('/api/projects/delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                path: project.path,
+                machine: project.machine,
+                deleteType: deleteType
+            })
+        });
+
+        const result = await response.json();
+        if (result.success) {
+            modal.remove();
+            showToast(`Project ${project.name} removed successfully`, 'success');
+            projectsWindow?.refresh();
+        } else {
+            throw new Error(result.error || 'Delete failed');
+        }
+    } catch (err) {
+        showToast(`Failed to delete: ${err.message}`, 'error');
+        if (confirmBtn) {
+            confirmBtn.disabled = false;
+            confirmBtn.textContent = 'Yes, Delete';
+        }
     }
 }
 

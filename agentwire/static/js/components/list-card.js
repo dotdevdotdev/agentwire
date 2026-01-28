@@ -33,6 +33,7 @@ export function getActivityIndicatorHtml(state) {
  * @param {string} [options.activityState] - Activity state: 'idle'|'processing'|'generating'|'playing' (omit for no indicator)
  * @param {boolean} [options.statusOnline] - Show status dot: true=online (green), false=offline (gray), undefined=hidden
  * @param {string} options.name - Primary display name
+ * @param {string} [options.machineTag] - Machine name to show as yellow tag after name (e.g. "@dotdev-gpu")
  * @param {number} [options.clientCount=0] - Attached client count for presence indicator
  * @param {string} [options.meta] - Meta HTML content (already formatted with spans)
  * @param {Array} [options.actions] - Action buttons [{label, action, primary?, danger?, title?}]
@@ -47,6 +48,7 @@ export function ListCard(options) {
         activityState = null,
         statusOnline = undefined,
         name,
+        machineTag = null,
         clientCount = 0,
         meta = '',
         actions = []
@@ -68,6 +70,11 @@ export function ListCard(options) {
         const statusClass = statusOnline ? 'online' : 'offline';
         badgeHtml = `<span class="session-status-dot ${statusClass}"></span>`;
     }
+
+    // Machine tag (yellow, after name)
+    const machineTagHtml = machineTag
+        ? `<span class="session-machine">${escapeHtml(machineTag)}</span>`
+        : '';
 
     // Presence indicator
     const presenceHtml = clientCount > 0
@@ -102,6 +109,7 @@ export function ListCard(options) {
                 <div class="session-content">
                     <div class="session-header">
                         <span class="session-name" data-session="${escapeAttr(id)}">${escapeHtml(name)}</span>
+                        ${machineTagHtml}
                         ${presenceHtml}
                     </div>
                     ${metaHtml}
