@@ -6,6 +6,7 @@ import { ListWindow } from '../list-window.js';
 import { desktop } from '../desktop-manager.js';
 import { sessionIcons } from '../icon-manager.js';
 import { IconPicker } from '../components/icon-picker.js';
+import { ListCard, getActivityIndicatorHtml } from '../components/list-card.js';
 
 /** @type {IconPicker|null} */
 let iconPicker = null;
@@ -185,25 +186,10 @@ function renderSessionItem(session) {
     // Get stored activity state or default to session's initial state
     const activityState = sessionActivityStates.get(session.name) || (session.active ? 'processing' : 'idle');
 
-    const chatButton = session.hasVoice
-        ? '<button class="btn btn-small" data-action="chat">Chat</button>'
-        : '';
-
-    // Presence indicator - user icon with count badge
-    const presenceIndicator = session.clientCount > 0
-        ? `<span class="presence-indicator" title="${session.clientCount} client${session.clientCount !== 1 ? 's' : ''} attached">
-             <span class="presence-icon">👤</span>
-             <span class="presence-count">${session.clientCount}</span>
-           </span>`
-        : '';
-
-    // Format path for display (show last 2 segments or full if short)
+    // Format path for display
     const pathDisplay = formatPath(session.path);
 
-    // Use pre-assigned icon URL based on list position
-    const iconUrl = session.iconUrl;
-
-    // Build meta info line
+    // Build meta info line with spans
     const metaParts = [];
     if (session.machine) {
         metaParts.push(`<span class="session-machine">@${session.machine}</span>`);
@@ -214,57 +200,26 @@ function renderSessionItem(session) {
     if (pathDisplay) {
         metaParts.push(`<span class="session-path">${pathDisplay}</span>`);
     }
-    const metaLine = metaParts.length > 0
-        ? `<div class="session-meta">${metaParts.join(' · ')}</div>`
-        : '';
 
-    // Activity indicator HTML based on state
-    const activityIndicatorHtml = getActivityIndicatorHtml(activityState);
-
-    return `
-        <div class="session-card" data-session-name="${session.name}">
-            <div class="session-card-top">
-                <div class="session-icon-wrapper">
-                    <button class="icon-edit-btn" data-action="edit-icon" title="Change icon">⚙</button>
-                    <img src="${iconUrl}" alt="" class="session-icon" />
-                    <div class="session-activity-indicator ${activityState}" data-session="${session.name}">
-                        ${activityIndicatorHtml}
-                    </div>
-                </div>
-                <div class="session-content">
-                    <div class="session-header">
-                        <span class="session-name" data-session="${session.name}">${session.name}</span>
-                        ${presenceIndicator}
-                    </div>
-                    ${metaLine}
-                </div>
-            </div>
-            <div class="session-actions">
-                <button class="btn btn-small" data-action="monitor">Monitor</button>
-                ${chatButton}
-                <button class="btn btn-small btn-primary" data-action="connect">Connect</button>
-                <button class="btn btn-small danger" data-action="close" title="Close session">✕</button>
-            </div>
-        </div>
-    `;
-}
-
-/**
- * Get inner HTML for activity indicator based on state
- * @param {string} state - Activity state
- * @returns {string} Inner HTML
- */
-function getActivityIndicatorHtml(state) {
-    switch (state) {
-        case 'processing':
-            return '<div class="spinner"></div>';
-        case 'generating':
-            return '<div class="generating-dots"><span></span><span></span><span></span></div>';
-        case 'playing':
-            return '<div class="audio-wave"><span></span><span></span><span></span><span></span><span></span></div>';
-        default:  // idle
-            return '<div class="stop-icon"></div>';
+    // Build actions array
+    const actions = [
+        { label: 'Monitor', action: 'monitor' }
+    ];
+    if (session.hasVoice) {
+        actions.push({ label: 'Chat', action: 'chat' });
     }
+    actions.push({ label: 'Connect', action: 'connect', primary: true });
+    actions.push({ label: '✕', action: 'close', danger: true, title: 'Close session' });
+
+    return ListCard({
+        id: session.name,
+        iconUrl: session.iconUrl,
+        activityState: activityState,
+        name: session.name,
+        clientCount: session.clientCount,
+        meta: metaParts.join(' · '),
+        actions
+    });
 }
 
 /**

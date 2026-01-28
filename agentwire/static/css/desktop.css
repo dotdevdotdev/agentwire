@@ -1089,6 +1089,25 @@ body {
 .session-icon-wrapper .session-activity-indicator .audio-wave span:nth-child(4) { animation-delay: 0.3s; height: 5px; }
 .session-icon-wrapper .session-activity-indicator .audio-wave span:nth-child(5) { animation-delay: 0.4s; height: 3px; }
 
+/* Status dot (online/offline) - positioned like activity indicator */
+.session-icon-wrapper .session-status-dot {
+    position: absolute;
+    bottom: -2px;
+    right: -2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 2px solid var(--chrome);
+}
+
+.session-icon-wrapper .session-status-dot.online {
+    background: var(--accent);
+}
+
+.session-icon-wrapper .session-status-dot.offline {
+    background: var(--text-muted);
+}
+
 .session-content {
     flex: 1;
     min-width: 0;

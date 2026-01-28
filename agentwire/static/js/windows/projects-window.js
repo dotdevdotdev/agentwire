@@ -5,6 +5,7 @@
 import { ListWindow } from '../list-window.js';
 import { projectIcons } from '../icon-manager.js';
 import { IconPicker } from '../components/icon-picker.js';
+import { ListCard } from '../components/list-card.js';
 
 /** @type {IconPicker|null} */
 let iconPicker = null;
@@ -197,29 +198,24 @@ function renderProjectItem(project) {
         `;
     }
 
-    const typeClass = `type-${project.type || 'claude-bypass'}`;
-    const iconUrl = project.iconUrl;
     const pathDisplay = formatPath(project.path);
 
-    const typeBadge = project.type && project.type !== 'bare'
-        ? `<div class="project-type-row"><span class="project-type ${typeClass}">${project.type}</span></div>`
-        : '';
+    // Build meta with path and type
+    const metaParts = [];
+    if (project.type && project.type !== 'bare') {
+        metaParts.push(`<span class="session-type">${project.type}</span>`);
+    }
+    if (pathDisplay) {
+        metaParts.push(`<span class="session-path">${pathDisplay}</span>`);
+    }
 
-    return `
-        <div class="project-card" data-path="${project.path}" data-machine="${project.machine}" data-name="${project.name}">
-            <div class="project-icon-wrapper">
-                <button class="icon-edit-btn" data-action="edit-icon" title="Change icon">⚙</button>
-                <img src="${iconUrl}" alt="" class="project-icon" />
-            </div>
-            <div class="project-content">
-                <div class="project-header">
-                    <span class="project-name">${project.name}</span>
-                </div>
-                <div class="project-path">${pathDisplay}</div>
-                ${typeBadge}
-            </div>
-        </div>
-    `;
+    return ListCard({
+        id: project.name,
+        iconUrl: project.iconUrl,
+        name: project.name,
+        meta: metaParts.join(' · ')
+        // No actions - clicking opens detail view
+    });
 }
 
 /**
@@ -626,7 +622,7 @@ function openNewSessionForProject(project) {
 }
 
 /**
- * Add CSS styles for projects window
+ * Add CSS styles for projects window (group headers and detail view)
  */
 function addProjectsStyles() {
     if (document.getElementById('projects-window-styles')) return;
@@ -634,86 +630,6 @@ function addProjectsStyles() {
     const style = document.createElement('style');
     style.id = 'projects-window-styles';
     style.textContent = `
-        /* Project card */
-        .project-card {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            width: 100%;
-        }
-
-        .project-icon-wrapper {
-            position: relative;
-            flex-shrink: 0;
-        }
-
-        .project-icon {
-            width: 40px;
-            height: 40px;
-            border-radius: 8px;
-            object-fit: cover;
-        }
-
-        .project-content {
-            flex: 1;
-            min-width: 0;
-        }
-
-        .project-header {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .project-name {
-            font-weight: 500;
-            color: var(--text);
-            font-size: 14px;
-        }
-
-        .project-type-row {
-            display: flex;
-            justify-content: flex-end;
-            margin-top: 6px;
-        }
-
-        .project-type {
-            padding: 2px 6px;
-            border-radius: 3px;
-            font-size: 10px;
-            text-transform: uppercase;
-            flex-shrink: 0;
-        }
-
-        .project-type.type-claude-bypass {
-            background: rgba(74, 222, 128, 0.15);
-            color: var(--accent);
-        }
-
-        .project-type.type-claude-prompted {
-            background: rgba(56, 189, 248, 0.15);
-            color: #38bdf8;
-        }
-
-        .project-type.type-claude-restricted {
-            background: rgba(248, 81, 73, 0.15);
-            color: var(--error);
-        }
-
-        .project-type.type-opencode-bypass {
-            background: rgba(168, 85, 247, 0.15);
-            color: #a855f7;
-        }
-
-        .project-path {
-            font-size: 11px;
-            color: var(--text-muted);
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-            margin-top: 4px;
-        }
-
         /* Group headers */
         .project-group-header {
             display: flex;

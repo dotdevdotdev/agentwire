@@ -5,6 +5,7 @@
 import { ListWindow } from '../list-window.js';
 import { machineIcons } from '../icon-manager.js';
 import { IconPicker } from '../components/icon-picker.js';
+import { ListCard } from '../components/list-card.js';
 
 /** @type {IconPicker|null} */
 let iconPicker = null;
@@ -35,9 +36,6 @@ export function openMachinesWindow() {
         machinesWindow = null;
     };
 
-    // Add styles
-    addMachinesStyles();
-
     machinesWindow.open();
     return machinesWindow;
 }
@@ -66,28 +64,23 @@ async function fetchMachines() {
  */
 function renderMachineItem(machine) {
     const isOnline = machine.status === 'online';
-    const statusClass = isOnline ? 'online' : 'offline';
-    const localTag = machine.local ? '<span class="machine-tag local">local</span>' : '';
-    const iconUrl = machine.iconUrl;
 
-    return `
-        <div class="machine-card" data-machine-id="${machine.id}">
-            <div class="machine-icon-wrapper">
-                <button class="icon-edit-btn" data-action="edit-icon" title="Change icon">⚙</button>
-                <img src="${iconUrl}" alt="" class="machine-icon" />
-                <span class="machine-status-dot ${statusClass}"></span>
-            </div>
-            <div class="machine-content">
-                <div class="machine-header">
-                    <span class="machine-name">${machine.id}</span>
-                </div>
-                <div class="machine-host">${machine.host || 'localhost'}</div>
-                <div class="machine-tag-row">
-                    ${localTag}
-                </div>
-            </div>
-        </div>
-    `;
+    // Build meta - show "local" tag for local machines, id for remote if different from host
+    const metaParts = [];
+    if (machine.local) {
+        metaParts.push(`<span class="session-type">local</span>`);
+    } else if (machine.id !== machine.host) {
+        metaParts.push(`<span class="session-path">${machine.id}</span>`);
+    }
+
+    return ListCard({
+        id: machine.id,
+        iconUrl: machine.iconUrl,
+        statusOnline: isOnline,
+        name: machine.host || machine.id,
+        meta: metaParts.join(' · ')
+        // No actions for machines
+    });
 }
 
 /**
@@ -113,94 +106,4 @@ function openIconPicker(machineId) {
         // Refresh the list after icon change
         machinesWindow?.refresh();
     });
-}
-
-/**
- * Add CSS styles for machines window
- */
-function addMachinesStyles() {
-    if (document.getElementById('machines-window-styles')) return;
-
-    const style = document.createElement('style');
-    style.id = 'machines-window-styles';
-    style.textContent = `
-        .machine-card {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            width: 100%;
-        }
-
-        .machine-icon-wrapper {
-            position: relative;
-            flex-shrink: 0;
-        }
-
-        .machine-icon {
-            width: 40px;
-            height: 40px;
-            border-radius: 8px;
-            object-fit: cover;
-        }
-
-        .machine-status-dot {
-            position: absolute;
-            bottom: -2px;
-            right: -2px;
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            border: 2px solid var(--surface);
-        }
-
-        .machine-status-dot.online {
-            background: var(--accent);
-        }
-
-        .machine-status-dot.offline {
-            background: var(--text-muted);
-        }
-
-        .machine-content {
-            flex: 1;
-            min-width: 0;
-        }
-
-        .machine-header {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .machine-name {
-            font-weight: 500;
-            color: var(--text);
-            font-size: 14px;
-        }
-
-        .machine-host {
-            font-size: 11px;
-            color: var(--text-muted);
-            margin-top: 4px;
-        }
-
-        .machine-tag-row {
-            display: flex;
-            justify-content: flex-end;
-            margin-top: 6px;
-        }
-
-        .machine-tag {
-            padding: 2px 6px;
-            border-radius: 3px;
-            font-size: 10px;
-            text-transform: uppercase;
-        }
-
-        .machine-tag.local {
-            background: rgba(74, 222, 128, 0.15);
-            color: var(--accent);
-        }
-    `;
-    document.head.appendChild(style);
 }
