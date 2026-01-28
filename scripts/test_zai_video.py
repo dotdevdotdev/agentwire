@@ -30,7 +30,7 @@ import httpx
 from zai import ZaiClient
 
 # Load from ~/.claude/.env if exists
-load_dotenv(Path.home() / ".claude" / ".env")
+load_dotenv(Path.cwd().parent / ".env")
 
 
 def generate_video(
@@ -52,7 +52,11 @@ def generate_video(
     Returns:
         Path to the saved video file
     """
-    api_key = os.environ.get("Z_AI_API_KEY") or os.environ.get("ZAI_API_KEY") or os.environ.get("ZHIPUAI_API_KEY")
+    api_key = (
+        os.environ.get("Z_AI_API_KEY")
+        or os.environ.get("ZAI_API_KEY")
+        or os.environ.get("ZHIPUAI_API_KEY")
+    )
     if not api_key:
         raise ValueError(
             "API key not found. Set Z_AI_API_KEY environment variable.\n"
@@ -83,6 +87,7 @@ def generate_video(
         # This depends on the exact API format
         print("  Note: Image-to-video requires base64 encoding of image")
         import base64
+
         with open(image_path, "rb") as f:
             request_params["image"] = base64.b64encode(f.read()).decode()
 
@@ -150,9 +155,7 @@ def generate_video(
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Generate videos using Z.AI CogVideoX"
-    )
+    parser = argparse.ArgumentParser(description="Generate videos using Z.AI CogVideoX")
     parser.add_argument("prompt", help="Text description of the desired video")
     parser.add_argument(
         "--image",
