@@ -94,6 +94,16 @@ export function ListCard(options) {
               if (a.primary) classes.push('btn-primary');
               if (a.danger) classes.push('danger');
               const titleAttr = a.title ? ` title="${escapeAttr(a.title)}"` : '';
+
+              // Support combo buttons (main + chevron dropdown)
+              if (a.combo) {
+                  const comboTitleAttr = a.combo.title ? ` title="${escapeAttr(a.combo.title)}"` : '';
+                  return `<div class="combo-btn combo-btn-small">
+                      <button class="${classes.join(' ')}" data-action="${a.action}"${titleAttr}>${a.label}</button>
+                      <button class="${classes.join(' ')} combo-btn-chevron" data-action="${a.combo.action}"${comboTitleAttr}>${a.combo.label || '▾'}</button>
+                  </div>`;
+              }
+
               return `<button class="${classes.join(' ')}" data-action="${a.action}"${titleAttr}>${a.label}</button>`;
           }).join('')}</div>`
         : '';

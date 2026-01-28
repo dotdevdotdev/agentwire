@@ -195,7 +195,7 @@ function renderSessionItem(session) {
         metaParts.push(`<span class="session-path">${pathDisplay}</span>`);
     }
     if (session.type) {
-        metaParts.push(`<span class="session-type">${session.type}</span>`);
+        metaParts.push(`<span class="type-tag type-${session.type}">${session.type}</span>`);
     }
 
     // Build actions array

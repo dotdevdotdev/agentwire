@@ -206,7 +206,7 @@ function renderProjectItem(project) {
         metaParts.push(`<span class="session-path">${pathDisplay}</span>`);
     }
     if (project.type) {
-        metaParts.push(`<span class="session-type">${project.type}</span>`);
+        metaParts.push(`<span class="type-tag type-${project.type}">${project.type}</span>`);
     }
 
     return ListCard({
@@ -215,6 +215,15 @@ function renderProjectItem(project) {
         name: project.name,
         meta: metaParts.join(' '),
         actions: [
+            {
+                label: 'New',
+                action: 'new-session',
+                primary: true,
+                combo: {
+                    action: 'new-session-options',
+                    title: 'Customize session options'
+                }
+            },
             { label: '✕', action: 'delete', danger: true, title: 'Remove project' }
         ]
     });
@@ -236,6 +245,10 @@ function handleProjectAction(action, item) {
         openIconPicker(item.name);
     } else if (action === 'delete') {
         showDeleteModal(item);
+    } else if (action === 'new-session') {
+        createSessionWithDefaults(item);
+    } else if (action === 'new-session-options') {
+        showNewSessionModal(item);
     }
 }
 
@@ -404,8 +417,6 @@ function showDetailView(project) {
         .map(role => `<span class="role-badge">${role}</span>`)
         .join('') || '<span class="no-roles">No roles assigned</span>';
 
-    const typeClass = `type-${project.type || 'claude-bypass'}`;
-
     // Check if this is a Claude session type (has history)
     const sessionType = project.type || 'claude-bypass';
     const hasHistory = sessionType.startsWith('claude-');
@@ -420,7 +431,7 @@ function showDetailView(project) {
             <div class="detail-body">
                 <div class="detail-title-row">
                     <h2 class="detail-name">${project.name}</h2>
-                    <span class="project-type ${typeClass}">${project.type || 'claude-bypass'}</span>
+                    <span class="type-tag type-${project.type || 'claude-bypass'}">${project.type || 'claude-bypass'}</span>
                 </div>
 
                 <div class="detail-section">
@@ -434,7 +445,10 @@ function showDetailView(project) {
                 </div>
 
                 <div class="detail-actions">
-                    <button class="btn primary new-session-btn">New Session</button>
+                    <div class="combo-btn">
+                        <button class="btn primary new-session-btn">New Session</button>
+                        <button class="btn primary combo-btn-chevron" title="Customize session options">▾</button>
+                    </div>
                 </div>
 
                 ${hasHistory ? `
@@ -451,7 +465,8 @@ function showDetailView(project) {
 
     // Attach handlers
     container.querySelector('.back-btn')?.addEventListener('click', showListView);
-    container.querySelector('.new-session-btn')?.addEventListener('click', () => openNewSessionForProject(project));
+    container.querySelector('.new-session-btn')?.addEventListener('click', () => createSessionWithDefaults(project));
+    container.querySelector('.combo-btn-chevron')?.addEventListener('click', () => showNewSessionModal(project));
 
     // Fetch history if applicable
     if (hasHistory) {
@@ -717,51 +732,198 @@ function showListView() {
 }
 
 /**
- * Open new session modal pre-filled with project info
+ * Create session with project's default settings
  * @param {Object} project - Project data
  */
-function openNewSessionForProject(project) {
-    // Import desktop.js to check for openNewSessionModal
-    import('../desktop.js').then(async (desktop) => {
-        if (desktop.openNewSessionModal) {
-            desktop.openNewSessionModal({
+async function createSessionWithDefaults(project) {
+    try {
+        const response = await fetch('/api/create', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
                 name: project.name,
                 path: project.path,
                 machine: project.machine,
-                type: project.type,
+                type: project.type || 'claude-bypass',
                 roles: project.roles
-            });
+            })
+        });
+
+        const result = await response.json();
+        if (result.error) {
+            showToast(`Failed to create session: ${result.error}`, 'error');
         } else {
-            // Fallback: create session directly via API
-            const sessionName = prompt(`Create new session for ${project.name}:`, project.name);
-            if (!sessionName) return;
+            showToast(`Session "${project.name}" created`, 'success');
+            // Refresh sessions list
+            import('../desktop-manager.js').then(module => {
+                module.desktop?.fetchSessions?.();
+            });
+        }
+    } catch (err) {
+        showToast(`Failed to create session: ${err.message}`, 'error');
+    }
+}
 
-            try {
-                const response = await fetch('/api/create', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        name: sessionName,
-                        path: project.path,
-                        machine: project.machine,
-                        type: project.type
-                    })
-                });
+/** Available session types */
+const SESSION_TYPES = [
+    { value: 'claude-bypass', label: 'Claude (Bypass)' },
+    { value: 'claude-prompted', label: 'Claude (Prompted)' },
+    { value: 'claude-restricted', label: 'Claude (Restricted)' },
+    { value: 'opencode-bypass', label: 'OpenCode (Bypass)' },
+    { value: 'opencode-prompted', label: 'OpenCode (Prompted)' },
+    { value: 'opencode-restricted', label: 'OpenCode (Restricted)' },
+    { value: 'bare', label: 'Bare (no agent)' }
+];
 
-                const result = await response.json();
-                if (result.error) {
-                    alert(`Failed to create session: ${result.error}`);
-                } else {
-                    // Refresh sessions list
-                    import('../desktop-manager.js').then(module => {
-                        module.desktop?.fetchSessions?.();
-                    });
-                }
-            } catch (err) {
-                alert(`Failed to create session: ${err.message}`);
-            }
+/** Available roles (fetched dynamically, cached) */
+let availableRoles = null;
+
+/**
+ * Fetch available roles from API
+ * @returns {Promise<Array>} Array of role names
+ */
+async function fetchRoles() {
+    if (availableRoles) return availableRoles;
+    try {
+        const response = await fetch('/api/roles');
+        const data = await response.json();
+        availableRoles = data.roles || [];
+        return availableRoles;
+    } catch {
+        return [];
+    }
+}
+
+/**
+ * Show modal to customize session options
+ * @param {Object} project - Project data
+ */
+async function showNewSessionModal(project) {
+    // Remove existing modal if any
+    const existing = document.querySelector('.new-session-modal');
+    if (existing) existing.remove();
+
+    // Fetch roles
+    const roles = await fetchRoles();
+
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay new-session-modal';
+
+    // Build type options
+    const typeOptions = SESSION_TYPES.map(t =>
+        `<option value="${t.value}" ${t.value === (project.type || 'claude-bypass') ? 'selected' : ''}>${t.label}</option>`
+    ).join('');
+
+    // Build roles checkboxes
+    const projectRoles = project.roles || [];
+    const rolesCheckboxes = roles.map(r =>
+        `<label class="role-checkbox">
+            <input type="checkbox" value="${r.name}" ${projectRoles.includes(r.name) ? 'checked' : ''}>
+            <span>${r.name}</span>
+        </label>`
+    ).join('');
+
+    modal.innerHTML = `
+        <div class="modal new-session-options-modal">
+            <div class="modal-header">
+                <h3>New Session Options</h3>
+                <button class="modal-close" data-action="close">✕</button>
+            </div>
+            <div class="modal-body">
+                <p>Create a new session for <strong>${project.name}</strong></p>
+
+                <div class="form-group">
+                    <label>Session Type</label>
+                    <select class="session-type-select">
+                        ${typeOptions}
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Roles</label>
+                    <div class="roles-grid">
+                        ${rolesCheckboxes || '<span class="no-roles">No roles available</span>'}
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn" data-action="cancel">Cancel</button>
+                <button class="btn btn-primary" data-action="create">Create Session</button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    // Handle modal actions
+    modal.addEventListener('click', async (e) => {
+        const action = e.target.dataset.action;
+        if (action === 'close' || action === 'cancel') {
+            modal.remove();
+        } else if (action === 'create') {
+            const typeSelect = modal.querySelector('.session-type-select');
+            const checkedRoles = [...modal.querySelectorAll('.role-checkbox input:checked')]
+                .map(cb => cb.value);
+
+            await createSessionWithOptions(project, typeSelect.value, checkedRoles, modal);
         }
     });
+
+    // Close on overlay click
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) modal.remove();
+    });
+}
+
+/**
+ * Create session with custom options
+ * @param {Object} project - Project data
+ * @param {string} type - Session type
+ * @param {Array} roles - Selected roles
+ * @param {HTMLElement} modal - Modal to close on success
+ */
+async function createSessionWithOptions(project, type, roles, modal) {
+    const createBtn = modal.querySelector('[data-action="create"]');
+    if (createBtn) {
+        createBtn.disabled = true;
+        createBtn.textContent = 'Creating...';
+    }
+
+    try {
+        const response = await fetch('/api/create', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name: project.name,
+                path: project.path,
+                machine: project.machine,
+                type: type,
+                roles: roles
+            })
+        });
+
+        const result = await response.json();
+        if (result.error) {
+            showToast(`Failed to create session: ${result.error}`, 'error');
+            if (createBtn) {
+                createBtn.disabled = false;
+                createBtn.textContent = 'Create Session';
+            }
+        } else {
+            modal.remove();
+            showToast(`Session "${project.name}" created`, 'success');
+            // Refresh sessions list
+            import('../desktop-manager.js').then(module => {
+                module.desktop?.fetchSessions?.();
+            });
+        }
+    } catch (err) {
+        showToast(`Failed to create session: ${err.message}`, 'error');
+        if (createBtn) {
+            createBtn.disabled = false;
+            createBtn.textContent = 'Create Session';
+        }
+    }
 }
 
 /**

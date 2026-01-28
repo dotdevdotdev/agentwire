@@ -1,4 +1,3 @@
-type: opencode-bypass
+type: claude-bypass
 roles:
 - leader
-- glm-orchestration

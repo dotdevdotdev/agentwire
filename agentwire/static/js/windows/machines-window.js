@@ -68,7 +68,7 @@ function renderMachineItem(machine) {
     // Build meta - show "local" tag for local machines, id for remote if different from host
     const metaParts = [];
     if (machine.local) {
-        metaParts.push(`<span class="session-type">local</span>`);
+        metaParts.push(`<span class="type-tag type-local">local</span>`);
     } else if (machine.id !== machine.host) {
         metaParts.push(`<span class="session-path">${machine.id}</span>`);
     }

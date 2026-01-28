@@ -14,7 +14,7 @@
     --chrome: #1a1a1a;
     --chrome-border: #2a2a2a;
     --hover: rgba(74, 222, 128, 0.1);
-    --error: #f85149;
+    --error: #f87171;
 
     /* Orb state colors */
     --orb-idle: #4ade80;
@@ -748,6 +748,109 @@ body {
     cursor: not-allowed;
 }
 
+/* Combo button (main + chevron) */
+.combo-btn {
+    display: inline-flex;
+}
+
+.combo-btn .btn:first-child {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+    border-right: none;
+    white-space: nowrap;
+}
+
+.combo-btn .combo-btn-chevron {
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+    padding: 8px 10px;
+    min-width: auto;
+    border-left: 1px solid rgba(0,0,0,0.2);
+}
+
+.combo-btn .combo-btn-chevron:hover {
+    background: #45a049;
+}
+
+/* Small combo button variant (for list items) */
+.combo-btn-small .combo-btn-chevron {
+    padding: 4px 6px;
+}
+
+/* New session options modal */
+.new-session-options-modal {
+    width: 400px;
+}
+
+.new-session-options-modal .form-group {
+    margin-bottom: 16px;
+}
+
+.new-session-options-modal .form-group label {
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+}
+
+.new-session-options-modal .session-type-select {
+    width: 100%;
+    padding: 10px 12px;
+    background: var(--background);
+    border: 1px solid var(--chrome-border);
+    border-radius: 4px;
+    color: var(--text);
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.new-session-options-modal .session-type-select:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.new-session-options-modal .roles-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.new-session-options-modal .role-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    background: var(--background);
+    border: 1px solid var(--chrome-border);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: border-color 0.15s, background 0.15s;
+}
+
+.new-session-options-modal .role-checkbox:hover {
+    border-color: var(--accent);
+}
+
+.new-session-options-modal .role-checkbox:has(input:checked) {
+    background: rgba(74, 222, 128, 0.15);
+    border-color: var(--accent);
+}
+
+.new-session-options-modal .role-checkbox input {
+    margin: 0;
+    accent-color: var(--accent);
+}
+
+.new-session-options-modal .no-roles {
+    font-size: 12px;
+    color: var(--text-muted);
+    font-style: italic;
+}
+
 .form-row {
     margin-bottom: 12px;
 }
@@ -1065,6 +1168,63 @@ body {
 .session-machine {
     color: var(--warning, #f59e0b);
     font-weight: 500;
+}
+
+/* ============================================
+   Type Tags - Reusable styled tags
+   ============================================ */
+
+.type-tag {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: lowercase;
+    white-space: nowrap;
+}
+
+/* Claude variants */
+.type-tag.type-claude-bypass {
+    background: rgba(74, 222, 128, 0.15);
+    color: var(--accent);
+}
+
+.type-tag.type-claude-prompted {
+    background: rgba(56, 189, 248, 0.15);
+    color: #38bdf8;
+}
+
+.type-tag.type-claude-restricted {
+    background: rgba(248, 113, 113, 0.15);
+    color: var(--error);
+}
+
+/* OpenCode variants */
+.type-tag.type-opencode-bypass {
+    background: rgba(168, 85, 247, 0.15);
+    color: #a855f7;
+}
+
+.type-tag.type-opencode-prompted {
+    background: rgba(251, 191, 36, 0.15);
+    color: #fbbf24;
+}
+
+.type-tag.type-opencode-restricted {
+    background: rgba(248, 113, 113, 0.15);
+    color: var(--error);
+}
+
+/* Bare / other */
+.type-tag.type-bare {
+    background: rgba(148, 163, 184, 0.15);
+    color: #94a3b8;
+}
+
+.type-tag.type-local {
+    background: rgba(74, 222, 128, 0.15);
+    color: var(--accent);
 }
 
 /* Session card layout */

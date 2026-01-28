@@ -158,6 +158,7 @@ class AgentWireServer:
         self.app.router.add_get("/api/sessions/remote", self.api_sessions_remote)
         self.app.router.add_get("/api/projects", self.api_projects)
         self.app.router.add_post("/api/projects/delete", self.api_projects_delete)
+        self.app.router.add_get("/api/roles", self.api_roles)
         self.app.router.add_get("/api/machine/{machine_id}/status", self.api_machine_status)
         self.app.router.add_get("/api/check-path", self.api_check_path)
         self.app.router.add_get("/api/check-branches", self.api_check_branches)
@@ -541,6 +542,13 @@ class AgentWireServer:
                 return True, json.loads(stdout.decode())
             except json.JSONDecodeError as e:
                 return False, {"error": f"Failed to parse JSON output: {e}"}
+        # Try to parse stdout for JSON error response
+        try:
+            result = json.loads(stdout.decode())
+            if "error" in result:
+                return False, result
+        except json.JSONDecodeError:
+            pass
         return False, {"error": stderr.decode().strip() or f"Command failed with exit code {proc.returncode}"}
 
     async def _run_ssh_command(self, machine_id: str, command: str) -> str:
@@ -1612,6 +1620,22 @@ class AgentWireServer:
             logger.error(f"Failed to delete project: {e}")
             return web.json_response({"success": False, "error": str(e)})
 
+    async def api_roles(self, request: web.Request) -> web.Response:
+        """List available roles.
+
+        Response:
+            {"roles": [{name, description}, ...]}
+        """
+        try:
+            success, result = await self.run_agentwire_cmd(["roles", "list", "--json"])
+            if not success:
+                return web.json_response({"roles": []})
+
+            return web.json_response({"roles": result.get("roles", [])})
+        except Exception as e:
+            logger.error(f"Failed to list roles: {e}")
+            return web.json_response({"roles": []})
+
     async def api_machine_status(self, request: web.Request) -> web.Response:
         """Get status for a specific machine.
 
@@ -1824,12 +1848,16 @@ class AgentWireServer:
                 args.extend(["-p", custom_path])
             # Set session type via --type flag
             args.extend(["--type", session_type])
-            # Set roles if provided
+            # Set roles if provided (handle both array and string formats)
             if roles:
+                if isinstance(roles, list):
+                    roles = ",".join(roles)
                 args.extend(["--roles", roles])
 
             # Call CLI
+            logger.info(f"Creating session with args: {args}")
             success, result = await self.run_agentwire_cmd(args)
+            logger.info(f"CLI result: success={success}, result={result}")
 
             if not success:
                 error_msg = result.get("error", "Failed to create session")
