@@ -17,8 +17,6 @@ This role supplements `leader` with Claude Code-specific techniques.
 For detailed exit summary format, see `worker` role. Delegation roles focus on task communication, not summary format.
 
 ### Spawn Command
-
-### Spawn Command
 ```bash
 agentwire spawn --roles claude-worker
 ```
@@ -361,9 +359,9 @@ Before reporting completion to main orchestrator:
 - [ ] Edge cases handled (empty states, errors)
 - [ ] Git committed
 
-Only then:
+Only then (run via Bash tool - `agentwire say` is a CLI command):
 ```bash
-agentwire say -v may --notify agentwire "Feature complete, tested in Chrome"
+agentwire say "Feature complete, tested in Chrome"
 ```
 
 ---

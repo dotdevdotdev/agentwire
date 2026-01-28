@@ -8,9 +8,23 @@
 
 import type { Plugin } from "@opencode-ai/plugin"
 import { execSync, spawn } from "child_process"
-import { readFileSync, appendFileSync, existsSync, writeFileSync } from "fs"
+import { readFileSync, appendFileSync, existsSync } from "fs"
 import { basename, join } from "path"
 import { homedir } from "os"
+
+/**
+ * Find agentwire binary path (env var > which > default)
+ */
+function getAgentwirePath(): string {
+  if (process.env.AGENTWIRE_BIN) {
+    return process.env.AGENTWIRE_BIN
+  }
+  try {
+    return execSync("which agentwire", { encoding: "utf-8", timeout: 1000 }).trim()
+  } catch {
+    return join(homedir(), ".local", "bin", "agentwire")
+  }
+}
 
 interface AgentWireConfig {
   session?: string
@@ -180,7 +194,7 @@ List files you modified or created with brief descriptions
             try {
               // Send instruction to the pane
               const send = spawn(
-                "/Users/dotdev/.local/bin/agentwire",
+                getAgentwirePath(),
                 ["send", "--pane", String(paneIndex), instruction],
                 { detached: true, stdio: "ignore" }
               )
@@ -201,7 +215,7 @@ List files you modified or created with brief descriptions
               setTimeout(() => {
                 try {
                   const kill = spawn(
-                    "/Users/dotdev/.local/bin/agentwire",
+                    getAgentwirePath(),
                     ["kill", "--pane", String(paneIndex)],
                     { detached: true, stdio: "ignore" }
                   )
@@ -214,7 +228,7 @@ List files you modified or created with brief descriptions
               // If we can't read the summary, just kill the pane
               try {
                 const kill = spawn(
-                  "/Users/dotdev/.local/bin/agentwire",
+                  getAgentwirePath(),
                   ["kill", "--pane", String(paneIndex)],
                   { detached: true, stdio: "ignore" }
                 )
@@ -230,7 +244,7 @@ List files you modified or created with brief descriptions
         const message = `${sessionName} is idle`
         try {
           const child = spawn(
-            "/Users/dotdev/.local/bin/agentwire",
+            getAgentwirePath(),
             ["alert", "-q", "--to", config.parent, message],
             { detached: true, stdio: "ignore" }
           )

@@ -58,39 +58,8 @@ But first try to unblock yourself using your tools and judgment.
 
 ## Exit Summary (CRITICAL)
 
-Before stopping, you MUST write a summary file. The orchestrator reads this to know what happened.
+Before stopping, you MUST write a summary file. **See the base `worker` role for the exact format.**
 
-**When you go idle, the plugin will instruct you to write a summary.** It will provide the exact filename (includes OpenCode session ID).
-
-Just write the summary when instructed, with these sections:
-
-```markdown
-# Worker Summary
-
-## Task
-[What you were asked to do - copy the original task]
-
-## Status
-─── DONE ─── (success) | ─── BLOCKED ─── (needs help) | ─── ERROR ─── (failed)
-
-## What I Did
-- [Action 1]
-- [Action 2]
-
-## Files Changed
-- `path/to/file.tsx` (created) - description
-- `path/to/other.ts` (modified) - what changed
-
-## What Worked
-- [Success 1]
-- [Success 2]
-
-## What Didn't Work
-- [Issue 1] - why it failed
-- [Issue 2] - what was tried
-
-## Notes for Orchestrator
-[Anything the orchestrator should know for follow-up work]
-```
+When you go idle, the plugin will instruct you to write a summary with the filename. Follow the format in the worker role (Task, Status, What I Did, Files Changed, etc.).
 
 **After writing the summary, stop.** The system detects idle and you auto-exit. Do NOT call `exit` or `/exit` manually.

@@ -6,6 +6,9 @@
 DEBUG_LOG="/tmp/claude-hook-debug.log"
 log() { echo "[$(date -Iseconds)] $*" >> "$DEBUG_LOG"; }
 
+# Find agentwire binary (env var > which > default)
+AGENTWIRE="${AGENTWIRE_BIN:-$(which agentwire 2>/dev/null || echo "$HOME/.local/bin/agentwire")}"
+
 input=$(cat)
 notification_type=$(echo "$input" | jq -r '.notification_type // ""')
 log "Hook fired: type=$notification_type TMUX_PANE=$TMUX_PANE"
@@ -80,7 +83,7 @@ if [[ "$notification_type" == "idle_prompt" ]]; then
 [What you were asked to do]
 
 ## Status
-Complete | Blocked | Failed
+─── DONE ─── (success) | ─── BLOCKED ─── (needs help) | ─── ERROR ─── (failed)
 
 ## What I Did
 [Actions taken]
@@ -97,7 +100,7 @@ List files you modified or created with brief descriptions
 ## Notes for Orchestrator
 [Context for follow-up]'
 
-        /Users/dotdev/.local/bin/agentwire send --pane "$pane_index" "$instruction" >/dev/null 2>&1 &
+        $AGENTWIRE send --pane "$pane_index" "$instruction" >/dev/null 2>&1 &
         echo "[$(date -Iseconds)] BG: instruction sent" >> "$dlog"
       else
         # Second idle: Summary file exists, read it and notify parent
@@ -136,18 +139,18 @@ ${summary_content}"
           # Wait 1s then kill the pane (kill command has its own 3s internal wait)
           sleep 1
           echo "[$(date -Iseconds)] BG: killing pane" >> "$dlog"
-          /Users/dotdev/.local/bin/agentwire kill --pane "$pane_index" >/dev/null 2>&1 &
+          $AGENTWIRE kill --pane "$pane_index" >/dev/null 2>&1 &
         else
           echo "[$(date -Iseconds)] BG: failed to read summary, killing pane anyway" >> "$dlog"
           # Failed to read summary, just kill the pane
-          /Users/dotdev/.local/bin/agentwire kill --pane "$pane_index" >/dev/null 2>&1 &
+          $AGENTWIRE kill --pane "$pane_index" >/dev/null 2>&1 &
         fi
       fi
     ) &
   elif [[ -n "$parent_session" ]]; then
     # Orchestrator pane: direct notification to parent
     message="${session_name} is idle"
-    /Users/dotdev/.local/bin/agentwire alert -q --to "$parent_session" "$message" 2>/dev/null &
+    $AGENTWIRE alert -q --to "$parent_session" "$message" 2>/dev/null &
   fi
 fi
 
