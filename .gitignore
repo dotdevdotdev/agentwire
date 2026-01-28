@@ -44,6 +44,8 @@ Thumbs.db
 # Note: /voices/ ignores root only; agentwire/voices/ contains bundled synthetic voices
 /voices/
 
+.agentwire.yml
+
 # Test outputs
 test_*.wav
 test_output*.wav
