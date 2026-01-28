@@ -33,7 +33,7 @@ export function getActivityIndicatorHtml(state) {
  * @param {string} [options.activityState] - Activity state: 'idle'|'processing'|'generating'|'playing' (omit for no indicator)
  * @param {boolean} [options.statusOnline] - Show status dot: true=online (green), false=offline (gray), undefined=hidden
  * @param {string} options.name - Primary display name
- * @param {string} [options.machineTag] - Machine name to show as yellow tag after name (e.g. "@dotdev-gpu")
+ * @param {string} [options.machineTag] - Machine name to show as yellow tag after name (e.g. "@dotdev-pc")
  * @param {number} [options.clientCount=0] - Attached client count for presence indicator
  * @param {string} [options.meta] - Meta HTML content (already formatted with spans)
  * @param {Array} [options.actions] - Action buttons [{label, action, primary?, danger?, title?}]
