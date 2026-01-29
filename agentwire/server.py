@@ -674,13 +674,21 @@ class AgentWireServer:
             await ws.send_json({"type": "machines_update", "machines": machines_data})
 
     async def _get_sessions_data(self) -> list:
-        """Get local sessions list for dashboard (fast, no SSH)."""
+        """Get all sessions list for dashboard (local + remote)."""
         try:
+            # Get local sessions
             success, result = await self.run_agentwire_cmd(["list", "--local", "--sessions"])
             if not success:
                 return []
 
             sessions = result.get("sessions", [])
+
+            # Get remote sessions
+            remote_success, remote_result = await self.run_agentwire_cmd(["list", "--remote", "--sessions"])
+            if remote_success:
+                remote_sessions = remote_result.get("sessions", [])
+                sessions.extend(remote_sessions)
+
             session_names = set()
             for s in sessions:
                 name = s.get("name", "")
@@ -1993,9 +2001,31 @@ class AgentWireServer:
             args.extend(["--type", session_type])
             # Set roles if provided (handle both array and string formats)
             if roles:
+                # Validate roles exist before passing to CLI
                 if isinstance(roles, list):
-                    roles = ",".join(roles)
-                args.extend(["--roles", roles])
+                    roles_list = roles
+                else:
+                    roles_list = [r.strip() for r in roles.split(",") if r.strip()]
+
+                # Get available roles
+                success, result = await self.run_agentwire_cmd(["roles", "list", "--json"])
+                available_roles = set()
+                if success:
+                    for role in result.get("roles", []):
+                        available_roles.add(role.get("name"))
+
+                # Filter to only valid roles
+                valid_roles = [r for r in roles_list if r in available_roles]
+
+                # Fall back to default role if none are valid
+                if not valid_roles and roles_list:
+                    logger.warning(f"No valid roles found in {roles_list}, using default role")
+                    default_role = self.config.session.default_role
+                    if default_role:
+                        valid_roles = [default_role]
+
+                if valid_roles:
+                    args.extend(["--roles", ",".join(valid_roles)])
 
             # Call CLI
             logger.info(f"Creating session with args: {args}")

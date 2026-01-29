@@ -94,8 +94,14 @@ export function openSessionsWindow() {
     };
 
     // Auto-refresh when sessions change via WebSocket
-    unsubscribe = desktop.on('sessions', () => {
-        sessionsWindow?.refresh();
+    unsubscribe = desktop.on('sessions', async (sessions) => {
+        // Use the sessions data from WebSocket instead of fetching from API
+        if (sessions && Array.isArray(sessions)) {
+            const processedSessions = await processSessions(sessions);
+            sessionsWindow?.refreshWithData(processedSessions);
+        } else {
+            sessionsWindow?.refresh();
+        }
     });
 
     // Subscribe to activity events
@@ -121,6 +127,34 @@ export function openSessionsWindow() {
 
     sessionsWindow.open();
     return sessionsWindow;
+}
+
+/**
+ * Process raw sessions data into display format
+ * @param {Array} sessions - Raw sessions data
+ * @returns {Promise<Array>} Processed session objects
+ */
+async function processSessions(sessions) {
+    // Sort alphabetically
+    const sortedSessions = sessions.sort((a, b) => a.name.localeCompare(b.name));
+
+    // Get session names and assign icons (uses IconManager with persistence)
+    const sessionNames = sortedSessions.map(s => s.name);
+    const iconUrls = await sessionIcons.getIconsForItems(sessionNames);
+
+    return sortedSessions.map((s) => ({
+        name: s.name,
+        active: s.activity === 'active',
+        type: s.type || 'bare',
+        path: s.path || null,
+        machine: s.machine || null,
+        // Chat button shown for agent session types (not bare)
+        hasVoice: s.type && (s.type.startsWith('claude-') || s.type.startsWith('opencode-')),
+        // Attached client count for presence indicator
+        clientCount: s.client_count || 0,
+        // Icon URL from IconManager (persistent, name-matched or random)
+        iconUrl: iconUrls[s.name]
+    }));
 }
 
 /**
@@ -156,10 +190,8 @@ async function fetchSessions() {
         }
     }
 
-    // Combine and sort alphabetically
-    const allSessions = [...localSessions, ...remoteSessions].sort((a, b) =>
-        a.name.localeCompare(b.name)
-    );
+    // Combine sessions
+    const allSessions = [...localSessions, ...remoteSessions];
 
     // Auto-refresh while machines are checking
     const hasChecking = remoteMachines.some(m => m.status === 'checking');
@@ -167,23 +199,8 @@ async function fetchSessions() {
         setupAutoRefresh(remoteMachines, sessionsWindow);
     }
 
-    // Get session names and assign icons (uses IconManager with persistence)
-    const sessionNames = allSessions.map(s => s.name);
-    const iconUrls = await sessionIcons.getIconsForItems(sessionNames);
-
-    return allSessions.map((s) => ({
-        name: s.name,
-        active: s.activity === 'active',
-        type: s.type || 'bare',
-        path: s.path || null,
-        machine: s.machine || null,
-        // Chat button shown for agent session types (not bare)
-        hasVoice: s.type && (s.type.startsWith('claude-') || s.type.startsWith('opencode-')),
-        // Attached client count for presence indicator
-        clientCount: s.client_count || 0,
-        // Icon URL from IconManager (persistent, name-matched or random)
-        iconUrl: iconUrls[s.name]
-    }));
+    // Process and return
+    return processSessions(allSessions);
 }
 
 /**

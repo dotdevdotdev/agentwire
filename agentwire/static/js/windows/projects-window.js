@@ -743,6 +743,11 @@ function showListView() {
  */
 async function createSessionWithDefaults(project) {
     try {
+        // Show immediate feedback for remote sessions
+        if (project.machine && project.machine !== 'local') {
+            showToast(`Creating session on ${project.machine}...`, 'success');
+        }
+
         const response = await fetch('/api/create', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -760,10 +765,7 @@ async function createSessionWithDefaults(project) {
             showToast(`Failed to create session: ${result.error}`, 'error');
         } else {
             showToast(`Session "${project.name}" created`, 'success');
-            // Refresh sessions list
-            import('../desktop-manager.js').then(module => {
-                module.desktop?.fetchSessions?.();
-            });
+            // Sessions window will auto-update via WebSocket broadcast
         }
     } catch (err) {
         showToast(`Failed to create session: ${err.message}`, 'error');
@@ -895,6 +897,11 @@ async function createSessionWithOptions(project, type, roles, modal) {
         createBtn.textContent = 'Creating...';
     }
 
+    // Show immediate feedback for remote sessions
+    if (project.machine && project.machine !== 'local') {
+        showToast(`Creating session on ${project.machine}...`, 'success');
+    }
+
     try {
         const response = await fetch('/api/create', {
             method: 'POST',
@@ -918,10 +925,7 @@ async function createSessionWithOptions(project, type, roles, modal) {
         } else {
             modal.remove();
             showToast(`Session "${project.name}" created`, 'success');
-            // Refresh sessions list
-            import('../desktop-manager.js').then(module => {
-                module.desktop?.fetchSessions?.();
-            });
+            // Sessions window will auto-update via WebSocket broadcast
         }
     } catch (err) {
         showToast(`Failed to create session: ${err.message}`, 'error');

@@ -160,6 +160,15 @@ export class ListWindow {
     }
 
     /**
+     * Refresh the list with provided data (skip fetch)
+     * @param {Array} items - Items to render
+     */
+    refreshWithData(items) {
+        if (this.isLoading || !this.contentEl) return;
+        this._render(items);
+    }
+
+    /**
      * Render items into the list
      * @param {Array} items
      */
