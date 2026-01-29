@@ -4,7 +4,7 @@ Voice interface for AI coding agents. Push-to-talk from any device to tmux sessi
 
 **No Backwards Compatibility** - Pre-launch, no customers. Change things completely, no legacy fallbacks.
 
-**Hierarchical Delegation** - Before editing files in OTHER projects (e.g., `~/projects/agentwire-website/`), check `agentwire list`. If a session exists for that project, send instructions there instead of editing directly. See `~/.claude/rules/delegation.md`.
+**Hierarchical Delegation** - Before editing files in OTHER projects (e.g., `~/projects/agentwire-website/`), check `agentwire_sessions_list()`. If a session exists for that project, use `agentwire_session_send()` instead of editing directly. See `~/.claude/rules/delegation.md`.
 
 ## Dev Workflow
 
@@ -127,6 +127,29 @@ Session formats: `name`, `project/branch` (worktree), `name@machine` (remote)
 Pane targeting: `--pane N` auto-detects session from `$TMUX_PANE`
 
 For CLI details: `agentwire --help` or `agentwire <cmd> --help`
+
+## MCP Server (For Agents)
+
+**Agents running in agentwire sessions should use MCP tools instead of CLI commands.**
+
+The agentwire MCP server provides tools that wrap CLI functionality. Use these instead of `Bash: agentwire <cmd>`:
+
+| CLI Command | MCP Tool |
+|-------------|----------|
+| `agentwire say "text"` | `agentwire_say(text="...")` |
+| `agentwire alert "text"` | `agentwire_alert(text="...")` |
+| `agentwire spawn --roles worker` | `agentwire_pane_spawn(roles="worker")` |
+| `agentwire send --pane 1 "msg"` | `agentwire_pane_send(pane=1, message="...")` |
+| `agentwire send -s name "msg"` | `agentwire_session_send(session="name", message="...")` |
+| `agentwire list` | `agentwire_sessions_list()` |
+| `agentwire output --pane 1` | `agentwire_pane_output(pane=1)` |
+| `agentwire kill --pane 1` | `agentwire_pane_kill(pane=1)` |
+
+**When to use CLI vs MCP:**
+- **MCP tools** - Agents in sessions (orchestrators, workers)
+- **CLI commands** - Humans, shell scripts, automation outside of agent sessions
+
+The MCP server runs as part of the portal. All 26 tools are documented via `agentwire roles show leader`.
 
 ## Config
 
