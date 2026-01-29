@@ -540,7 +540,8 @@ def machine_add(machine_id: str, host: str, user: str, port: int = 22) -> str:
     if port != 22:
         args.extend(["--port", str(port)])
 
-    data = run_agentwire_cmd(args)
+    # machine add doesn't support --json
+    data = run_agentwire_cmd(args, json_output=False)
     if data.get("success"):
         return f"Machine '{machine_id}' added successfully."
     return f"Failed to add machine: {data.get('error', 'Unknown error')}"
@@ -557,7 +558,8 @@ def machine_remove(machine_id: str) -> str:
         Success message or error description.
     """
     args = ["machine", "remove", machine_id]
-    data = run_agentwire_cmd(args)
+    # machine remove doesn't support --json
+    data = run_agentwire_cmd(args, json_output=False)
     if data.get("success"):
         return f"Machine '{machine_id}' removed."
     return f"Failed to remove machine: {data.get('error', 'Unknown error')}"
