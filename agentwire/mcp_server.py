@@ -8,6 +8,7 @@ Usage:
     agentwire mcp  # Starts MCP server on stdio
 """
 
+import base64
 import json
 import logging
 import os
@@ -652,6 +653,70 @@ def listen_stop() -> str:
     if data.get("success"):
         return data.get("output", "Recording stopped.")
     return f"Failed to stop recording: {data.get('error', 'Unknown error')}"
+
+
+@mcp.tool()
+def transcribe(audio_base64: str, format: str = "webm") -> str:
+    """Transcribe audio to text.
+
+    Accepts base64-encoded audio data and returns the transcribed text.
+    This is useful for external agents that have their own audio capture
+    or want to process pre-recorded audio files.
+
+    Args:
+        audio_base64: Base64-encoded audio data
+        format: Audio format - webm, wav, mp3, ogg, m4a (default: webm)
+
+    Returns:
+        Transcribed text or error description.
+    """
+    import requests
+    import urllib3
+
+    # Suppress SSL warnings for self-signed certs
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+    # Decode base64 audio
+    try:
+        audio_bytes = base64.b64decode(audio_base64)
+    except Exception as e:
+        return f"Failed to decode base64 audio: {e}"
+
+    if not audio_bytes:
+        return "Empty audio data"
+
+    # Determine MIME type
+    mime_types = {
+        "webm": "audio/webm",
+        "wav": "audio/wav",
+        "mp3": "audio/mpeg",
+        "ogg": "audio/ogg",
+        "m4a": "audio/m4a",
+    }
+    mime_type = mime_types.get(format.lower(), "audio/webm")
+
+    # POST to portal's /transcribe endpoint
+    portal_url = get_portal_url()
+    url = f"{portal_url}/transcribe"
+
+    try:
+        # Create multipart form data
+        files = {"audio": (f"audio.{format}", audio_bytes, mime_type)}
+        response = requests.post(url, files=files, verify=False, timeout=60)
+
+        if response.status_code != 200:
+            return f"Transcription request failed: HTTP {response.status_code}"
+
+        data = response.json()
+        if "error" in data:
+            return f"Transcription failed: {data['error']}"
+
+        return data.get("text", "")
+
+    except requests.exceptions.ConnectionError:
+        return "Failed to connect to portal. Is it running? (agentwire portal status)"
+    except Exception as e:
+        return f"Transcription failed: {e}"
 
 
 @mcp.tool()
