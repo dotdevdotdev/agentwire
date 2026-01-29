@@ -70,15 +70,21 @@ def get_portal_url() -> str:
 # =============================================================================
 
 
-def run_agentwire_cmd(args: list[str], json_output: bool = True) -> dict:
+def run_agentwire_cmd(
+    args: list[str],
+    json_output: bool = True,
+    timeout: int = 30,
+) -> dict:
     """Run agentwire CLI command and return result.
 
     Args:
         args: Command arguments (e.g., ["list", "--sessions"])
         json_output: Whether to add --json flag and parse output
+        timeout: Command timeout in seconds (default: 30)
 
     Returns:
-        Dict with 'success', 'output', and possibly other fields from JSON output
+        Dict with 'success', 'output', and possibly other fields from JSON output.
+        For JSON responses without 'success' field, wraps data with success=True.
     """
     cmd = ["agentwire"] + args
     if json_output:
@@ -91,25 +97,29 @@ def run_agentwire_cmd(args: list[str], json_output: bool = True) -> dict:
             cmd,
             capture_output=True,
             text=True,
-            timeout=30,
+            timeout=timeout,
         )
 
+        # Try to parse JSON output
         if json_output and result.stdout.strip():
             try:
                 data = json.loads(result.stdout)
+                # If the response is valid JSON but doesn't have 'success',
+                # wrap it with success based on return code
+                if "success" not in data:
+                    return {
+                        "success": result.returncode == 0,
+                        **data,
+                    }
                 return data
             except json.JSONDecodeError:
-                # Fall back to raw output
-                return {
-                    "success": result.returncode == 0,
-                    "output": result.stdout,
-                    "error": result.stderr if result.returncode != 0 else None,
-                }
+                pass
 
+        # Fall back to raw output
         return {
             "success": result.returncode == 0,
-            "output": result.stdout,
-            "error": result.stderr if result.returncode != 0 else None,
+            "output": result.stdout.strip(),
+            "error": result.stderr.strip() if result.returncode != 0 else None,
         }
 
     except subprocess.TimeoutExpired:
@@ -204,6 +214,20 @@ def format_roles(data: dict) -> str:
         desc = r.get("description", "")
         source = r.get("source", "")
         lines.append(f"  - {name}: {desc} ({source})")
+
+    return "\n".join(lines)
+
+
+def format_voices(data: dict) -> str:
+    """Format voices list for LLM consumption."""
+    voices = data.get("voices", [])
+    if not voices:
+        return "No custom voices available. Default voice will be used."
+
+    lines = ["Available voices:"]
+    for v in voices:
+        name = v.get("name", "unknown") if isinstance(v, dict) else v
+        lines.append(f"  - {name}")
 
     return "\n".join(lines)
 
@@ -371,9 +395,10 @@ def pane_spawn(
     if pane_type:
         args.extend(["--type", pane_type])
 
-    data = run_agentwire_cmd(args)
+    # Spawn can take a while to initialize the agent, use longer timeout
+    data = run_agentwire_cmd(args, timeout=120)
     if data.get("success"):
-        pane_idx = data.get("pane_index", "?")
+        pane_idx = data.get("pane_index", data.get("pane", "?"))
         return f"Worker pane {pane_idx} spawned successfully."
     return f"Failed to spawn pane: {data.get('error', 'Unknown error')}"
 
@@ -453,14 +478,31 @@ def panes_list(session: str | None = None) -> str:
     Returns:
         List of panes with their indices, commands, and status.
     """
-    args = ["list"]
+    # Use 'info' command which returns pane information
+    args = ["info"]
     if session:
         args.extend(["-s", session])
 
     data = run_agentwire_cmd(args)
     if not data.get("success"):
         return f"Failed to list panes: {data.get('error', 'Unknown error')}"
-    return format_panes(data)
+
+    # Extract panes from info response
+    panes = data.get("panes", [])
+    session_name = session or data.get("session", "current")
+
+    if not panes:
+        return f"No panes found in session '{session_name}'."
+
+    lines = [f"Panes in session '{session_name}':"]
+    for p in panes:
+        idx = p.get("index", 0)
+        cmd = p.get("command", "unknown")
+        active = " (active)" if p.get("active") else ""
+        role = "orchestrator" if idx == 0 else "worker"
+        lines.append(f"  - Pane {idx} [{role}]: {cmd}{active}")
+
+    return "\n".join(lines)
 
 
 # =============================================================================
@@ -603,9 +645,10 @@ def listen_stop() -> str:
     Returns:
         The transcribed text or error description.
     """
-    data = run_agentwire_cmd(["listen", "stop"])
+    # listen stop doesn't support --json, run without it
+    data = run_agentwire_cmd(["listen", "stop"], json_output=False)
     if data.get("success"):
-        return data.get("transcript", data.get("output", ""))
+        return data.get("output", "Recording stopped.")
     return f"Failed to stop recording: {data.get('error', 'Unknown error')}"
 
 
@@ -619,17 +662,7 @@ def voices_list() -> str:
     data = run_agentwire_cmd(["voiceclone", "list"])
     if not data.get("success"):
         return f"Failed to list voices: {data.get('error', 'Unknown error')}"
-
-    voices = data.get("voices", [])
-    if not voices:
-        return "No custom voices available. Default voice will be used."
-
-    lines = ["Available voices:"]
-    for v in voices:
-        name = v.get("name", "unknown") if isinstance(v, dict) else v
-        lines.append(f"  - {name}")
-
-    return "\n".join(lines)
+    return format_voices(data)
 
 
 # =============================================================================
