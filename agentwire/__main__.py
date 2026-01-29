@@ -3262,6 +3262,24 @@ def cmd_info(args) -> int:
         cwd = parts[0] if parts else ""
         pane_count = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 1
 
+        # Get pane details
+        panes_result = subprocess.run(
+            ["tmux", "list-panes", "-t", session, "-F", "#{pane_index}:#{pane_current_command}:#{pane_active}"],
+            capture_output=True,
+            text=True,
+        )
+        panes = []
+        if panes_result.returncode == 0:
+            for line in panes_result.stdout.strip().split("\n"):
+                if line:
+                    pane_parts = line.split(":")
+                    if len(pane_parts) >= 3:
+                        panes.append({
+                            "index": int(pane_parts[0]),
+                            "command": pane_parts[1],
+                            "active": pane_parts[2] == "1",
+                        })
+
         info = {
             "success": True,
             "session": session,
@@ -3269,6 +3287,7 @@ def cmd_info(args) -> int:
             "machine": None,
             "cwd": cwd,
             "pane_count": pane_count,
+            "panes": panes,
             "is_remote": False,
         }
 
