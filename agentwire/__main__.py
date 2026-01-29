@@ -4761,15 +4761,19 @@ def cmd_dev(args) -> int:
         print(f"Project directory not found: {project_dir}", file=sys.stderr)
         return 1
 
-    # Dev session uses no roles by default
-    dev_roles = []
+    # Dev session uses leader role by default
+    role_names = ["leader"]
+    roles, missing = load_roles(role_names, project_dir)
+    if missing:
+        print(f"Warning: Roles not found: {', '.join(missing)}", file=sys.stderr)
+        roles = None
 
     # Use bypass session type for dev session (full permissions)
     agent_type = detect_default_agent_type()
     session_type_str = f"{agent_type}-bypass"
 
     # Build agent command
-    agent = build_agent_command(session_type_str, dev_roles if dev_roles else None)
+    agent = build_agent_command(session_type_str, roles)
 
     # Store role instructions for first message (OpenCode only)
     if agent.role_instructions:
