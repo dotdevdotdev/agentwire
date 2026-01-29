@@ -252,8 +252,7 @@ class DesktopManager {
                 break;
 
             case 'audio':
-                // Dashboard no longer receives audio data - only session-specific WebSockets do
-                // This case handles legacy or direct audio messages
+                // Audio messages from sessions - play through desktop audio system
                 if (msg.data) {
                     this._playAudio(msg.data, msg.session);
                 }

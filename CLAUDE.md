@@ -274,35 +274,25 @@ worker panes
 # Option 1: Create .agentwire.yml first, then create session
 echo "type: claude-bypass
 roles:
-  - leader
-  - glm-orchestration" > ~/projects/myproject/.agentwire.yml
+  - leader" > ~/projects/myproject/.agentwire.yml
 
 agentwire new -s myproject -p ~/projects/myproject
 
 # Option 2: Specify roles on command line (saves to .agentwire.yml)
-agentwire new -s myproject -p ~/projects/myproject --roles leader,glm-orchestration
+agentwire new -s myproject -p ~/projects/myproject --roles leader
 ```
 
-### Built-in Roles
+### Role System
 
-Roles are bundled in the `agentwire/roles/` package directory:
-- `leader.md` - Orchestrator at any level (spawns workers, uses voice, can do direct work)
-- `glm-orchestration.md` - GLM-specific worker management (task templates, failure patterns)
-- `glm-worker.md` - GLM task executor (focused execution, outputs exit summary)
-- `worker.md` - Basic worker pane role (no voice, outputs exit summary)
-- `voice-worker.md` - Worker with voice capability
-- `chatbot.md` - Chatbot personality
-- `voice.md` - Voice input handling
+Roles define agent behavior and are composable. Mix and match roles in `.agentwire.yml` to configure orchestrators, workers, or specialized agents.
 
-## Session Roles
+**Role types:**
+- **Leader roles** - Orchestrators that spawn workers, use voice, coordinate work
+- **Worker roles** - Focused execution, write exit summaries, auto-kill when idle
+- **Delegation roles** - Agent-specific worker management (Claude vs GLM patterns)
+- **Specialty roles** - Chatbot personality, voice handling, etc.
 
-| Role | Use Case | Key Behavior |
-|------|----------|--------------|
-| `leader` | Any orchestrator | Spawns workers, uses voice, can do direct work or delegate |
-| `glm-worker` | GLM worker pane | Execute task, output exit summary, system notifies leader |
-| `worker` | Basic worker | No voice, no AskUserQuestion, outputs exit summary |
-
-**For GLM workers:** Add `glm-orchestration` role to leader sessions for detailed task templates.
+Use `agentwire roles list` to see available roles. Roles are bundled in `agentwire/roles/` and can reference each other for complementary behavior.
 
 ## Agent Parity
 
@@ -408,14 +398,11 @@ agentwire kill --pane 1
 
 ## Docs
 
-| Topic | Location |
-|-------|----------|
-| CLI | `agentwire --help`, `agentwire <cmd> --help` |
-| Portal modes/API | `docs/PORTAL.md` |
-| Architecture | `docs/architecture.md` |
-| Security hooks | `docs/security/damage-control.md` |
-| Troubleshooting | `docs/TROUBLESHOOTING.md` |
-| Shell escaping | `docs/SHELL_ESCAPING.md` |
-| TTS (RunPod) | `docs/runpod-tts.md` |
-| TTS (self-hosted) | `docs/tts-self-hosted.md` |
-| Remote machines | `docs/remote-machines.md` |
+- CLI: `agentwire --help` or `agentwire <cmd> --help`
+- `docs/PORTAL.md` - Portal modes and API reference
+- `docs/security/damage-control.md` - Safety hooks documentation
+- `docs/TROUBLESHOOTING.md` - Common issues and solutions
+- `docs/SHELL_ESCAPING.md` - Shell escaping guide
+- `docs/runpod-tts.md` - RunPod TTS setup
+- `docs/tts-self-hosted.md` - Self-hosted TTS
+- `docs/remote-machines.md` - Multi-machine orchestration

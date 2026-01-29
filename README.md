@@ -56,7 +56,6 @@ Before installing, ensure you have:
 
 **Important for Ubuntu 24.04+ users:** Ubuntu's externally-managed Python requires using a virtual environment. See the Ubuntu installation instructions below.
 
-**Quick Start with OpenCode:** See [OpenCode Quick Start Guide](docs/OPENCODE_QUICKSTART.md) for 5-minute setup.
 
 ### Platform-Specific Installation
 
@@ -131,8 +130,6 @@ agent:
   command: "opencode"
 EOF
 ```
-
-See [OpenCode Quick Start](docs/OPENCODE_QUICKSTART.md) for complete setup guide.
 
 **Expected Install Time:**
 - **First time:** 20-30 minutes (including dependency installation, configuration)
@@ -270,8 +267,6 @@ roles:
   - agentwire
 ```
 
-See [OpenCode Quick Start](docs/OPENCODE_QUICKSTART.md) and [SESSION_TYPES.md](docs/SESSION_TYPES.md) for more details.
-
 ## Session Types
 
 AgentWire supports multiple AI agents and session types:
@@ -285,8 +280,6 @@ AgentWire supports multiple AI agents and session types:
 ### Agent-Specific Types
 - **Claude Code:** `claude-bypass`, `claude-prompted`, `claude-restricted`
 - **OpenCode:** `opencode-bypass`, `opencode-prompted`, `opencode-restricted`
-
-See [SESSION_TYPES.md](docs/SESSION_TYPES.md) for complete reference.
 
 ### Simple Session
 ```
@@ -443,14 +436,12 @@ Contributions welcome! Please open an issue first to discuss changes.
 
 ## Documentation
 
-- [OpenCode Quick Start](docs/OPENCODE_QUICKSTART.md) - 5-minute setup guide
-- [Session Types Reference](docs/SESSION_TYPES.md) - Complete session types reference
-- [OpenCode Role Guide](docs/OPENCODE_ROLES.md) - Using roles with OpenCode
-- [Migration Guide](docs/MIGRATION_GUIDE.md) - Migrate from Claude Code to OpenCode
-- [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) - Common issues and solutions
-- [ARCHITECTURE.md](docs/architecture.md) - System architecture
-- [PORTAL.md](docs/PORTAL.md) - Portal modes and API
-- [Remote Machines](docs/remote-machines.md) - Multi-machine setup
+- `docs/TROUBLESHOOTING.md` - Common issues and solutions
+- `docs/PORTAL.md` - Portal modes and API
+- `docs/remote-machines.md` - Multi-machine setup
+- `docs/runpod-tts.md` - RunPod TTS setup
+- `docs/tts-self-hosted.md` - Self-hosted TTS
+- `docs/security/damage-control.md` - Safety hooks
 
 ## License
 

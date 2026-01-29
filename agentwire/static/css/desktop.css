@@ -1522,36 +1522,6 @@ body {
     color: var(--error);
 }
 
-/* Legacy button classes (for compatibility) */
-.btn-monitor,
-.btn-connect {
-    padding: 4px 12px;
-    border: 1px solid var(--chrome-border);
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 12px;
-    background: var(--background);
-    color: var(--text);
-}
-
-.btn-monitor:hover,
-.btn-connect:hover {
-    background: var(--hover);
-    border-color: var(--accent);
-    color: var(--accent);
-}
-
-.btn-connect {
-    background: var(--accent);
-    border-color: var(--accent);
-    color: #000000;
-}
-
-.btn-connect:hover {
-    background: #6ee7a0;
-    color: #000000;
-}
-
 /* Session window content */
 .session-window .wb-body {
     display: flex;

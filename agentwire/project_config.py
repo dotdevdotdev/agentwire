@@ -56,7 +56,7 @@ def detect_default_agent_type() -> str:
     Priority:
     1. Check ~/.agentwire/config.yaml for agent.command
     2. Use shutil.which() to detect installed agent
-    3. Default to "claude" for backward compatibility
+    3. Prefer claude if both are installed
 
     Returns:
         "claude" or "opencode"
@@ -82,7 +82,7 @@ def detect_default_agent_type() -> str:
     elif shutil.which("opencode"):
         return "opencode"
 
-    # Default for backward compatibility
+    # Prefer claude if both installed
     return "claude"
 
 
