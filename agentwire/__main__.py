@@ -21,6 +21,7 @@ from .project_config import (
     ProjectConfig,
     SessionType,
     detect_default_agent_type,
+    get_parent_from_config,
     get_voice_from_config,
     load_project_config,
     normalize_session_type,
@@ -785,50 +786,99 @@ def cmd_portal_status(args) -> int:
     """Check portal status."""
     from .network import NetworkContext
 
+    json_mode = getattr(args, 'json', False)
     ctx = NetworkContext.from_config()
     session_name = get_portal_session_name()
 
     if ctx.is_local("portal"):
+        url = ctx.get_service_url("portal", use_tunnel=False)
         if tmux_session_exists(session_name):
-            print(f"Portal is running in tmux session '{session_name}'")
-            print(f"  Attach: tmux attach -t {session_name}")
-
-            # Also check health endpoint
-            url = ctx.get_service_url("portal", use_tunnel=False)
-            if _check_portal_health(url):
-                print(f"  Health: OK ({url})")
+            healthy = _check_portal_health(url)
+            if json_mode:
+                _output_json({
+                    "success": True,
+                    "running": True,
+                    "url": url,
+                    "session": session_name,
+                    "healthy": healthy,
+                    "machine": None,
+                })
             else:
-                print("  Health: starting or not responding yet")
-
+                print(f"Portal is running in tmux session '{session_name}'")
+                print(f"  Attach: tmux attach -t {session_name}")
+                if healthy:
+                    print(f"  Health: OK ({url})")
+                else:
+                    print("  Health: starting or not responding yet")
             return 0
         else:
-            print("Portal is not running.")
-            print("  Start:  agentwire portal start")
+            if json_mode:
+                _output_json({
+                    "success": True,
+                    "running": False,
+                    "url": url,
+                    "session": session_name,
+                    "healthy": False,
+                    "machine": None,
+                })
+            else:
+                print("Portal is not running.")
+                print("  Start:  agentwire portal start")
             return 1
 
     # Portal runs on another machine - check via health endpoint
     machine_id = ctx.get_machine_for_service("portal")
     url = ctx.get_service_url("portal", use_tunnel=True)
 
-    print(f"Portal runs on {machine_id}")
-
-    if _check_portal_health(url):
-        print("  Status: running")
-        print(f"  Health: OK ({url})")
+    healthy = _check_portal_health(url)
+    if healthy:
+        if json_mode:
+            _output_json({
+                "success": True,
+                "running": True,
+                "url": url,
+                "healthy": True,
+                "machine": machine_id,
+            })
+        else:
+            print(f"Portal runs on {machine_id}")
+            print("  Status: running")
+            print(f"  Health: OK ({url})")
         return 0
     else:
         # Try direct connection if tunnel might not exist
         direct_url = ctx.get_service_url("portal", use_tunnel=False)
         if direct_url != url and _check_portal_health(direct_url):
-            print("  Status: running (tunnel not working, direct OK)")
-            print(f"  Health: OK ({direct_url})")
-            print("  Hint: Run 'agentwire tunnels check' to verify tunnels")
+            if json_mode:
+                _output_json({
+                    "success": True,
+                    "running": True,
+                    "url": direct_url,
+                    "healthy": True,
+                    "machine": machine_id,
+                    "tunnel_issue": True,
+                })
+            else:
+                print(f"Portal runs on {machine_id}")
+                print("  Status: running (tunnel not working, direct OK)")
+                print(f"  Health: OK ({direct_url})")
+                print("  Hint: Run 'agentwire tunnels check' to verify tunnels")
             return 0
 
-        print("  Status: not reachable")
-        print(f"  Checked: {url}")
-        if direct_url != url:
-            print(f"  Also checked: {direct_url}")
+        if json_mode:
+            _output_json({
+                "success": True,
+                "running": False,
+                "url": url,
+                "healthy": False,
+                "machine": machine_id,
+            })
+        else:
+            print(f"Portal runs on {machine_id}")
+            print("  Status: not reachable")
+            print(f"  Checked: {url}")
+            if direct_url != url:
+                print(f"  Also checked: {direct_url}")
         return 1
 
 
@@ -1154,54 +1204,96 @@ def cmd_tts_status(args) -> int:
     """Check TTS server status."""
     from .network import NetworkContext
 
+    json_mode = getattr(args, 'json', False)
     ctx = NetworkContext.from_config()
     session_name = get_tts_session_name()
+    config = load_config()
+    backend = config.get("tts", {}).get("backend", "unknown")
 
     if ctx.is_local("tts"):
+        url = ctx.get_service_url("tts", use_tunnel=False)
         if tmux_session_exists(session_name):
-            print(f"TTS server is running in tmux session '{session_name}'")
-            print(f"  Attach: tmux attach -t {session_name}")
-
-            # Check health endpoint
-            url = ctx.get_service_url("tts", use_tunnel=False)
             healthy, voices = _check_tts_health(url)
-            if healthy:
-                if voices:
-                    print(f"  Voices: {', '.join(voices)}")
-                else:
-                    print(f"  Health: OK ({url})")
+            if json_mode:
+                _output_json({
+                    "success": True,
+                    "running": True,
+                    "url": url,
+                    "session": session_name,
+                    "healthy": healthy,
+                    "voices": voices or [],
+                    "backend": backend,
+                    "machine": None,
+                })
             else:
-                print("  Status: starting or not responding yet")
-
+                print(f"TTS server is running in tmux session '{session_name}'")
+                print(f"  Attach: tmux attach -t {session_name}")
+                if healthy:
+                    if voices:
+                        print(f"  Voices: {', '.join(voices)}")
+                    else:
+                        print(f"  Health: OK ({url})")
+                else:
+                    print("  Status: starting or not responding yet")
             return 0
         else:
             # No local tmux session, but check if TTS is reachable anyway
-            # (might be running via manual tunnel or external process)
-            url = ctx.get_service_url("tts", use_tunnel=False)
             healthy, voices = _check_tts_health(url)
             if healthy:
-                print("TTS server is running (external/tunnel)")
-                if voices:
-                    print(f"  Voices: {', '.join(voices)}")
-                print(f"  URL: {url}")
+                if json_mode:
+                    _output_json({
+                        "success": True,
+                        "running": True,
+                        "url": url,
+                        "healthy": True,
+                        "voices": voices or [],
+                        "backend": backend,
+                        "machine": None,
+                        "external": True,
+                    })
+                else:
+                    print("TTS server is running (external/tunnel)")
+                    if voices:
+                        print(f"  Voices: {', '.join(voices)}")
+                    print(f"  URL: {url}")
                 return 0
 
-            print("TTS server is not running.")
-            print("  Start:  agentwire tts start")
+            if json_mode:
+                _output_json({
+                    "success": True,
+                    "running": False,
+                    "url": url,
+                    "healthy": False,
+                    "backend": backend,
+                    "machine": None,
+                })
+            else:
+                print("TTS server is not running.")
+                print("  Start:  agentwire tts start")
             return 1
 
     # TTS runs on another machine - check via health endpoint
     machine_id = ctx.get_machine_for_service("tts")
     url = ctx.get_service_url("tts", use_tunnel=True)
 
-    print(f"TTS server runs on {machine_id}")
-
     healthy, voices = _check_tts_health(url)
     if healthy:
-        print("  Status: running")
-        if voices:
-            print(f"  Voices: {', '.join(voices)}")
-        print(f"  URL: {url}")
+        if json_mode:
+            _output_json({
+                "success": True,
+                "running": True,
+                "url": url,
+                "healthy": True,
+                "voices": voices or [],
+                "backend": backend,
+                "machine": machine_id,
+            })
+        else:
+            print(f"TTS server runs on {machine_id}")
+            print("  Status: running")
+            if voices:
+                print(f"  Voices: {', '.join(voices)}")
+            print(f"  URL: {url}")
         return 0
     else:
         # Try direct connection if tunnel might not exist
@@ -1209,17 +1301,41 @@ def cmd_tts_status(args) -> int:
         if direct_url != url:
             healthy, voices = _check_tts_health(direct_url)
             if healthy:
-                print("  Status: running (tunnel not working, direct OK)")
-                if voices:
-                    print(f"  Voices: {', '.join(voices)}")
-                print(f"  URL: {direct_url}")
-                print("  Hint: Run 'agentwire tunnels check' to verify tunnels")
+                if json_mode:
+                    _output_json({
+                        "success": True,
+                        "running": True,
+                        "url": direct_url,
+                        "healthy": True,
+                        "voices": voices or [],
+                        "backend": backend,
+                        "machine": machine_id,
+                        "tunnel_issue": True,
+                    })
+                else:
+                    print(f"TTS server runs on {machine_id}")
+                    print("  Status: running (tunnel not working, direct OK)")
+                    if voices:
+                        print(f"  Voices: {', '.join(voices)}")
+                    print(f"  URL: {direct_url}")
+                    print("  Hint: Run 'agentwire tunnels check' to verify tunnels")
                 return 0
 
-        print("  Status: not reachable")
-        print(f"  Checked: {url}")
-        if direct_url != url:
-            print(f"  Also checked: {direct_url}")
+        if json_mode:
+            _output_json({
+                "success": True,
+                "running": False,
+                "url": url,
+                "healthy": False,
+                "backend": backend,
+                "machine": machine_id,
+            })
+        else:
+            print(f"TTS server runs on {machine_id}")
+            print("  Status: not reachable")
+            print(f"  Checked: {url}")
+            if direct_url != url:
+                print(f"  Also checked: {direct_url}")
         return 1
 
 
@@ -1302,6 +1418,7 @@ def cmd_stt_stop(args) -> int:
 
 def cmd_stt_status(args) -> int:
     """Check STT server status."""
+    json_mode = getattr(args, 'json', False)
     session_name = get_stt_session_name()
     config = load_config()
     stt_url = config.get("stt", {}).get("url", "http://localhost:8100")
@@ -1312,23 +1429,52 @@ def cmd_stt_status(args) -> int:
         req = urllib.request.Request(f"{stt_url}/health")
         with urllib.request.urlopen(req, timeout=3) as resp:
             data = json.loads(resp.read().decode())
-            print("STT server is running")
-            print(f"  Model: {data.get('model', 'unknown')}")
-            print(f"  Device: {data.get('device', 'unknown')}")
-            print(f"  URL: {stt_url}")
-            if tmux_session_exists(session_name):
-                print(f"  Attach: tmux attach -t {session_name}")
+            if json_mode:
+                _output_json({
+                    "success": True,
+                    "running": True,
+                    "url": stt_url,
+                    "healthy": True,
+                    "model": data.get('model', 'unknown'),
+                    "device": data.get('device', 'unknown'),
+                    "session": session_name if tmux_session_exists(session_name) else None,
+                })
+            else:
+                print("STT server is running")
+                print(f"  Model: {data.get('model', 'unknown')}")
+                print(f"  Device: {data.get('device', 'unknown')}")
+                print(f"  URL: {stt_url}")
+                if tmux_session_exists(session_name):
+                    print(f"  Attach: tmux attach -t {session_name}")
             return 0
     except Exception:
         pass
 
     if tmux_session_exists(session_name):
-        print(f"STT server is starting in tmux session '{session_name}'")
-        print(f"  Attach: tmux attach -t {session_name}")
+        if json_mode:
+            _output_json({
+                "success": True,
+                "running": True,
+                "url": stt_url,
+                "healthy": False,
+                "session": session_name,
+                "starting": True,
+            })
+        else:
+            print(f"STT server is starting in tmux session '{session_name}'")
+            print(f"  Attach: tmux attach -t {session_name}")
         return 0
 
-    print("STT server is not running.")
-    print("  Start: agentwire stt start")
+    if json_mode:
+        _output_json({
+            "success": True,
+            "running": False,
+            "url": stt_url,
+            "healthy": False,
+        })
+    else:
+        print("STT server is not running.")
+        print("  Start: agentwire stt start")
     return 1
 
 
@@ -2117,29 +2263,36 @@ def _local_say(
         return 0
 
     except urllib.error.HTTPError as e:
-        # Check for venv_mismatch error (422)
-        if e.code == 422 and not _retry:
-            try:
-                error_body = json.loads(e.read().decode())
-                if error_body.get("error") == "venv_mismatch":
-                    required_venv = error_body.get("required_venv")
-                    target_backend = error_body.get("backend", backend)
-                    print(f"Backend '{target_backend}' requires venv '{required_venv}'. Restarting TTS server...")
+        # Try to read the actual error message from the response body
+        try:
+            error_body = json.loads(e.read().decode())
+        except Exception:
+            error_body = None
 
-                    if _restart_tts_for_venv(required_venv, target_backend):
-                        print("TTS server restarted. Retrying...")
-                        return _local_say(
-                            text, voice, exaggeration, cfg_weight, tts_url,
-                            backend=target_backend, instruct=instruct, language=language,
-                            stream=stream, _retry=True
-                        )
-                    else:
-                        print("Failed to restart TTS server.", file=sys.stderr)
-                        return 1
-            except Exception:
-                pass
+        # Check for venv_mismatch error (422) - auto-restart TTS with correct venv
+        if e.code == 422 and not _retry and error_body:
+            if error_body.get("error") == "venv_mismatch":
+                required_venv = error_body.get("required_venv")
+                target_backend = error_body.get("backend", backend)
+                print(f"Backend '{target_backend}' requires venv '{required_venv}'. Restarting TTS server...")
 
-        print(f"TTS request failed: {e}", file=sys.stderr)
+                if _restart_tts_for_venv(required_venv, target_backend):
+                    print("TTS server restarted. Retrying...")
+                    return _local_say(
+                        text, voice, exaggeration, cfg_weight, tts_url,
+                        backend=target_backend, instruct=instruct, language=language,
+                        stream=stream, _retry=True
+                    )
+                else:
+                    print("Failed to restart TTS server.", file=sys.stderr)
+                    return 1
+
+        # Show the actual error message from the TTS server if available
+        if error_body:
+            detail = error_body.get("detail") or error_body.get("error") or error_body
+            print(f"TTS error: {detail}", file=sys.stderr)
+        else:
+            print(f"TTS request failed: {e}", file=sys.stderr)
         return 1
 
     except urllib.error.URLError as e:
@@ -3116,6 +3269,24 @@ def cmd_info(args) -> int:
         cwd = parts[0] if parts else ""
         pane_count = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 1
 
+        # Get pane details
+        panes_result = subprocess.run(
+            ["tmux", "list-panes", "-t", session, "-F", "#{pane_index}:#{pane_current_command}:#{pane_active}"],
+            capture_output=True,
+            text=True,
+        )
+        panes = []
+        if panes_result.returncode == 0:
+            for line in panes_result.stdout.strip().split("\n"):
+                if line:
+                    pane_parts = line.split(":")
+                    if len(pane_parts) >= 3:
+                        panes.append({
+                            "index": int(pane_parts[0]),
+                            "command": pane_parts[1],
+                            "active": pane_parts[2] == "1",
+                        })
+
         info = {
             "success": True,
             "session": session,
@@ -3123,6 +3294,7 @@ def cmd_info(args) -> int:
             "machine": None,
             "cwd": cwd,
             "pane_count": pane_count,
+            "panes": panes,
             "is_remote": False,
         }
 
@@ -4702,31 +4874,42 @@ def cmd_machine_remove(args) -> int:
 
 def cmd_machine_list(args) -> int:
     """List registered machines."""
+    json_mode = getattr(args, 'json', False)
     machines_file = CONFIG_DIR / "machines.json"
 
     if not machines_file.exists():
-        print("No machines registered.")
-        print(f"  Config: {machines_file}")
+        if json_mode:
+            _output_json({"success": True, "machines": []})
+        else:
+            print("No machines registered.")
+            print(f"  Config: {machines_file}")
         return 0
 
     try:
         with open(machines_file) as f:
             machines_data = json.load(f)
     except json.JSONDecodeError as e:
-        print(f"Invalid machines.json: {e}", file=sys.stderr)
+        if json_mode:
+            _output_json({"success": False, "error": f"Invalid machines.json: {e}"})
+        else:
+            print(f"Invalid machines.json: {e}", file=sys.stderr)
         return 1
 
     machines = machines_data.get("machines", [])
 
     if not machines:
-        print("No machines registered.")
+        if json_mode:
+            _output_json({"success": True, "machines": []})
+        else:
+            print("No machines registered.")
         return 0
 
-    print(f"Registered machines ({len(machines)}):")
-    print()
+    # Enrich with tunnel status
+    result_machines = []
     for m in machines:
         machine_id = m.get("id", "?")
         host = m.get("host", machine_id)
+        user = m.get("user", "")
         projects_dir = m.get("projects_dir", "~")
 
         # Check if tunnel is running
@@ -4734,13 +4917,28 @@ def cmd_machine_list(args) -> int:
             ["pgrep", "-f", f"autossh.*{machine_id}"],
             capture_output=True,
         )
-        tunnel_status = "✓ tunnel" if result.returncode == 0 else "✗ no tunnel"
+        has_tunnel = result.returncode == 0
 
-        print(f"  {machine_id}")
-        print(f"    Host: {host}")
-        print(f"    Projects: {projects_dir}")
-        print(f"    Status: {tunnel_status}")
+        result_machines.append({
+            "id": machine_id,
+            "host": host,
+            "user": user,
+            "projects_dir": projects_dir,
+            "status": "tunnel" if has_tunnel else "no tunnel",
+        })
+
+    if json_mode:
+        _output_json({"success": True, "machines": result_machines})
+    else:
+        print(f"Registered machines ({len(machines)}):")
         print()
+        for m in result_machines:
+            tunnel_status = "✓ tunnel" if m["status"] == "tunnel" else "✗ no tunnel"
+            print(f"  {m['id']}")
+            print(f"    Host: {m['host']}")
+            print(f"    Projects: {m['projects_dir']}")
+            print(f"    Status: {tunnel_status}")
+            print()
 
     return 0
 
@@ -5456,8 +5654,80 @@ def cmd_voiceclone_cancel(args) -> int:
 
 def cmd_voiceclone_list(args) -> int:
     """List available voices."""
-    from .voiceclone import list_voices
-    return list_voices()
+    json_mode = getattr(args, 'json', False)
+
+    from .voiceclone import is_runpod_backend, list_voices_runpod, get_tts_url
+    import requests
+
+    if is_runpod_backend():
+        success, result = list_voices_runpod()
+        if success:
+            voices = result
+            if json_mode:
+                # Normalize voice format
+                voice_list = []
+                for v in voices:
+                    if isinstance(v, str):
+                        voice_list.append({"name": v})
+                    else:
+                        voice_list.append(v)
+                _output_json({"success": True, "voices": voice_list})
+            else:
+                if not voices:
+                    print("No voices available")
+                    return 0
+                print(f"Available voices ({len(voices)}):")
+                for v in sorted(voices):
+                    if isinstance(v, str):
+                        print(f"  {v}")
+                    else:
+                        name = v.get("name", "?")
+                        duration = v.get("duration", "?")
+                        print(f"  {name}: {duration}s")
+            return 0
+        else:
+            if json_mode:
+                _output_json({"success": False, "error": str(result)})
+            else:
+                print(f"Failed to list voices: {result}")
+            return 1
+    else:
+        tts_url = get_tts_url()
+        if not tts_url:
+            if json_mode:
+                _output_json({"success": False, "error": "tts.url not configured"})
+            else:
+                print("Error: tts.url not configured in config.yaml")
+            return 1
+        try:
+            response = requests.get(f"{tts_url}/voices", timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                voices = data.get("voices", data) if isinstance(data, dict) else data
+                if json_mode:
+                    _output_json({"success": True, "voices": voices or []})
+                else:
+                    if not voices:
+                        print("No voices available")
+                        return 0
+                    print(f"Available voices ({len(voices)}):")
+                    for v in sorted(voices, key=lambda x: x.get("name", "")):
+                        name = v.get("name", "?")
+                        duration = v.get("duration", "?")
+                        print(f"  {name}: {duration}s")
+                return 0
+            else:
+                if json_mode:
+                    _output_json({"success": False, "error": f"HTTP {response.status_code}"})
+                else:
+                    print(f"Failed to list voices: {response.status_code}")
+                return 1
+        except requests.RequestException as e:
+            if json_mode:
+                _output_json({"success": False, "error": str(e)})
+            else:
+                print(f"Connection failed: {e}")
+            return 1
 
 
 def cmd_voiceclone_delete(args) -> int:
@@ -5553,6 +5823,20 @@ def cmd_uninstall(args) -> int:
     print()
     print("Uninstall complete.")
     print(f"To reinstall: cd {get_source_dir()} && uv tool install .")
+    return 0
+
+
+# === MCP Server Command ===
+
+
+def cmd_mcp(args) -> int:
+    """Run the MCP server on stdio.
+
+    Exposes AgentWire capabilities as MCP tools for external agents
+    like MoltBot, Claude Desktop, etc.
+    """
+    from .mcp_server import run_server
+    run_server()
     return 0
 
 
@@ -6367,6 +6651,7 @@ def main() -> int:
 
     # portal status
     portal_status = portal_subparsers.add_parser("status", help="Check portal status")
+    portal_status.add_argument("--json", action="store_true", help="Output JSON")
     portal_status.set_defaults(func=cmd_portal_status)
 
     # portal restart
@@ -6429,6 +6714,7 @@ def main() -> int:
 
     # tts status
     tts_status = tts_subparsers.add_parser("status", help="Check TTS status")
+    tts_status.add_argument("--json", action="store_true", help="Output JSON")
     tts_status.set_defaults(func=cmd_tts_status)
 
     # === stt command group ===
@@ -6455,6 +6741,7 @@ def main() -> int:
 
     # stt status
     stt_status = stt_subparsers.add_parser("status", help="Check STT status")
+    stt_status.add_argument("--json", action="store_true", help="Output JSON")
     stt_status.set_defaults(func=cmd_stt_status)
 
     # === tunnels command group ===
@@ -6694,6 +6981,7 @@ def main() -> int:
     voiceclone_list = voiceclone_subparsers.add_parser(
         "list", help="List available voices"
     )
+    voiceclone_list.add_argument("--json", action="store_true", help="Output JSON")
     voiceclone_list.set_defaults(func=cmd_voiceclone_list)
 
     # voiceclone delete <name>
@@ -6709,6 +6997,7 @@ def main() -> int:
 
     # machine list
     machine_list = machine_subparsers.add_parser("list", help="List registered machines")
+    machine_list.add_argument("--json", action="store_true", help="Output JSON")
     machine_list.set_defaults(func=cmd_machine_list)
 
     # machine add <id>
@@ -6904,6 +7193,14 @@ def main() -> int:
         "uninstall", help="Clear uv cache and uninstall the tool"
     )
     uninstall_parser.set_defaults(func=cmd_uninstall)
+
+    # === mcp command ===
+    mcp_parser = subparsers.add_parser(
+        "mcp",
+        help="Run MCP server for external agent integration",
+        description="Expose AgentWire as an MCP server for tools like MoltBot, Claude Desktop, etc.",
+    )
+    mcp_parser.set_defaults(func=cmd_mcp)
 
     args = parser.parse_args()
 
