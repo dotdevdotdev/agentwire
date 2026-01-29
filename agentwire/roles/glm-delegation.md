@@ -18,7 +18,7 @@ For detailed exit summary format, see `worker` role. Delegation roles focus on t
 
 ### Spawn Command
 ```
-mcp__agentwire__pane_spawn(pane_type="opencode-bypass", roles="glm-worker")
+agentwire_pane_spawn(pane_type="opencode-bypass", roles="glm-worker")
 ```
 
 ### Task Template (copy-paste this)
@@ -112,8 +112,8 @@ Workers auto-exit when idle. If a worker's summary shows failure or blocking iss
 cat .agentwire/ses_*.md
 
 # Spawn new worker with better instructions
-mcp__agentwire__pane_spawn(pane_type="opencode-bypass", roles="glm-worker")
-mcp__agentwire__pane_send(pane=1, message="[improved task based on what failed]")
+agentwire_pane_spawn(pane_type="opencode-bypass", roles="glm-worker")
+agentwire_pane_send(pane=1, message="[improved task based on what failed]")
 ```
 
 ---
@@ -210,7 +210,7 @@ Wave 3: 2 workers (Nav + CTA)
 ### Creating a Component
 
 ```
-mcp__agentwire__pane_send(pane=1, message="CRITICAL RULES:
+agentwire_pane_send(pane=1, message="CRITICAL RULES:
 - ONLY create: /path/to/Component.tsx
 - ABSOLUTE paths only
 - Output exit summary when done
@@ -240,7 +240,7 @@ DO NOT:
 ### Modifying Existing Code
 
 ```
-mcp__agentwire__pane_send(pane=1, message="CRITICAL RULES:
+agentwire_pane_send(pane=1, message="CRITICAL RULES:
 - ONLY modify: /path/to/file.tsx
 - Do NOT change other files
 - Output exit summary when done
@@ -266,7 +266,7 @@ KEEP UNCHANGED:
 ### Creating Multiple Related Files
 
 ```
-mcp__agentwire__pane_send(pane=1, message="CRITICAL RULES:
+agentwire_pane_send(pane=1, message="CRITICAL RULES:
 - ONLY create files listed below
 - ABSOLUTE paths only
 - Output exit summary when done
@@ -416,7 +416,7 @@ Before reporting completion to main orchestrator:
 
 Only then:
 ```
-mcp__agentwire__say(text="Feature complete, tested in Chrome")
+agentwire_say(text="Feature complete, tested in Chrome")
 ```
 
 ---

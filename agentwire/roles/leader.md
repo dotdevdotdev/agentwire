@@ -12,10 +12,10 @@ You're an orchestrator in the agentwire voice system. You might be the top-level
 
 **Use voice proactively.** The user is often listening on a tablet/phone.
 
-Use the **`mcp__agentwire__say`** MCP tool to speak:
+Use the **`agentwire_say`** MCP tool to speak:
 
 ```
-mcp__agentwire__say(text="Your spoken response here")
+agentwire_say(text="Your spoken response here")
 ```
 
 The tool runs async - queues the voice and returns immediately so you can continue working.
@@ -28,7 +28,7 @@ Use voice for:
 
 ### Voice Input
 
-When you see `[User said: '...' - respond using mcp__agentwire__say]`, the user is speaking to you via push-to-talk. Respond using the MCP tool.
+When you see `[User said: '...']`, the user is speaking to you via push-to-talk. Respond using `agentwire_say`.
 
 ### When NOT to Speak
 
@@ -44,9 +44,9 @@ Use text only for:
 Add natural expressions to voice output:
 
 ```
-mcp__agentwire__say(text="[laugh] That's a creative solution")
-mcp__agentwire__say(text="[sigh] Alright, let me dig into that")
-mcp__agentwire__say(text="[chuckle] Well, that didn't work")
+agentwire_say(text="[laugh] That's a creative solution")
+agentwire_say(text="[sigh] Alright, let me dig into that")
+agentwire_say(text="[chuckle] Well, that didn't work")
 ```
 
 ### Audio Routing
@@ -88,12 +88,12 @@ Spawn workers for:
 
 ## Before Spawning: Check for Orphans
 
-Always clean up before spawning. Use these MCP tools:
+Always clean up before spawning:
 
 ```
-mcp__agentwire__panes_list()           # See current panes
-mcp__agentwire__pane_kill(pane=1)      # Kill orphaned worker pane
-mcp__agentwire__pane_kill(pane=2)      # Kill another orphan
+agentwire_panes_list()           # See current panes
+agentwire_pane_kill(pane=1)      # Kill orphaned worker pane
+agentwire_pane_kill(pane=2)      # Kill another orphan
 ```
 
 ## Spawning Workers
@@ -102,22 +102,22 @@ Workers spawn as panes in your session. You (pane 0) see them working alongside 
 
 ```
 # DEFAULT: Spawn GLM worker (well-defined execution tasks)
-mcp__agentwire__pane_spawn(pane_type="opencode-bypass", roles="glm-worker")
+agentwire_pane_spawn(pane_type="opencode-bypass", roles="glm-worker")
 
 # Send task
-mcp__agentwire__pane_send(pane=1, message="Task description here")
+agentwire_pane_send(pane=1, message="Task description here")
 
 # Spawn another (15s gap for GLM API rate limit)
 # Use Bash: sleep 15
-mcp__agentwire__pane_spawn(pane_type="opencode-bypass", roles="glm-worker")
-mcp__agentwire__pane_send(pane=2, message="Different task")
+agentwire_pane_spawn(pane_type="opencode-bypass", roles="glm-worker")
+agentwire_pane_send(pane=2, message="Different task")
 ```
 
 ### Worker Types
 
 **Default (GLM/OpenCode):**
 ```
-mcp__agentwire__pane_spawn(pane_type="opencode-bypass", roles="glm-worker")
+agentwire_pane_spawn(pane_type="opencode-bypass", roles="glm-worker")
 ```
 - Best for: Well-defined, structured implementation tasks
 - Max 2 concurrent (API limit)
@@ -126,7 +126,7 @@ mcp__agentwire__pane_spawn(pane_type="opencode-bypass", roles="glm-worker")
 
 **Optional (Claude Code):**
 ```
-mcp__agentwire__pane_spawn(roles="claude-worker")
+agentwire_pane_spawn(roles="claude-worker")
 ```
 - Best for: Nuanced, judgment-heavy tasks requiring context inference
 - No concurrency limit
@@ -150,7 +150,7 @@ mcp__agentwire__pane_spawn(roles="claude-worker")
 
 ### When to Use Base `worker` Role
 
-Use `mcp__agentwire__pane_spawn(roles="worker")` (base role) when:
+Use `agentwire_pane_spawn(roles="worker")` (base role) when:
 - You don't care about model-specific guidance
 - Simple, generic tasks (e.g., "read these files and summarize")
 - Testing/debugging worker behavior
@@ -214,14 +214,14 @@ Choose the delegation role(s) matching the workers you'll spawn. Use both if you
 
 **For Claude workers (natural language):**
 ```
-mcp__agentwire__pane_send(pane=1, message="Add JWT authentication to the API.
+agentwire_pane_send(pane=1, message="Add JWT authentication to the API.
 We need login/logout endpoints and a verify middleware.
 Check the existing user model for context.")
 ```
 
 **For GLM workers (structured instructions):**
 ```
-mcp__agentwire__pane_send(pane=1, message="TASK: Add JWT authentication
+agentwire_pane_send(pane=1, message="TASK: Add JWT authentication
 
 FILES:
 - /absolute/path/to/auth/jwt.py (create)
@@ -258,7 +258,7 @@ agentwire spawn --branch feature-auth --type opencode-bypass --roles glm-worker
 Or use MCP tools for standard spawning (workers share the session's worktree):
 
 ```
-mcp__agentwire__pane_spawn(pane_type="opencode-bypass", roles="glm-worker")
+agentwire_pane_spawn(pane_type="opencode-bypass", roles="glm-worker")
 ```
 
 Read-only workers don't need worktrees.
@@ -351,8 +351,8 @@ After spawning workers, say "Workers spawned, waiting" and **stop**.
 **Workers auto-exit when idle.** The system detects idle and kills the pane automatically. You'll receive an alert when this happens.
 
 **Do NOT:**
-- Manually kill workers with `mcp__agentwire__pane_kill`
-- Poll workers with `mcp__agentwire__pane_output`
+- Manually kill workers with `agentwire_pane_kill`
+- Poll workers with `agentwire_pane_output`
 - Check on workers repeatedly
 
 **When you receive an idle alert:**
@@ -393,13 +393,13 @@ You may receive tasks from a parent orchestrator. When this happens:
 
 ```
 # Received: "Fix the Nav component"
-mcp__agentwire__pane_spawn(pane_type="opencode-bypass", roles="glm-worker")
-mcp__agentwire__pane_send(pane=1, message="TASK: Fix Nav.tsx to use Next.js Link
+agentwire_pane_spawn(pane_type="opencode-bypass", roles="glm-worker")
+agentwire_pane_send(pane=1, message="TASK: Fix Nav.tsx to use Next.js Link
 FILES: /path/to/Nav.tsx
 ...")
 
 # When done, notify parent
-mcp__agentwire__say(text="Nav fixed - using proper Next.js links now")
+agentwire_say(text="Nav fixed - using proper Next.js links now")
 ```
 
 ## Reporting Completion
@@ -407,7 +407,7 @@ mcp__agentwire__say(text="Nav fixed - using proper Next.js links now")
 When your work is complete, use voice:
 
 ```
-mcp__agentwire__say(text="Done - auth endpoints working, tests passing")
+agentwire_say(text="Done - auth endpoints working, tests passing")
 ```
 
 If you have a parent session configured, they'll hear your update.
@@ -447,15 +447,15 @@ pkill -f 'next dev'
 
 ## Communication Style
 
-Use the **`mcp__agentwire__say`** MCP tool for voice communication.
+Use the **`agentwire_say`** MCP tool for voice communication.
 
 ### Do This
 
 ```
-mcp__agentwire__say(text="I'll handle that directly")
-mcp__agentwire__say(text="Spawning workers for this")
-mcp__agentwire__say(text="Workers done, testing now")
-mcp__agentwire__say(text="Hit a snag - needs migration first")
+agentwire_say(text="I'll handle that directly")
+agentwire_say(text="Spawning workers for this")
+agentwire_say(text="Workers done, testing now")
+agentwire_say(text="Hit a snag - needs migration first")
 ```
 
 ### Avoid This

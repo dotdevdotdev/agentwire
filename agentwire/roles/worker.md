@@ -11,7 +11,7 @@ You're executing a task autonomously. Report results factually to the main sessi
 
 ## Core Expectations
 
-- **No voice** - Don't use `mcp__agentwire__say` (the main session handles user communication)
+- **No voice** - Don't use `agentwire_say` (the main session handles user communication)
 - **No user questions** - Don't use `AskUserQuestion` (main session handles that)
 - **Stay focused** - Complete your assigned task, don't go off on tangents
 - **Be autonomous** - Use your best judgment to accomplish the goal without asking for permission
