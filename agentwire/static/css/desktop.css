@@ -796,6 +796,22 @@ body {
     margin-bottom: 8px;
 }
 
+.new-session-options-modal input[type="text"] {
+    width: 100%;
+    padding: 10px 12px;
+    background: #1a1a1a;
+    border: 1px solid var(--chrome-border);
+    border-radius: 4px;
+    color: var(--text);
+    font-size: 13px;
+    font-family: 'SF Mono', 'Monaco', 'Menlo', monospace;
+}
+
+.new-session-options-modal input[type="text"]:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
 .new-session-options-modal .session-type-select {
     width: 100%;
     padding: 10px 12px;
@@ -1358,7 +1374,7 @@ body {
 }
 
 .session-icon-wrapper .session-status-dot.offline {
-    background: var(--text-muted);
+    background: #4b5563; /* Darker gray for better offline visibility */
 }
 
 .session-content {

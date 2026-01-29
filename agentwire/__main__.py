@@ -2449,6 +2449,7 @@ def cmd_list(args) -> int:
         return 1 if not json_mode else _output_result(False, json_mode, "tmux is required but not installed")
     local_only = getattr(args, 'local', False)
     remote_only = getattr(args, 'remote', False)
+    machine_filter = getattr(args, 'machine', None)
     show_sessions = getattr(args, 'sessions', False)
 
     # Check if we're inside a tmux session
@@ -2522,6 +2523,10 @@ def cmd_list(args) -> int:
 
             # Skip "local" machine (reserved for future use)
             if machine_id == "local":
+                continue
+
+            # Filter by specific machine if requested
+            if machine_filter and machine_id != machine_filter:
                 continue
 
             cmd = "tmux list-sessions -F '#{session_name}:#{session_windows}:#{pane_current_path}' 2>/dev/null || echo ''"
@@ -2623,11 +2628,15 @@ def cmd_new(args) -> int:
             if existing and existing.roles:
                 role_names = existing.roles
             else:
-                # Default to agentwire role for new projects
-                role_names = ["agentwire"]
+                # Use configured default role for new projects
+                config = load_config()
+                default_role = config.get("session", {}).get("default_role", "leader")
+                role_names = [default_role] if default_role else []
         else:
-            # Default to agentwire role when no path specified
-            role_names = ["agentwire"]
+            # Use configured default role when no path specified
+            config = load_config()
+            default_role = config.get("session", {}).get("default_role", "leader")
+            role_names = [default_role] if default_role else []
 
     # Load and validate roles
     roles: list[RoleConfig] = []
@@ -4384,7 +4393,7 @@ def cmd_history_resume(args) -> int:
     if project_config is None:
         # Default to bypass for detected agent
         default_type = SessionType.CLAUDE_BYPASS if agent_type == "claude" else SessionType.OPENCODE_BYPASS
-        project_config = ProjectConfig(type=default_type, roles=["agentwire"])
+        project_config = ProjectConfig(type=default_type, roles=[])
 
     # Generate session name if not provided
     if not name:
@@ -4752,8 +4761,8 @@ def cmd_dev(args) -> int:
         print(f"Project directory not found: {project_dir}", file=sys.stderr)
         return 1
 
-    # Load agentwire role for dev session
-    dev_roles, _ = load_roles(["agentwire"], project_dir)
+    # Dev session uses no roles by default
+    dev_roles = []
 
     # Use bypass session type for dev session (full permissions)
     agent_type = detect_default_agent_type()
@@ -6522,6 +6531,7 @@ def main() -> int:
     list_parser.add_argument("--json", action="store_true", help="Output as JSON")
     list_parser.add_argument("--local", action="store_true", help="Only show local sessions")
     list_parser.add_argument("--remote", action="store_true", help="Only show remote sessions")
+    list_parser.add_argument("--machine", help="Filter by specific machine ID")
     list_parser.add_argument("--sessions", action="store_true", help="Show sessions instead of panes")
     list_parser.set_defaults(func=cmd_list)
 

@@ -6,6 +6,7 @@ import { ListWindow } from '../list-window.js';
 import { projectIcons } from '../icon-manager.js';
 import { IconPicker } from '../components/icon-picker.js';
 import { ListCard } from '../components/list-card.js';
+import { setupAutoRefresh } from '../utils/auto-refresh.js';
 
 /** @type {IconPicker|null} */
 let iconPicker = null;
@@ -124,6 +125,11 @@ async function fetchProjects() {
     const response = await fetch('/api/projects');
     const data = await response.json();
     const projects = data.projects || [];
+
+    // Auto-refresh while remote machines are still scanning
+    if (data._scanning) {
+        setTimeout(() => projectsWindow?.refresh(), 2000);
+    }
 
     // Sort alphabetically
     projects.sort((a, b) => a.name.localeCompare(b.name));
@@ -280,8 +286,8 @@ function showDeleteModal(project) {
                 </select>
             </div>
             <div class="modal-footer">
-                <button class="btn" data-action="cancel">Cancel</button>
-                <button class="btn btn-danger" data-action="confirm" disabled>Remove</button>
+                <button class="btn secondary" data-action="cancel">Cancel</button>
+                <button class="btn-danger" data-action="confirm" disabled>Remove</button>
             </div>
         </div>
     `;
@@ -333,8 +339,8 @@ function showFinalConfirmation(project, deleteType, parentModal) {
                 <p><strong>This action cannot be undone. Are you sure?</strong></p>
             </div>
             <div class="modal-footer">
-                <button class="btn" data-action="back">Back</button>
-                <button class="btn btn-danger" data-action="delete-confirmed">Yes, Delete</button>
+                <button class="btn secondary" data-action="back">Back</button>
+                <button class="btn-danger" data-action="delete-confirmed">Yes, Delete</button>
             </div>
         </div>
     `;
@@ -549,8 +555,8 @@ async function showHistoryDetailModal(sessionId, machine, project) {
                 <div class="history-detail-loading">Loading...</div>
             </div>
             <div class="modal-footer">
-                <button class="btn" data-action="close">Close</button>
-                <button class="btn btn-primary" data-action="resume">Resume</button>
+                <button class="btn secondary" data-action="close">Close</button>
+                <button class="btn primary" data-action="resume">Resume</button>
             </div>
         </div>
     `;
@@ -847,8 +853,8 @@ async function showNewSessionModal(project) {
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn" data-action="cancel">Cancel</button>
-                <button class="btn btn-primary" data-action="create">Create Session</button>
+                <button class="btn secondary" data-action="cancel">Cancel</button>
+                <button class="btn primary" data-action="create">Create Session</button>
             </div>
         </div>
     `;

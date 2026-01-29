@@ -175,6 +175,13 @@ class ServicesConfig:
 
 
 @dataclass
+class SessionConfig:
+    """Default session configuration."""
+
+    default_role: str = "leader"  # Default role for new sessions
+
+
+@dataclass
 class Config:
     """Root configuration for AgentWire."""
 
@@ -187,6 +194,7 @@ class Config:
     uploads: UploadsConfig = field(default_factory=UploadsConfig)
     portal: PortalConfig = field(default_factory=PortalConfig)
     services: ServicesConfig = field(default_factory=ServicesConfig)
+    session: SessionConfig = field(default_factory=SessionConfig)
 
 
 def _merge_dict(base: dict, override: dict) -> dict:

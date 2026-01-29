@@ -32,6 +32,7 @@ from aiohttp import web
 
 from .config import Config, load_config
 from .worktree import parse_session_name
+from .cached_status import CachedStatusChecker
 
 __version__ = "0.1.0"
 
@@ -130,6 +131,9 @@ class AgentWireServer:
         self.session_activity: dict[str, dict] = {}  # Global activity tracking for all sessions
         self.dashboard_clients: set = set()  # WebSocket clients for dashboard updates
         self.session_client_counts: dict[str, int] = {}  # Attached tmux client counts per session
+        self.machine_status_checker = CachedStatusChecker(ttl_seconds=30)  # Progressive loading for machines
+        self.remote_sessions_checker = CachedStatusChecker(ttl_seconds=20)  # Progressive loading for remote sessions
+        self.projects_checker = CachedStatusChecker(ttl_seconds=30)  # Progressive loading for projects
         self.stt = None
         self.agent = None
         self._http_session: aiohttp.ClientSession | None = None  # For TTS HTTP calls
@@ -1499,58 +1503,197 @@ class AgentWireServer:
             return web.json_response({"sessions": []})
 
     async def api_sessions_remote(self, request: web.Request) -> web.Response:
-        """Endpoint for remote sessions grouped by machine (includes SSH checks)."""
+        """Endpoint for remote sessions grouped by machine (progressive loading)."""
         try:
-            success, result = await self.run_agentwire_cmd(["list", "--remote", "--sessions"])
-            if not success:
+            # Get list of configured machines
+            machines_file = self.config.machines.file
+            if not machines_file.exists():
                 return web.json_response({"machines": []})
 
-            sessions = result.get("sessions", [])
+            with open(machines_file) as f:
+                data = json.load(f)
+                remote_machines = [
+                    {"id": m.get("id"), "host": m.get("host")}
+                    for m in data.get("machines", [])
+                ]
 
-            # Group by machine and add activity status
-            machines_dict = {}
-            for s in sessions:
-                machine_id = s.get("machine", "unknown")
-                if machine_id not in machines_dict:
-                    machines_dict[machine_id] = []
-                s["activity"] = self._get_global_session_activity(s.get("name", ""))
-                machines_dict[machine_id].append(s)
-
-            machines = [
-                {"id": mid, "sessions": sess}
-                for mid, sess in machines_dict.items()
-            ]
+            # Progressive loading: returns cached or "checking" status
+            machines = await self.remote_sessions_checker.get_with_status(
+                remote_machines,
+                check_fn=self._fetch_remote_machine_sessions,
+                id_field='id'
+            )
 
             return web.json_response({"machines": machines})
         except Exception as e:
             logger.error(f"Failed to list remote sessions: {e}")
             return web.json_response({"machines": []})
 
+    async def _fetch_remote_machine_sessions(self, machine: dict) -> dict:
+        """Fetch sessions for a specific remote machine. Used by CachedStatusChecker."""
+        try:
+            # Try to get sessions from this specific machine
+            machine_id = machine.get("id")
+            success, result = await self.run_agentwire_cmd(
+                ["list", "--remote", "--sessions", "--machine", machine_id]
+            )
+
+            if not success:
+                return {"status": "offline", "sessions": []}
+
+            sessions = result.get("sessions", [])
+            # Add activity status to each session
+            for s in sessions:
+                s["activity"] = self._get_global_session_activity(s.get("name", ""))
+
+            return {
+                "status": "online" if sessions else "online",  # Online but might have no sessions
+                "sessions": sessions
+            }
+        except Exception:
+            return {"status": "offline", "sessions": []}
+
     async def api_projects(self, request: web.Request) -> web.Response:
-        """List discovered projects.
+        """List discovered projects (progressive loading).
 
         Query params:
             machine: Optional machine ID to filter by (e.g., 'local', 'mac-studio')
 
         Response:
-            {"projects": [{name, path, type, roles, machine}, ...]}
+            {"projects": [{name, path, type, roles, machine, status}, ...]}
         """
         try:
-            args = ["projects", "list", "--json"]
+            # Get list of machines to scan
+            machine_filter = request.query.get("machine")
 
-            # Add machine filter if provided
-            machine = request.query.get("machine")
-            if machine:
-                args.extend(["--machine", machine])
+            if machine_filter:
+                # Single machine requested - use checker
+                machines = [{"id": machine_filter}]
+                scanned_machines = await self.projects_checker.get_with_status(
+                    machines,
+                    check_fn=self._scan_machine_projects,
+                    id_field='id'
+                )
+                all_projects = []
+                for machine_data in scanned_machines:
+                    projects = machine_data.get("projects", [])
+                    logger.debug(f"[api_projects] Machine {machine_data.get('id')} returned {len(projects)} projects (filtered request)")
+                    all_projects.extend(projects)
+            else:
+                # All machines - get local first (fast), then remote (progressive)
+                all_projects = []
 
-            success, result = await self.run_agentwire_cmd(args)
-            if not success:
-                return web.json_response({"projects": []})
+                # Local projects (always fast, no caching needed)
+                local_result = await self._scan_machine_projects({"id": "local"})
+                local_projects = local_result.get("projects", [])
+                logger.debug(f"[api_projects] Local scan returned {len(local_projects)} projects")
+                all_projects.extend(local_projects)
 
-            return web.json_response({"projects": result.get("projects", [])})
+                # Remote projects (progressive with caching)
+                machines_file = self.config.machines.file
+                if machines_file.exists():
+                    with open(machines_file) as f:
+                        data = json.load(f)
+                        remote_machines = [
+                            {"id": m.get("id")}
+                            for m in data.get("machines", [])
+                        ]
+                        logger.debug(f"[api_projects] Found {len(remote_machines)} remote machines: {[m['id'] for m in remote_machines]}")
+
+                        if remote_machines:
+                            scanned_machines = await self.projects_checker.get_with_status(
+                                remote_machines,
+                                check_fn=self._scan_machine_projects,
+                                id_field='id'
+                            )
+                            logger.debug(f"[api_projects] Checker returned {len(scanned_machines)} machine results")
+
+                            # Track if any machines are still checking
+                            has_checking = False
+
+                            for machine_data in scanned_machines:
+                                machine_id = machine_data.get("id", "unknown")
+                                machine_status = machine_data.get("status", "unknown")
+                                projects = machine_data.get("projects", [])
+                                logger.debug(f"[api_projects] Machine {machine_id} (status: {machine_status}) has {len(projects)} projects: {[p.get('name', 'unnamed') for p in projects]}")
+
+                                if machine_status == "checking":
+                                    has_checking = True
+
+                                # Add machine status to projects for frontend progressive loading
+                                for project in projects:
+                                    project["_machineStatus"] = machine_status
+
+                                all_projects.extend(projects)
+
+                logger.debug(f"[api_projects] Total projects before dedup: {len(all_projects)}")
+
+                # Deduplicate by normalized path
+                # Normalize paths to handle ~/projects vs /Users/user/projects
+                def normalize_path(path: str) -> str:
+                    """Normalize path for comparison (expand ~, resolve relative paths)."""
+                    if not path:
+                        return ""
+                    # Expand ~ to home directory
+                    if path.startswith("~/"):
+                        # Use a consistent home path for comparison
+                        import os
+                        home = os.path.expanduser("~")
+                        return path.replace("~", home, 1)
+                    return path
+
+                seen_normalized = set()
+                deduped_projects = []
+                duplicates = []
+                for project in all_projects:
+                    path = project.get("path")
+                    if not path:
+                        continue
+
+                    normalized = normalize_path(path)
+                    if normalized not in seen_normalized:
+                        seen_normalized.add(normalized)
+                        deduped_projects.append(project)
+                    else:
+                        # Prefer local version over remote for same project
+                        duplicates.append(f"{project.get('name')} ({project.get('machine')})")
+
+                if duplicates:
+                    logger.debug(f"[api_projects] Removed {len(duplicates)} duplicates: {', '.join(duplicates)}")
+
+                logger.debug(f"[api_projects] Total projects after dedup: {len(deduped_projects)}")
+                all_projects = deduped_projects
+
+            # Return projects with scanning status for auto-refresh
+            response = {"projects": all_projects}
+            if 'has_checking' in locals():
+                response["_scanning"] = has_checking
+
+            return web.json_response(response)
         except Exception as e:
             logger.error(f"Failed to list projects: {e}")
             return web.json_response({"projects": []})
+
+    async def _scan_machine_projects(self, machine: dict) -> dict:
+        """Scan projects on a specific machine. Used by CachedStatusChecker."""
+        machine_id = machine.get("id")
+        try:
+            args = ["projects", "list", "--json", "--machine", machine_id]
+
+            success, result = await self.run_agentwire_cmd(args)
+            if not success:
+                logger.warning(f"Failed to scan projects on {machine_id}: {result.get('error', 'unknown error')}")
+                return {"status": "offline", "projects": []}
+
+            projects = result.get("projects", [])
+            logger.debug(f"Found {len(projects)} projects on {machine_id}")
+            return {
+                "status": "online",
+                "projects": projects
+            }
+        except Exception as e:
+            logger.error(f"Exception scanning projects on {machine_id}: {e}")
+            return {"status": "offline", "projects": []}
 
     async def api_projects_delete(self, request: web.Request) -> web.Response:
         """Delete a project (remove .agentwire.yml or entire folder).
@@ -1999,50 +2142,147 @@ class AgentWireServer:
         return web.json_response({"custom": custom_icons, "default": default_icons})
 
     async def api_machines(self, request: web.Request) -> web.Response:
-        """Get list of all machines (local + configured remotes)."""
-        import socket
+        """Get list of all machines (local + configured remotes).
 
+        Uses progressive loading pattern - returns immediately with status='checking',
+        background checks populate cache for subsequent requests.
+        """
         machines = []
 
         # Always include local machine first
+        local_hostname = socket.gethostname()
+        local_ip = await self._resolve_hostname(local_hostname)
         machines.append({
             "id": "local",
-            "host": socket.gethostname(),
+            "host": local_hostname,
+            "ip": local_ip,
             "local": True,
             "status": "online",
         })
 
-        # Add configured remote machines
+        # Add configured remote machines using progressive loading pattern
         machines_file = self.config.machines.file
         if machines_file.exists():
             try:
                 with open(machines_file) as f:
                     data = json.load(f)
-                    for m in data.get("machines", []):
-                        m["local"] = False
-                        # Check if reachable (quick SSH check)
-                        m["status"] = await self._check_machine_status(m)
-                        machines.append(m)
+                    remote_machines = [
+                        {**m, "local": False}
+                        for m in data.get("machines", [])
+                    ]
+
+                    # Progressive loading: returns cached or "checking" status
+                    checked_machines = await self.machine_status_checker.get_with_status(
+                        remote_machines,
+                        check_fn=self._check_machine_with_ip,
+                        id_field='id'
+                    )
+
+                    machines.extend(checked_machines)
+
             except (json.JSONDecodeError, IOError):
                 pass
 
         return web.json_response(machines)
 
-    async def _check_machine_status(self, machine: dict) -> str:
-        """Check if a remote machine is reachable via SSH."""
+    async def _check_machine_with_ip(self, machine: dict) -> dict:
+        """Check machine status and resolve IP. Used by CachedStatusChecker."""
+        status = await self._check_machine_status(machine, quick=True)
+        ip = None
+        if status == "online":
+            ip = await self._resolve_hostname(machine.get("host", ""))
+        return {"status": status, "ip": ip}
+
+    async def _resolve_hostname(self, hostname: str) -> str | None:
+        """Resolve hostname to IP address.
+
+        Tries DNS first, then falls back to SSH config resolution,
+        and finally queries the remote machine for its IP.
+        """
+        if not hostname:
+            return None
+
+        # Try DNS lookup first
+        try:
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(None, socket.gethostbyname, hostname)
+            return result
+        except (socket.gaierror, socket.herror):
+            pass
+
+        # DNS failed, try SSH config to get the actual hostname/IP
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "ssh", "-G", hostname,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL
+            )
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=2.0)
+
+            # Parse output for "hostname <value>"
+            ssh_hostname = None
+            for line in stdout.decode().splitlines():
+                parts = line.strip().split(None, 1)
+                if len(parts) == 2 and parts[0].lower() == "hostname":
+                    ssh_hostname = parts[1]
+                    break
+
+            if ssh_hostname:
+                # Check if it's already an IP address
+                if re.match(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$', ssh_hostname):
+                    return ssh_hostname
+
+                # Try DNS on the resolved hostname
+                try:
+                    result = await loop.run_in_executor(None, socket.gethostbyname, ssh_hostname)
+                    return result
+                except (socket.gaierror, socket.herror):
+                    pass
+
+                # DNS failed, try connecting via SSH to get the remote IP
+                try:
+                    proc = await asyncio.create_subprocess_exec(
+                        "ssh", "-o", "ConnectTimeout=2", "-o", "StrictHostKeyChecking=no",
+                        hostname, "hostname -I 2>/dev/null || ip addr show | grep 'inet ' | grep -v '127.0.0.1' | head -1 | awk '{print $2}' | cut -d/ -f1",
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.DEVNULL
+                    )
+                    stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=3.0)
+                    remote_ip = stdout.decode().strip().split()[0] if stdout else None
+                    if remote_ip and re.match(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$', remote_ip):
+                        return remote_ip
+                except (asyncio.TimeoutError, OSError, IndexError):
+                    pass
+
+        except (asyncio.TimeoutError, OSError):
+            pass
+
+        return None
+
+    async def _check_machine_status(self, machine: dict, quick: bool = False) -> str:
+        """Check if a remote machine is reachable via SSH.
+
+        Args:
+            machine: Machine dict with host/user info
+            quick: If True, use very short timeout for fast initial check
+        """
         host = machine.get("host", "")
         user = machine.get("user", "")
         ssh_target = f"{user}@{host}" if user else host
 
+        # Use shorter timeout for quick checks
+        connect_timeout = "1" if quick else "2"
+        wait_timeout = 1.5 if quick else 3.0
+
         try:
             proc = await asyncio.wait_for(
                 asyncio.create_subprocess_exec(
-                    "ssh", "-o", "ConnectTimeout=2", "-o", "BatchMode=yes",
+                    "ssh", "-o", f"ConnectTimeout={connect_timeout}", "-o", "BatchMode=yes",
                     ssh_target, "echo ok",
                     stdout=asyncio.subprocess.DEVNULL,
                     stderr=asyncio.subprocess.DEVNULL,
                 ),
-                timeout=3.0
+                timeout=wait_timeout
             )
             await proc.wait()
             return "online" if proc.returncode == 0 else "offline"

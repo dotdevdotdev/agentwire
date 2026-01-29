@@ -192,6 +192,9 @@ function setupPageUnload() {
 // Menu listeners - open windows when menu items clicked
 function setupMenuListeners() {
     // Left side menu items
+    document.getElementById('machinesMenu')?.addEventListener('click', () => {
+        openMachinesWindow();
+    });
     document.getElementById('projectsMenu')?.addEventListener('click', () => {
         openProjectsWindow();
     });
@@ -200,10 +203,6 @@ function setupMenuListeners() {
     });
 
     // Right side settings dropdown items
-    document.getElementById('machinesMenuItem')?.addEventListener('click', () => {
-        openMachinesWindow();
-        closeSettingsDropdown();
-    });
     document.getElementById('configMenuItem')?.addEventListener('click', () => {
         openConfigWindow();
         closeSettingsDropdown();

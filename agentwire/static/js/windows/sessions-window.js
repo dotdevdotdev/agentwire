@@ -7,6 +7,7 @@ import { desktop } from '../desktop-manager.js';
 import { sessionIcons } from '../icon-manager.js';
 import { IconPicker } from '../components/icon-picker.js';
 import { ListCard, getActivityIndicatorHtml } from '../components/list-card.js';
+import { setupAutoRefresh } from '../utils/auto-refresh.js';
 
 /** @type {IconPicker|null} */
 let iconPicker = null;
@@ -144,11 +145,13 @@ async function fetchSessions() {
 
     // Get remote sessions from all machines
     const remoteSessions = [];
-    for (const machine of (remoteData.machines || [])) {
+    const remoteMachines = remoteData.machines || [];
+    for (const machine of remoteMachines) {
         for (const s of (machine.sessions || [])) {
             remoteSessions.push({
                 ...s,
-                machine: machine.id
+                machine: machine.id,
+                machineStatus: machine.status  // Track machine status for checking state
             });
         }
     }
@@ -157,6 +160,12 @@ async function fetchSessions() {
     const allSessions = [...localSessions, ...remoteSessions].sort((a, b) =>
         a.name.localeCompare(b.name)
     );
+
+    // Auto-refresh while machines are checking
+    const hasChecking = remoteMachines.some(m => m.status === 'checking');
+    if (hasChecking) {
+        setupAutoRefresh(remoteMachines, sessionsWindow);
+    }
 
     // Get session names and assign icons (uses IconManager with persistence)
     const sessionNames = allSessions.map(s => s.name);
