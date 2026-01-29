@@ -2263,29 +2263,36 @@ def _local_say(
         return 0
 
     except urllib.error.HTTPError as e:
-        # Check for venv_mismatch error (422)
-        if e.code == 422 and not _retry:
-            try:
-                error_body = json.loads(e.read().decode())
-                if error_body.get("error") == "venv_mismatch":
-                    required_venv = error_body.get("required_venv")
-                    target_backend = error_body.get("backend", backend)
-                    print(f"Backend '{target_backend}' requires venv '{required_venv}'. Restarting TTS server...")
+        # Try to read the actual error message from the response body
+        try:
+            error_body = json.loads(e.read().decode())
+        except Exception:
+            error_body = None
 
-                    if _restart_tts_for_venv(required_venv, target_backend):
-                        print("TTS server restarted. Retrying...")
-                        return _local_say(
-                            text, voice, exaggeration, cfg_weight, tts_url,
-                            backend=target_backend, instruct=instruct, language=language,
-                            stream=stream, _retry=True
-                        )
-                    else:
-                        print("Failed to restart TTS server.", file=sys.stderr)
-                        return 1
-            except Exception:
-                pass
+        # Check for venv_mismatch error (422) - auto-restart TTS with correct venv
+        if e.code == 422 and not _retry and error_body:
+            if error_body.get("error") == "venv_mismatch":
+                required_venv = error_body.get("required_venv")
+                target_backend = error_body.get("backend", backend)
+                print(f"Backend '{target_backend}' requires venv '{required_venv}'. Restarting TTS server...")
 
-        print(f"TTS request failed: {e}", file=sys.stderr)
+                if _restart_tts_for_venv(required_venv, target_backend):
+                    print("TTS server restarted. Retrying...")
+                    return _local_say(
+                        text, voice, exaggeration, cfg_weight, tts_url,
+                        backend=target_backend, instruct=instruct, language=language,
+                        stream=stream, _retry=True
+                    )
+                else:
+                    print("Failed to restart TTS server.", file=sys.stderr)
+                    return 1
+
+        # Show the actual error message from the TTS server if available
+        if error_body:
+            detail = error_body.get("detail") or error_body.get("error") or error_body
+            print(f"TTS error: {detail}", file=sys.stderr)
+        else:
+            print(f"TTS request failed: {e}", file=sys.stderr)
         return 1
 
     except urllib.error.URLError as e:
