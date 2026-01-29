@@ -17,15 +17,15 @@ This role supplements `leader` with Claude Code-specific techniques.
 For detailed exit summary format, see `worker` role. Delegation roles focus on task communication, not summary format.
 
 ### Spawn Command
-```bash
-agentwire spawn --roles claude-worker
+```
+mcp__agentwire__pane_spawn(roles="claude-worker")
 ```
 
 ### Task Pattern (natural language)
-```bash
-agentwire send --pane 1 "Add JWT authentication to the API.
+```
+mcp__agentwire__pane_send(pane=1, message="Add JWT authentication to the API.
 We need login/logout endpoints and a verify middleware.
-Check the existing user model for context."
+Check the existing user model for context.")
 ```
 
 ### Verify Before Sending
@@ -124,20 +124,20 @@ Even with Claude Code, be explicit about:
 
 **Well-defined but not overly prescriptive:**
 
-```bash
-agentwire send --pane 1 "Add password reset flow.
+```
+mcp__agentwire__pane_send(pane=1, message="Add password reset flow.
 Need an endpoint to request reset (sends email), and a completion endpoint
 that validates the token and updates the password.
-Use the existing email service from /lib/email.ts."
+Use the existing email service from /lib/email.ts.")
 ```
 
 **Good balance of context and autonomy:**
 
-```bash
-agentwire send --pane 1 "Implement caching for the /api/posts endpoint.
+```
+mcp__agentwire__pane_send(pane=1, message="Implement caching for the /api/posts endpoint.
 Cache results for 5 minutes. Invalidate when posts are created/updated/deleted.
 Check if Redis is available, otherwise use in-memory cache.
-Follow the pattern in /lib/cache/ for consistency."
+Follow the pattern in /lib/cache/ for consistency.")
 ```
 
 ---
@@ -146,28 +146,28 @@ Follow the pattern in /lib/cache/ for consistency."
 
 ### Parallel Tasks (Spawn All At Once)
 
-```bash
+```
 # These can run in parallel - no dependencies
-agentwire spawn --roles claude-worker  # pane 1
-agentwire spawn --roles claude-worker  # pane 2
-agentwire spawn --roles claude-worker  # pane 3
+mcp__agentwire__pane_spawn(roles="claude-worker")  # pane 1
+mcp__agentwire__pane_spawn(roles="claude-worker")  # pane 2
+mcp__agentwire__pane_spawn(roles="claude-worker")  # pane 3
 
-agentwire send --pane 1 "Add error handling to the API routes"
-agentwire send --pane 2 "Create unit tests for the auth module"
-agentwire send --pane 3 "Add TypeScript types for the API responses"
+mcp__agentwire__pane_send(pane=1, message="Add error handling to the API routes")
+mcp__agentwire__pane_send(pane=2, message="Create unit tests for the auth module")
+mcp__agentwire__pane_send(pane=3, message="Add TypeScript types for the API responses")
 ```
 
 ### Sequential Tasks (Wait Between)
 
-```bash
+```
 # Worker 1 creates the component
-agentwire spawn --roles claude-worker
-agentwire send --pane 1 "Create a Button component with loading states"
+mcp__agentwire__pane_spawn(roles="claude-worker")
+mcp__agentwire__pane_send(pane=1, message="Create a Button component with loading states")
 
 # Wait for worker to complete (worker writes summary when done)
 # Then spawn worker 2 that uses the component
-agentwire spawn --roles claude-worker
-agentwire send --pane 2 "Use the Button component in the LoginForm"
+mcp__agentwire__pane_spawn(roles="claude-worker")
+mcp__agentwire__pane_send(pane=2, message="Use the Button component in the LoginForm")
 ```
 
 ---
@@ -176,41 +176,41 @@ agentwire send --pane 2 "Use the Button component in the LoginForm"
 
 ### Feature Implementation
 
-```bash
-agentwire send --pane 1 "Implement dark mode toggle.
+```
+mcp__agentwire__pane_send(pane=1, message="Implement dark mode toggle.
 Add a toggle in the settings page that switches between light/dark themes.
 Use CSS variables for theme colors.
 Persist preference in localStorage.
-Check the existing theme setup in /styles/theme.css."
+Check the existing theme setup in /styles/theme.css.")
 ```
 
 ### Refactoring
 
-```bash
-agentwire send --pane 1 "Refactor the auth module.
+```
+mcp__agentwire__pane_send(pane=1, message="Refactor the auth module.
 Currently everything is in /lib/auth.ts - split into separate files:
 - /lib/auth/jwt.ts (token operations)
 - /lib/auth/session.ts (session management)
 - /lib/auth/password.ts (password hashing/validation)
-Maintain backward compatibility - update imports as needed."
+Maintain backward compatibility - update imports as needed.")
 ```
 
 ### Bug Fixes
 
-```bash
-agentwire send --pane 1 "Fix the issue where the cart doesn't persist across page refreshes.
+```
+mcp__agentwire__pane_send(pane=1, message="Fix the issue where the cart doesn't persist across page refreshes.
 It looks like localStorage isn't being called properly.
 Check the cart reducer in /store/cart.ts and make sure it loads from storage on init.
-Test by adding items, refreshing, and verifying they're still there."
+Test by adding items, refreshing, and verifying they're still there.")
 ```
 
 ### Testing
 
-```bash
-agentwire send --pane 1 "Add integration tests for the checkout flow.
+```
+mcp__agentwire__pane_send(pane=1, message="Add integration tests for the checkout flow.
 Test the happy path: add items → checkout → payment → confirmation.
 Also test edge cases: empty cart, payment failure, out of stock.
-Use the test fixtures in /tests/fixtures/."
+Use the test fixtures in /tests/fixtures/.")
 ```
 
 ---
@@ -248,11 +248,11 @@ Look for:
 
 **Fix:** Re-send with more context:
 
-```bash
-agentwire send --pane 1 "Actually, let me clarify:
+```
+mcp__agentwire__pane_send(pane=1, message="Actually, let me clarify:
 We're building a multi-tenant SaaS, so the auth needs to account for org_id.
 Users belong to organizations via the memberships table.
-Check /models/membership.ts for the relationship."
+Check /models/membership.ts for the relationship.")
 ```
 
 ### Too Many Changes
@@ -261,11 +261,11 @@ Check /models/membership.ts for the relationship."
 
 **Fix:** Re-send with explicit scope:
 
-```bash
-agentwire send --pane 1 "The refactoring went too far.
+```
+mcp__agentwire__pane_send(pane=1, message="The refactoring went too far.
 Please focus only on splitting jwt.ts, session.ts and password.ts.
 Don't touch the middleware or hooks.
-Roll back other changes and commit only the auth module split."
+Roll back other changes and commit only the auth module split.")
 ```
 
 ### Missing Success Criteria
@@ -274,28 +274,28 @@ Roll back other changes and commit only the auth module split."
 
 **Fix:** Specify testable outcome:
 
-```bash
-agentwire send --pane 1 "The implementation isn't quite right.
+```
+mcp__agentwire__pane_send(pane=1, message="The implementation isn't quite right.
 Here's what I need:
 - All existing tests pass
 - New tests cover happy path and error cases
 - Integration test added for full flow
 Run: npm test
-Fix any failures before marking done."
+Fix any failures before marking done.")
 ```
 
 ### Recovery Patterns
 
 **Worker Failed or Blocked:**
 
-```bash
-# Read summary to understand what went wrong
+```
+# Read summary to understand what went wrong (Bash)
 cat .agentwire/ses_*.md
 
 # Check "What Didn't Work" section
 # Spawn new worker with clarified requirements
-agentwire spawn --roles claude-worker
-agentwire send --pane 2 "[Clarified task based on failure]"
+mcp__agentwire__pane_spawn(roles="claude-worker")
+mcp__agentwire__pane_send(pane=2, message="[Clarified task based on failure]")
 ```
 
 **Code Is Wrong:**
@@ -323,28 +323,28 @@ npm run build  # Verify build succeeds
 
 ### Leverage Judgment
 
-```bash
+```
 # Good - lets Claude figure out the details
-agentwire send --pane 1 "Optimize the database queries in the dashboard.
+mcp__agentwire__pane_send(pane=1, message="Optimize the database queries in the dashboard.
 Currently loading 50ms, aim for under 20ms.
-Use indexes, query batching, or caching as appropriate."
+Use indexes, query batching, or caching as appropriate.")
 
 # Bad - too prescriptive, Claude can't suggest better approaches
-agentwire send --pane 1 "Add an index on the created_at column.
-Then batch the queries into groups of 10."
+mcp__agentwire__pane_send(pane=1, message="Add an index on the created_at column.
+Then batch the queries into groups of 10.")
 ```
 
 ### Provide Context
 
-```bash
+```
 # Claude will explore the codebase and figure out the pattern
-agentwire send --pane 1 "Add an API endpoint for deleting users.
+mcp__agentwire__pane_send(pane=1, message="Add an API endpoint for deleting users.
 Follow the existing CRUD pattern in /api/users/.
 Make sure to:
 - Check permissions
 - Soft delete if the table uses deleted_at
 - Cascade to related records if needed
-- Return appropriate HTTP status codes"
+- Return appropriate HTTP status codes")
 ```
 
 ### Success Checklist
@@ -359,9 +359,9 @@ Before reporting completion to main orchestrator:
 - [ ] Edge cases handled (empty states, errors)
 - [ ] Git committed
 
-Only then (run via Bash tool - `agentwire say` is a CLI command):
-```bash
-agentwire say "Feature complete, tested in Chrome"
+Only then:
+```
+mcp__agentwire__say(text="Feature complete, tested in Chrome")
 ```
 
 ---

@@ -17,8 +17,8 @@ This role supplements `leader` with GLM-specific techniques.
 For detailed exit summary format, see `worker` role. Delegation roles focus on task communication, not summary format.
 
 ### Spawn Command
-```bash
-agentwire spawn --type opencode-bypass --roles glm-worker
+```
+mcp__agentwire__pane_spawn(pane_type="opencode-bypass", roles="glm-worker")
 ```
 
 ### Task Template (copy-paste this)
@@ -107,13 +107,13 @@ If you need more parallelism, mix worker types:
 
 Workers auto-exit when idle. If a worker's summary shows failure or blocking issues, just spawn a new one with improved instructions.
 
-```bash
-# Read failed worker's summary
+```
+# Read failed worker's summary (Bash)
 cat .agentwire/ses_*.md
 
 # Spawn new worker with better instructions
-agentwire spawn --type opencode-bypass --roles glm-worker
-agentwire send --pane 1 "[improved task based on what failed]"
+mcp__agentwire__pane_spawn(pane_type="opencode-bypass", roles="glm-worker")
+mcp__agentwire__pane_send(pane=1, message="[improved task based on what failed]")
 ```
 
 ---
@@ -183,7 +183,7 @@ Worker 3: Add API call to LoginForm (submit handler)
 **Example - Building 6 components:**
 ```
 # WRONG - exceeds limit
-agentwire spawn x6  # Too many concurrent
+# 6 spawns at once → too many concurrent
 
 # RIGHT - batch into 3 waves of 2
 Wave 1: 2 workers (Hero + Features)
@@ -209,8 +209,8 @@ Wave 3: 2 workers (Nav + CTA)
 
 ### Creating a Component
 
-```bash
-agentwire send --pane 1 "CRITICAL RULES:
+```
+mcp__agentwire__pane_send(pane=1, message="CRITICAL RULES:
 - ONLY create: /path/to/Component.tsx
 - ABSOLUTE paths only
 - Output exit summary when done
@@ -234,13 +234,13 @@ STYLING:
 DO NOT:
 - Add state (stateless component)
 - Import non-existent files
-- Create extra files"
+- Create extra files")
 ```
 
 ### Modifying Existing Code
 
-```bash
-agentwire send --pane 1 "CRITICAL RULES:
+```
+mcp__agentwire__pane_send(pane=1, message="CRITICAL RULES:
 - ONLY modify: /path/to/file.tsx
 - Do NOT change other files
 - Output exit summary when done
@@ -260,13 +260,13 @@ CHANGE TO:
 KEEP UNCHANGED:
 - Function signature
 - Success path behavior
-- Existing imports"
+- Existing imports")
 ```
 
 ### Creating Multiple Related Files
 
-```bash
-agentwire send --pane 1 "CRITICAL RULES:
+```
+mcp__agentwire__pane_send(pane=1, message="CRITICAL RULES:
 - ONLY create files listed below
 - ABSOLUTE paths only
 - Output exit summary when done
@@ -287,7 +287,7 @@ FILE 2 - session.ts:
 - getSession(sessionId: string): Session | null
 
 FILE 3 - index.ts:
-- Re-export all from token.ts and session.ts"
+- Re-export all from token.ts and session.ts")
 ```
 
 ---
@@ -414,9 +414,9 @@ Before reporting completion to main orchestrator:
 - [ ] Edge cases handled (empty states, errors)
 - [ ] Git committed
 
-Only then (run via Bash tool - `agentwire say` is a CLI command):
-```bash
-agentwire say "Feature complete, tested in Chrome"
+Only then:
+```
+mcp__agentwire__say(text="Feature complete, tested in Chrome")
 ```
 
 ---
