@@ -6741,18 +6741,21 @@ def cmd_ensure(args) -> int:
 def _run_ensure_task(args, session, task, ctx, shell, project_path, timeout, json_mode) -> int:
     """Run the task (called within lock context).
 
-    Flow:
-    1. Send task prompt with embedded summary instructions
-    2. Wait for summary file to appear
-    3. Parse summary file for status
+    Uses hook-based completion detection:
+    1. Write task context file (tells hook a scheduled task is running)
+    2. Send task prompt
+    3. Hook handles: first idle → send summary prompt, second idle → write completion signal
+    4. Wait for completion signal file
+    5. Read and parse summary
     """
     from .completion import (
         CompletionTimeout,
+        clear_task_context,
         generate_summary_filename,
-        get_summary_prompt,
         parse_summary_file,
         status_to_exit_code,
-        wait_for_file,
+        wait_for_completion_signal,
+        write_task_context,
     )
     from .tasks import PreCommandError, run_post_command, run_pre_command
     from .templating import TemplateError, expand_all
@@ -6818,23 +6821,30 @@ def _run_ensure_task(args, session, task, ctx, shell, project_path, timeout, jso
         # Ensure .agentwire directory exists
         (project_path / ".agentwire").mkdir(exist_ok=True)
 
-        # Build combined prompt with summary instructions
-        summary_instructions = get_summary_prompt(summary_filename)
-        combined_prompt = f"{prompt}\n\nWhen done, {summary_instructions}"
+        # Write task context for hook coordination
+        # Hook will: first idle → send summary prompt, second idle → write completion signal
+        write_task_context(
+            session=session,
+            task_name=task.name,
+            summary_file=summary_filename,
+            attempt=attempt,
+        )
 
         if not json_mode:
             print("Sending task prompt...")
 
-        # Send combined prompt using pane_manager for proper handling
-        pane_manager.send_to_pane(session, 0, combined_prompt, enter=True)
+        # Send task prompt using pane_manager for proper multi-line handling
+        pane_manager.send_to_pane(session, 0, prompt, enter=True)
 
-        # Wait for summary file to appear
+        # Wait for completion signal from hook
         if not json_mode:
-            print("Waiting for task completion...")
+            print("Waiting for task completion (hook-based)...")
 
         try:
-            wait_for_file(summary_path, timeout=timeout)
+            signal = wait_for_completion_signal(session, timeout=timeout)
+            last_status = signal.get("status", "incomplete")
         except CompletionTimeout:
+            clear_task_context(session)
             last_status = "incomplete"
             last_summary = "Timeout waiting for task completion"
             if attempt < max_attempts:
@@ -6843,6 +6853,9 @@ def _run_ensure_task(args, session, task, ctx, shell, project_path, timeout, jso
                 time.sleep(task.retry_delay)
                 continue
             break
+
+        # Clean up task context
+        clear_task_context(session)
 
         # Parse summary file
         try:
@@ -6861,12 +6874,13 @@ def _run_ensure_task(args, session, task, ctx, shell, project_path, timeout, jso
                 print(f"Summary: {last_summary}")
 
         # on_task_end: send additional prompt after summary is written
+        # Note: we don't wait for this to complete - it's fire-and-forget
         if task.on_task_end:
             try:
                 end_prompt = expand_all(task.on_task_end, ctx)
                 pane_manager.send_to_pane(session, 0, end_prompt, enter=True)
                 if not json_mode:
-                    print("Sent on_task_end prompt")
+                    print("Sent on_task_end prompt (not waiting for completion)")
             except TemplateError as e:
                 if not json_mode:
                     print(f"Warning: template error in on_task_end: {e}")
