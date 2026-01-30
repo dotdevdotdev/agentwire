@@ -104,6 +104,12 @@ agentwire history resume <id>   # resume session (always forks)
 agentwire roles list            # list available roles
 agentwire roles show <name>     # show role details
 
+# Scheduled workloads
+agentwire ensure -s name --task task  # run named task reliably
+agentwire task list [session]         # list tasks for session/project
+agentwire task show session/task      # show task definition
+agentwire task validate session/task  # validate task syntax
+
 # Safety & diagnostics
 agentwire safety check "cmd"    # test if command would be blocked
 agentwire safety status         # show pattern counts and recent blocks
@@ -144,6 +150,9 @@ The agentwire MCP server provides tools that wrap CLI functionality. Use these i
 | `agentwire list` | `agentwire_sessions_list()` |
 | `agentwire output --pane 1` | `agentwire_pane_output(pane=1)` |
 | `agentwire kill --pane 1` | `agentwire_pane_kill(pane=1)` |
+| `agentwire ensure -s x --task y` | `agentwire_task_run(session="x", task="y")` |
+| `agentwire task list x` | `agentwire_task_list(session="x")` |
+| `agentwire task show x/y` | `agentwire_task_show(session="x", task="y")` |
 
 **When to use CLI vs MCP:**
 - **MCP tools** - Agents in sessions (orchestrators, workers)
@@ -254,6 +263,53 @@ session:
 | `roles` | List of role names | Roles to load (from bundled or `~/.agentwire/roles/`) |
 | `voice` | Voice name | TTS voice for this project |
 | `parent` | Session name | Parent session for hierarchical notifications |
+| `shell` | `/bin/sh`, `/bin/bash`, etc. | Default shell for task commands |
+| `tasks` | Task definitions | Scheduled workload configurations |
+
+### Task Schema
+
+Tasks are defined in `.agentwire.yml` for use with `agentwire ensure`:
+
+```yaml
+shell: /bin/sh  # Project-level default shell
+
+tasks:
+  morning-briefing:
+    shell: /bin/bash           # Task-level override
+    retries: 2                 # Retry on failure (default: 0)
+    retry_delay: 30            # Seconds between retries (default: 30)
+    idle_timeout: 30           # Seconds of idle before completion (default: 30)
+    pre:                       # Data gathering (NO {{ }} - these PRODUCE variables)
+      weather: "curl -s wttr.in/?format=3"
+      calendar:
+        cmd: "gcal-cli today --json"
+        required: true         # Fail if empty (default: false)
+        validate: "jq . > /dev/null"  # Validation command
+        timeout: 30            # Command timeout
+    prompt: |                  # Main prompt (supports {{ variables }})
+      Weather: {{ weather }}
+      Calendar: {{ calendar }}
+      Summarize my day.
+    on_task_end: |             # Optional: after system summary
+      Read {{ summary_file }}.
+      If complete, save to ~/briefings/{{ date }}.md
+    post:                      # Commands after completion
+      - "echo 'Status: {{ status }}'"
+    output:
+      capture: 50              # Lines to capture
+      save: ~/logs/{{ task }}.log
+      notify: voice            # voice, alert, webhook ${URL}, command "..."
+```
+
+**Built-in variables:**
+- `{{ date }}`, `{{ time }}`, `{{ datetime }}` - Current date/time
+- `{{ session }}`, `{{ task }}`, `{{ project_root }}` - Task identity
+- `{{ attempt }}` - Current attempt number (1-based)
+- `{{ status }}`, `{{ summary }}`, `{{ summary_file }}` - After completion
+- `{{ output }}` - Captured session output (in post phase)
+- `{{ var_name }}` - Pre-command outputs
+
+**Exit codes:** 0=complete, 1=failed, 2=incomplete, 3=lock conflict, 4=pre failure, 5=timeout, 6=session error
 
 ### Hierarchical Idle Notifications
 

@@ -480,16 +480,25 @@ def _output_json(data: dict) -> None:
     print(json.dumps(data, indent=2))
 
 
-def _output_result(success: bool, json_mode: bool, message: str = "", **kwargs) -> int:
+def _output_result(success: bool, json_mode: bool, message: str = "", exit_code: int | None = None, **kwargs) -> int:
     """Output result in text or JSON mode.
 
+    Args:
+        success: Whether the operation succeeded
+        json_mode: Output JSON if True
+        message: Message to display
+        exit_code: Custom exit code (default: 0 if success, 1 otherwise)
+        **kwargs: Additional JSON fields
+
     Returns:
-        0 if success, 1 otherwise
+        exit_code if provided, else 0 if success, 1 otherwise
     """
     if json_mode:
         result = {"success": success, **kwargs}
         if not success and "error" not in result:
             result["error"] = message
+        if exit_code is not None:
+            result["exit_code"] = exit_code
         _output_json(result)
     else:
         if message:
@@ -497,6 +506,8 @@ def _output_result(success: bool, json_mode: bool, message: str = "", **kwargs) 
                 print(message)
             else:
                 print(message, file=sys.stderr)
+    if exit_code is not None:
+        return exit_code
     return 0 if success else 1
 
 
@@ -6572,6 +6583,621 @@ def _print_tunnel_help(spec, error: str) -> None:
         print(f"        ssh {spec.remote_machine} 'lsof -i :{spec.remote_port}'")
 
 
+# =============================================================================
+# Task Commands (Scheduled Workloads)
+# =============================================================================
+
+# Exit codes for ensure command (documented in CLAUDE.md)
+ENSURE_EXIT_COMPLETE = 0
+ENSURE_EXIT_FAILED = 1
+ENSURE_EXIT_INCOMPLETE = 2
+ENSURE_EXIT_LOCK_CONFLICT = 3
+ENSURE_EXIT_PRE_FAILURE = 4
+ENSURE_EXIT_TIMEOUT = 5
+ENSURE_EXIT_SESSION_ERROR = 6
+
+
+def cmd_ensure(args) -> int:
+    """Run a named task with reliable session management.
+
+    Full lifecycle:
+    1. Acquire lock (fail if locked, or wait with --wait-lock)
+    2. Ensure session exists and is healthy
+    3. Wait for session to be idle
+    4. Run pre-commands, validate outputs
+    5. Send templated prompt
+    6. Wait for idle, send system summary prompt
+    7. Parse summary file for status
+    8. Send on_task_end prompt if defined
+    9. Run post-commands
+    10. Handle retries on failure
+    """
+    from .completion import (
+        CompletionError,
+        CompletionTimeout,
+        generate_summary_filename,
+        get_summary_prompt,
+        parse_summary_file,
+        status_to_exit_code,
+        wait_for_file,
+        wait_for_idle,
+    )
+    from .locking import LockConflict, LockTimeout, session_lock
+    from .tasks import (
+        PreCommandError,
+        TaskNotFound,
+        TaskValidationError,
+        load_task,
+        run_post_command,
+        run_pre_command,
+        validate_task,
+    )
+    from .templating import TemplateContext, TemplateError, expand_all, preview_template
+
+    session_name = args.session
+    task_name = args.task
+    timeout = getattr(args, 'timeout', 300)
+    dry_run = getattr(args, 'dry_run', False)
+    wait_lock = getattr(args, 'wait_lock', False)
+    lock_timeout = getattr(args, 'lock_timeout', 60)
+    json_mode = getattr(args, 'json', False)
+
+    # Parse session target
+    session, machine_id = _parse_session_target(session_name)
+
+    if machine_id:
+        return _output_result(False, json_mode, "Remote sessions not yet supported for ensure", exit_code=ENSURE_EXIT_SESSION_ERROR)
+
+    # Find project path from session name or existing session
+    config = load_config()
+    projects_dir = Path(config.get("projects", {}).get("dir", "~/projects")).expanduser()
+
+    # Parse session name to get project
+    project, branch, _ = parse_session_name(session_name)
+    project_path = projects_dir / project
+
+    if not project_path.exists():
+        return _output_result(False, json_mode, f"Project path not found: {project_path}", exit_code=ENSURE_EXIT_SESSION_ERROR)
+
+    # Load task configuration
+    try:
+        task = load_task(project_path, task_name)
+    except TaskNotFound as e:
+        return _output_result(False, json_mode, str(e), exit_code=ENSURE_EXIT_SESSION_ERROR)
+    except TaskValidationError as e:
+        return _output_result(False, json_mode, str(e), exit_code=ENSURE_EXIT_SESSION_ERROR)
+
+    # Validate task
+    issues = validate_task(task)
+    if issues:
+        return _output_result(False, json_mode, f"Task validation failed: {', '.join(issues)}", exit_code=ENSURE_EXIT_SESSION_ERROR)
+
+    # Determine shell
+    shell = task.shell or "/bin/sh"
+
+    # Initialize template context
+    ctx = TemplateContext(
+        session=session,
+        task=task_name,
+        project_root=str(project_path),
+    )
+
+    # Dry run mode
+    if dry_run:
+        print("=== DRY RUN ===\n")
+        print(f"Session: {session}")
+        print(f"Task: {task_name}")
+        print(f"Shell: {shell}")
+        print(f"Timeout: {timeout}s")
+        print(f"Retries: {task.retries}")
+        print()
+
+        if task.pre:
+            print("Pre-commands (would execute):")
+            for pre in task.pre:
+                req = " (required)" if pre.required else ""
+                val = f" validate: {pre.validate}" if pre.validate else ""
+                print(f"  {pre.name}: {pre.cmd}{req}{val}")
+            print()
+
+        print("Prompt (with placeholders for pre-outputs):")
+        print(preview_template(task.prompt, ctx))
+        print()
+
+        print("System summary prompt:")
+        print(get_summary_prompt("<generated-filename>"))
+        print()
+
+        if task.on_task_end:
+            print("On task end prompt:")
+            print(preview_template(task.on_task_end, ctx))
+            print()
+
+        if task.post:
+            print("Post-commands (would execute):")
+            for cmd in task.post:
+                print(f"  {preview_template(cmd, ctx)}")
+            print()
+
+        if task.output.notify:
+            print(f"Notification: {task.output.notify}")
+        if task.output.save:
+            print(f"Save output to: {preview_template(task.output.save, ctx)}")
+
+        return 0
+
+    # Acquire lock
+    try:
+        with session_lock(session, wait=wait_lock, timeout=lock_timeout):
+            return _run_ensure_task(
+                args, session, task, ctx, shell, project_path, timeout, json_mode
+            )
+    except LockConflict as e:
+        return _output_result(False, json_mode, str(e), exit_code=ENSURE_EXIT_LOCK_CONFLICT)
+    except LockTimeout as e:
+        return _output_result(False, json_mode, str(e), exit_code=ENSURE_EXIT_LOCK_CONFLICT)
+
+
+def _run_ensure_task(args, session, task, ctx, shell, project_path, timeout, json_mode) -> int:
+    """Run the task (called within lock context)."""
+    from .completion import (
+        CompletionError,
+        CompletionTimeout,
+        generate_summary_filename,
+        get_summary_prompt,
+        parse_summary_file,
+        status_to_exit_code,
+        wait_for_file,
+        wait_for_idle,
+    )
+    from .tasks import PreCommandError, run_post_command, run_pre_command
+    from .templating import TemplateError, expand_all
+
+    max_attempts = task.retries + 1
+    last_status = "incomplete"
+    last_summary = ""
+
+    for attempt in range(1, max_attempts + 1):
+        ctx.attempt = attempt
+
+        if not json_mode and max_attempts > 1:
+            print(f"Attempt {attempt}/{max_attempts}")
+
+        # Ensure session exists
+        if not tmux_session_exists(session):
+            # Create session
+            if not json_mode:
+                print(f"Creating session '{session}'...")
+
+            # Build args for cmd_new
+            class NewArgs:
+                def __init__(self):
+                    self.session = session
+                    self.path = str(project_path)
+                    self.force = False
+                    self.type = None
+                    self.roles = None
+                    self.json = json_mode
+
+            result = cmd_new(NewArgs())
+            if result != 0:
+                return _output_result(False, json_mode, f"Failed to create session '{session}'", exit_code=ENSURE_EXIT_SESSION_ERROR)
+
+            # Wait for session to be ready
+            time.sleep(3)
+
+        # Wait for session to be idle before starting
+        if not json_mode:
+            print("Waiting for session to be idle...")
+
+        try:
+            wait_for_idle(session, timeout=60, idle_threshold=3.0, stable_count=2)
+        except CompletionTimeout:
+            return _output_result(False, json_mode, "Timeout waiting for session to become idle", exit_code=ENSURE_EXIT_TIMEOUT)
+        except CompletionError as e:
+            return _output_result(False, json_mode, str(e), exit_code=ENSURE_EXIT_SESSION_ERROR)
+
+        # Run pre-commands
+        if task.pre:
+            if not json_mode:
+                print("Running pre-commands...")
+
+            for pre in task.pre:
+                try:
+                    output = run_pre_command(pre, shell, project_path)
+                    ctx.set_pre_output(pre.name, output)
+                    if not json_mode:
+                        print(f"  {pre.name}: {len(output)} chars")
+                except PreCommandError as e:
+                    return _output_result(False, json_mode, str(e), exit_code=ENSURE_EXIT_PRE_FAILURE)
+
+        # Expand and send prompt
+        try:
+            prompt = expand_all(task.prompt, ctx)
+        except TemplateError as e:
+            return _output_result(False, json_mode, str(e), exit_code=ENSURE_EXIT_PRE_FAILURE)
+
+        if not json_mode:
+            print("Sending prompt...")
+
+        # Send prompt to session
+        subprocess.run(
+            ["tmux", "send-keys", "-t", f"={session}", prompt, "Enter"],
+            check=True
+        )
+
+        # Wait for first idle (task work complete)
+        if not json_mode:
+            print("Waiting for task completion...")
+
+        try:
+            wait_for_idle(session, timeout=timeout, idle_threshold=task.idle_timeout, stable_count=3)
+        except CompletionTimeout:
+            return _output_result(False, json_mode, f"Timeout waiting for task to complete after {timeout}s", exit_code=ENSURE_EXIT_TIMEOUT)
+        except CompletionError as e:
+            return _output_result(False, json_mode, str(e), exit_code=ENSURE_EXIT_SESSION_ERROR)
+
+        # Generate summary filename and send system summary prompt
+        summary_filename = generate_summary_filename(task.name)
+        summary_path = project_path / summary_filename
+        ctx.summary_file = summary_filename
+
+        # Ensure .agentwire directory exists
+        (project_path / ".agentwire").mkdir(exist_ok=True)
+
+        summary_prompt = get_summary_prompt(summary_filename)
+
+        if not json_mode:
+            print("Requesting task summary...")
+
+        subprocess.run(
+            ["tmux", "send-keys", "-t", f"={session}", summary_prompt, "Enter"],
+            check=True
+        )
+
+        # Wait for summary file
+        try:
+            wait_for_file(summary_path, timeout=120)
+        except CompletionTimeout:
+            # If no summary file, treat as incomplete
+            last_status = "incomplete"
+            last_summary = "No summary file created"
+            if attempt < max_attempts:
+                if not json_mode:
+                    print(f"No summary file, retrying in {task.retry_delay}s...")
+                time.sleep(task.retry_delay)
+                continue
+            break
+
+        # Parse summary
+        try:
+            result = parse_summary_file(summary_path)
+            last_status = result.status
+            last_summary = result.summary
+            ctx.status = result.status
+            ctx.summary = result.summary
+        except Exception as e:
+            last_status = "incomplete"
+            last_summary = f"Failed to parse summary: {e}"
+
+        if not json_mode:
+            print(f"Task status: {last_status}")
+            if last_summary:
+                print(f"Summary: {last_summary}")
+
+        # Send on_task_end prompt if defined
+        if task.on_task_end:
+            try:
+                on_task_end_prompt = expand_all(task.on_task_end, ctx)
+                subprocess.run(
+                    ["tmux", "send-keys", "-t", f"={session}", on_task_end_prompt, "Enter"],
+                    check=True
+                )
+
+                # Wait for this to complete
+                wait_for_idle(session, timeout=60, idle_threshold=task.idle_timeout, stable_count=2)
+            except (TemplateError, CompletionTimeout, CompletionError) as e:
+                if not json_mode:
+                    print(f"Warning: on_task_end failed: {e}")
+
+        # Capture output
+        output_result = subprocess.run(
+            ["tmux", "capture-pane", "-t", f"={session}", "-p", "-S", f"-{task.output.capture}"],
+            capture_output=True,
+            text=True,
+        )
+        ctx.output = output_result.stdout if output_result.returncode == 0 else ""
+
+        # Run post-commands
+        if task.post:
+            if not json_mode:
+                print("Running post-commands...")
+
+            for cmd in task.post:
+                try:
+                    expanded_cmd = expand_all(cmd, ctx)
+                    rc, stdout, stderr = run_post_command(expanded_cmd, shell, project_path)
+                    if rc != 0 and not json_mode:
+                        print(f"  Warning: post-command failed: {stderr}")
+                except TemplateError as e:
+                    if not json_mode:
+                        print(f"  Warning: template error in post-command: {e}")
+
+        # Handle notifications
+        if task.output.notify:
+            _handle_task_notification(task.output.notify, ctx, session, json_mode)
+
+        # Save output if configured
+        if task.output.save:
+            try:
+                save_path = Path(expand_all(task.output.save, ctx)).expanduser()
+                save_path.parent.mkdir(parents=True, exist_ok=True)
+                save_path.write_text(ctx.output)
+                if not json_mode:
+                    print(f"Output saved to: {save_path}")
+            except Exception as e:
+                if not json_mode:
+                    print(f"Warning: Failed to save output: {e}")
+
+        # Check if we should retry
+        if last_status == "failed" and attempt < max_attempts:
+            if not json_mode:
+                print(f"Task failed, retrying in {task.retry_delay}s...")
+            time.sleep(task.retry_delay)
+            continue
+
+        # Done (success or no more retries)
+        break
+
+    # Final result
+    exit_code = status_to_exit_code(last_status)
+
+    if json_mode:
+        _output_json({
+            "success": last_status == "complete",
+            "status": last_status,
+            "summary": last_summary,
+            "attempt": ctx.attempt,
+            "summary_file": ctx.summary_file,
+        })
+    else:
+        print(f"\nTask {task.name}: {last_status}")
+
+    return exit_code
+
+
+def _handle_task_notification(notify_config: str, ctx, session: str, json_mode: bool) -> None:
+    """Handle task notification based on config."""
+    from .templating import expand_all, expand_env_vars
+
+    if notify_config == "voice":
+        # Speak result
+        message = f"Task {ctx.task} {ctx.status}"
+        if ctx.summary:
+            message += f": {ctx.summary}"
+        subprocess.run(["agentwire", "say", "-s", session, message], capture_output=True)
+
+    elif notify_config == "alert":
+        # Send text alert
+        message = f"Task {ctx.task} {ctx.status}"
+        if ctx.summary:
+            message += f": {ctx.summary}"
+        subprocess.run(["agentwire", "alert", "--to", session, message], capture_output=True)
+
+    elif notify_config.startswith("webhook "):
+        # POST to webhook URL
+        import json as json_module
+        url = expand_env_vars(notify_config[8:].strip())
+        payload = {
+            "task": ctx.task,
+            "session": ctx.session,
+            "status": ctx.status,
+            "summary": ctx.summary,
+            "timestamp": datetime.datetime.now().isoformat(),
+            "attempt": ctx.attempt,
+        }
+        try:
+            import urllib.request
+            req = urllib.request.Request(
+                url,
+                data=json_module.dumps(payload).encode(),
+                headers={"Content-Type": "application/json"},
+            )
+            urllib.request.urlopen(req, timeout=10)
+        except Exception as e:
+            if not json_mode:
+                print(f"Warning: Webhook notification failed: {e}")
+
+    elif notify_config.startswith("command "):
+        # Run custom command
+        cmd = notify_config[8:].strip()
+        try:
+            expanded = expand_all(cmd, ctx)
+            subprocess.run(expanded, shell=True, capture_output=True, timeout=30)
+        except Exception as e:
+            if not json_mode:
+                print(f"Warning: Notification command failed: {e}")
+
+
+def cmd_task_list(args) -> int:
+    """List tasks for a session/project."""
+    from .tasks import list_tasks
+
+    session = getattr(args, 'session', None)
+    json_mode = getattr(args, 'json', False)
+
+    # Find project path
+    config = load_config()
+    projects_dir = Path(config.get("projects", {}).get("dir", "~/projects")).expanduser()
+
+    if session:
+        project, _, _ = parse_session_name(session)
+        project_path = projects_dir / project
+    else:
+        # Use current directory
+        project_path = Path.cwd()
+
+    if not project_path.exists():
+        return _output_result(False, json_mode, f"Project path not found: {project_path}")
+
+    tasks = list_tasks(project_path)
+
+    if json_mode:
+        _output_json({"tasks": tasks, "project": str(project_path)})
+        return 0
+
+    if not tasks:
+        print(f"No tasks defined in {project_path / '.agentwire.yml'}")
+        return 0
+
+    print(f"Tasks in {project_path.name}:\n")
+    print(f"{'Name':<25} {'Pre':<5} {'Post':<5} {'Retries':<8}")
+    print("-" * 50)
+    for t in tasks:
+        pre = "Yes" if t["has_pre"] else "-"
+        post = "Yes" if t["has_post"] else "-"
+        print(f"{t['name']:<25} {pre:<5} {post:<5} {t['retries']:<8}")
+
+    return 0
+
+
+def cmd_task_show(args) -> int:
+    """Show task definition details."""
+    from .tasks import TaskNotFound, TaskValidationError, load_task, validate_task
+
+    task_arg = args.task  # format: session/task or just task
+    json_mode = getattr(args, 'json', False)
+
+    # Parse task argument
+    if "/" in task_arg:
+        session, task_name = task_arg.split("/", 1)
+    else:
+        session = None
+        task_name = task_arg
+
+    # Find project path
+    config = load_config()
+    projects_dir = Path(config.get("projects", {}).get("dir", "~/projects")).expanduser()
+
+    if session:
+        project, _, _ = parse_session_name(session)
+        project_path = projects_dir / project
+    else:
+        project_path = Path.cwd()
+
+    try:
+        task = load_task(project_path, task_name)
+    except (TaskNotFound, TaskValidationError) as e:
+        return _output_result(False, json_mode, str(e))
+
+    issues = validate_task(task)
+
+    if json_mode:
+        _output_json({
+            "name": task.name,
+            "prompt": task.prompt,
+            "shell": task.shell,
+            "retries": task.retries,
+            "retry_delay": task.retry_delay,
+            "idle_timeout": task.idle_timeout,
+            "pre": [{"name": p.name, "cmd": p.cmd, "required": p.required, "validate": p.validate, "timeout": p.timeout} for p in task.pre],
+            "on_task_end": task.on_task_end,
+            "post": task.post,
+            "output": {"capture": task.output.capture, "save": task.output.save, "notify": task.output.notify},
+            "validation_issues": issues,
+        })
+        return 0
+
+    print(f"Task: {task.name}\n")
+    print(f"Shell: {task.shell or '/bin/sh'}")
+    print(f"Retries: {task.retries} (delay: {task.retry_delay}s)")
+    print(f"Idle timeout: {task.idle_timeout}s")
+    print()
+
+    if task.pre:
+        print("Pre-commands:")
+        for p in task.pre:
+            req = " (required)" if p.required else ""
+            print(f"  {p.name}: {p.cmd}{req}")
+        print()
+
+    print("Prompt:")
+    print(task.prompt[:200] + "..." if len(task.prompt) > 200 else task.prompt)
+    print()
+
+    if task.on_task_end:
+        print("On task end:")
+        print(task.on_task_end[:100] + "..." if len(task.on_task_end) > 100 else task.on_task_end)
+        print()
+
+    if task.post:
+        print("Post-commands:")
+        for cmd in task.post:
+            print(f"  {cmd}")
+        print()
+
+    if task.output.notify or task.output.save:
+        print("Output:")
+        if task.output.save:
+            print(f"  Save to: {task.output.save}")
+        if task.output.notify:
+            print(f"  Notify: {task.output.notify}")
+
+    if issues:
+        print(f"\nValidation issues: {', '.join(issues)}")
+
+    return 0
+
+
+def cmd_task_validate(args) -> int:
+    """Validate task configuration."""
+    from .tasks import TaskNotFound, TaskValidationError, load_task, validate_task
+
+    task_arg = args.task
+    json_mode = getattr(args, 'json', False)
+
+    # Parse task argument
+    if "/" in task_arg:
+        session, task_name = task_arg.split("/", 1)
+    else:
+        session = None
+        task_name = task_arg
+
+    # Find project path
+    config = load_config()
+    projects_dir = Path(config.get("projects", {}).get("dir", "~/projects")).expanduser()
+
+    if session:
+        project, _, _ = parse_session_name(session)
+        project_path = projects_dir / project
+    else:
+        project_path = Path.cwd()
+
+    try:
+        task = load_task(project_path, task_name)
+    except (TaskNotFound, TaskValidationError) as e:
+        return _output_result(False, json_mode, str(e))
+
+    issues = validate_task(task)
+
+    if json_mode:
+        _output_json({
+            "valid": len(issues) == 0,
+            "issues": issues,
+            "task": task_name,
+        })
+        return 0 if not issues else 1
+
+    if issues:
+        print(f"Task '{task_name}' has issues:")
+        for issue in issues:
+            print(f"  - {issue}")
+        return 1
+    else:
+        print(f"Task '{task_name}' is valid.")
+        return 0
+
+
 class VersionAction(argparse.Action):
     """Custom version action that checks Python version and pip environment."""
 
@@ -7202,6 +7828,47 @@ def main() -> int:
     )
     mcp_parser.set_defaults(func=cmd_mcp)
 
+    # === ensure command (scheduled workloads) ===
+    ensure_parser = subparsers.add_parser(
+        "ensure",
+        help="Run named task with reliable session management",
+        description="Execute a task from .agentwire.yml with locking, retries, and completion detection.",
+    )
+    ensure_parser.add_argument("-s", "--session", required=True, help="Target session name")
+    ensure_parser.add_argument("--task", required=True, help="Task name from .agentwire.yml")
+    ensure_parser.add_argument("--timeout", type=int, default=300, help="Max wait time for completion (default: 300s)")
+    ensure_parser.add_argument("--dry-run", action="store_true", help="Show what would execute without running")
+    ensure_parser.add_argument("--wait-lock", action="store_true", help="Wait for lock instead of failing if locked")
+    ensure_parser.add_argument("--lock-timeout", type=int, default=60, help="Max time to wait for lock (default: 60s)")
+    ensure_parser.add_argument("--json", action="store_true", help="Output JSON")
+    ensure_parser.set_defaults(func=cmd_ensure)
+
+    # === task command group ===
+    task_parser = subparsers.add_parser(
+        "task",
+        help="Manage scheduled tasks",
+        description="List, show, and validate tasks defined in .agentwire.yml.",
+    )
+    task_subparsers = task_parser.add_subparsers(dest="task_command")
+
+    # task list
+    task_list = task_subparsers.add_parser("list", help="List tasks for session/project")
+    task_list.add_argument("session", nargs="?", help="Session name (default: current directory)")
+    task_list.add_argument("--json", action="store_true", help="Output JSON")
+    task_list.set_defaults(func=cmd_task_list)
+
+    # task show
+    task_show = task_subparsers.add_parser("show", help="Show task definition details")
+    task_show.add_argument("task", help="Task name (session/task or just task)")
+    task_show.add_argument("--json", action="store_true", help="Output JSON")
+    task_show.set_defaults(func=cmd_task_show)
+
+    # task validate
+    task_validate = task_subparsers.add_parser("validate", help="Validate task configuration")
+    task_validate.add_argument("task", help="Task name (session/task or just task)")
+    task_validate.add_argument("--json", action="store_true", help="Output JSON")
+    task_validate.set_defaults(func=cmd_task_validate)
+
     args = parser.parse_args()
 
     if args.command is None:
@@ -7258,6 +7925,10 @@ def main() -> int:
 
     if args.command == "roles" and getattr(args, "roles_command", None) is None:
         roles_parser.print_help()
+        return 0
+
+    if args.command == "task" and getattr(args, "task_command", None) is None:
+        task_parser.print_help()
         return 0
 
     if hasattr(args, "func"):
