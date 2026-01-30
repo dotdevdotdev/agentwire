@@ -52,18 +52,20 @@ type: opencode-bypass
 roles:
   - leader
 voice: may
+shell: /bin/sh               # Optional: default shell for task commands (default: /bin/sh)
 
 tasks:
   task-name:
-    pre:                          # Optional: data gathering
+    shell: /bin/bash         # Optional: override shell for this task
+    pre:                     # Optional: data gathering
       var_name: "shell command"
       other_var: "another command"
-    prompt: |                     # Required: the prompt (supports {{ variables }})
+    prompt: |                # Required: the prompt (supports {{ variables }})
       Do something with {{ var_name }}
       Write results to {{ output_file }}
-    post:                         # Optional: list of commands to run after
+    post:                    # Optional: list of commands to run after
       - "shell command with {{ output }}"
-    output:                       # Optional: output handling
+    output:                  # Optional: output handling
       file: path/to/output.md     # Where agent should write
       capture: 50                 # Lines to capture from session
       save: ~/logs/{{ task }}.log # Where to save captured output
@@ -237,6 +239,30 @@ tasks:
 - **No approval workflows** - Fire and execute
 - **No cost guardrails** - User's API keys, user's problem
 - **No prompt validation** - Minimal syntax check only
+
+## Cross-Platform
+
+Works on macOS and Linux. Windows not supported (no tmux).
+
+| Component | Approach |
+|-----------|----------|
+| Shell | Default `/bin/sh` (POSIX), user can override per-project or per-task |
+| Paths | Python pathlib, `~/` expansion handled |
+| User commands | User's responsibility to write portable pre/post commands |
+
+Shell configuration:
+```yaml
+# Project-level default
+shell: /bin/sh
+
+tasks:
+  needs-bash:
+    shell: /bin/bash  # Task-level override
+    pre:
+      data: "bash-specific stuff"
+```
+
+Default: `/bin/sh` for maximum portability. Users who need bash/zsh features can override.
 
 ## Dependencies
 
