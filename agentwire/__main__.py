@@ -6739,16 +6739,20 @@ def cmd_ensure(args) -> int:
 
 
 def _run_ensure_task(args, session, task, ctx, shell, project_path, timeout, json_mode) -> int:
-    """Run the task (called within lock context)."""
+    """Run the task (called within lock context).
+
+    Flow:
+    1. Send task prompt with embedded summary instructions
+    2. Wait for summary file to appear
+    3. Parse summary file for status
+    """
     from .completion import (
-        CompletionError,
         CompletionTimeout,
         generate_summary_filename,
         get_summary_prompt,
         parse_summary_file,
         status_to_exit_code,
         wait_for_file,
-        wait_for_idle,
     )
     from .tasks import PreCommandError, run_post_command, run_pre_command
     from .templating import TemplateError, expand_all
@@ -6765,11 +6769,9 @@ def _run_ensure_task(args, session, task, ctx, shell, project_path, timeout, jso
 
         # Ensure session exists
         if not tmux_session_exists(session):
-            # Create session
             if not json_mode:
                 print(f"Creating session '{session}'...")
 
-            # Build args for cmd_new
             class NewArgs:
                 def __init__(self):
                     self.session = session
@@ -6783,19 +6785,10 @@ def _run_ensure_task(args, session, task, ctx, shell, project_path, timeout, jso
             if result != 0:
                 return _output_result(False, json_mode, f"Failed to create session '{session}'", exit_code=ENSURE_EXIT_SESSION_ERROR)
 
-            # Wait for session to be ready
-            time.sleep(3)
-
-        # Wait for session to be idle before starting
-        if not json_mode:
-            print("Waiting for session to be idle...")
-
-        try:
-            wait_for_idle(session, timeout=60, idle_threshold=3.0, stable_count=2)
-        except CompletionTimeout:
-            return _output_result(False, json_mode, "Timeout waiting for session to become idle", exit_code=ENSURE_EXIT_TIMEOUT)
-        except CompletionError as e:
-            return _output_result(False, json_mode, str(e), exit_code=ENSURE_EXIT_SESSION_ERROR)
+            # Wait for Claude to initialize
+            if not json_mode:
+                print("Waiting for session to initialize...")
+            time.sleep(5)
 
         # Run pre-commands
         if task.pre:
@@ -6811,33 +6804,13 @@ def _run_ensure_task(args, session, task, ctx, shell, project_path, timeout, jso
                 except PreCommandError as e:
                     return _output_result(False, json_mode, str(e), exit_code=ENSURE_EXIT_PRE_FAILURE)
 
-        # Expand and send prompt
+        # Expand prompt
         try:
             prompt = expand_all(task.prompt, ctx)
         except TemplateError as e:
             return _output_result(False, json_mode, str(e), exit_code=ENSURE_EXIT_PRE_FAILURE)
 
-        if not json_mode:
-            print("Sending prompt...")
-
-        # Send prompt to session
-        subprocess.run(
-            ["tmux", "send-keys", "-t", session, prompt, "Enter"],
-            check=True
-        )
-
-        # Wait for first idle (task work complete)
-        if not json_mode:
-            print("Waiting for task completion...")
-
-        try:
-            wait_for_idle(session, timeout=timeout, idle_threshold=task.idle_timeout, stable_count=3)
-        except CompletionTimeout:
-            return _output_result(False, json_mode, f"Timeout waiting for task to complete after {timeout}s", exit_code=ENSURE_EXIT_TIMEOUT)
-        except CompletionError as e:
-            return _output_result(False, json_mode, str(e), exit_code=ENSURE_EXIT_SESSION_ERROR)
-
-        # Generate summary filename and send system summary prompt
+        # Generate summary filename
         summary_filename = generate_summary_filename(task.name)
         summary_path = project_path / summary_filename
         ctx.summary_file = summary_filename
@@ -6845,31 +6818,33 @@ def _run_ensure_task(args, session, task, ctx, shell, project_path, timeout, jso
         # Ensure .agentwire directory exists
         (project_path / ".agentwire").mkdir(exist_ok=True)
 
-        summary_prompt = get_summary_prompt(summary_filename)
+        # Build combined prompt with summary instructions
+        summary_instructions = get_summary_prompt(summary_filename)
+        combined_prompt = f"{prompt}\n\nWhen done, {summary_instructions}"
 
         if not json_mode:
-            print("Requesting task summary...")
+            print("Sending task prompt...")
 
-        subprocess.run(
-            ["tmux", "send-keys", "-t", session, summary_prompt, "Enter"],
-            check=True
-        )
+        # Send combined prompt using pane_manager for proper handling
+        pane_manager.send_to_pane(session, 0, combined_prompt, enter=True)
 
-        # Wait for summary file
+        # Wait for summary file to appear
+        if not json_mode:
+            print("Waiting for task completion...")
+
         try:
-            wait_for_file(summary_path, timeout=120)
+            wait_for_file(summary_path, timeout=timeout)
         except CompletionTimeout:
-            # If no summary file, treat as incomplete
             last_status = "incomplete"
-            last_summary = "No summary file created"
+            last_summary = "Timeout waiting for task completion"
             if attempt < max_attempts:
                 if not json_mode:
-                    print(f"No summary file, retrying in {task.retry_delay}s...")
+                    print(f"Timeout, retrying in {task.retry_delay}s...")
                 time.sleep(task.retry_delay)
                 continue
             break
 
-        # Parse summary
+        # Parse summary file
         try:
             result = parse_summary_file(summary_path)
             last_status = result.status
@@ -6885,20 +6860,16 @@ def _run_ensure_task(args, session, task, ctx, shell, project_path, timeout, jso
             if last_summary:
                 print(f"Summary: {last_summary}")
 
-        # Send on_task_end prompt if defined
+        # on_task_end: send additional prompt after summary is written
         if task.on_task_end:
             try:
-                on_task_end_prompt = expand_all(task.on_task_end, ctx)
-                subprocess.run(
-                    ["tmux", "send-keys", "-t", session, on_task_end_prompt, "Enter"],
-                    check=True
-                )
-
-                # Wait for this to complete
-                wait_for_idle(session, timeout=60, idle_threshold=task.idle_timeout, stable_count=2)
-            except (TemplateError, CompletionTimeout, CompletionError) as e:
+                end_prompt = expand_all(task.on_task_end, ctx)
+                pane_manager.send_to_pane(session, 0, end_prompt, enter=True)
                 if not json_mode:
-                    print(f"Warning: on_task_end failed: {e}")
+                    print("Sent on_task_end prompt")
+            except TemplateError as e:
+                if not json_mode:
+                    print(f"Warning: template error in on_task_end: {e}")
 
         # Capture output
         output_result = subprocess.run(

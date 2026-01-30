@@ -1,13 +1,14 @@
 """Completion detection for scheduled tasks.
 
 Handles:
-- Idle detection (session goes quiet)
+- Task context files (coordinate with idle hook)
 - System summary prompt (ask agent to write summary)
 - Summary file parsing (extract status from YAML front matter)
+- Completion signal files (hook signals ensure)
 """
 
+import json
 import re
-import subprocess
 import time
 from datetime import datetime
 from pathlib import Path
@@ -24,6 +25,10 @@ class CompletionTimeout(CompletionError):
     """Raised when waiting for completion times out."""
 
     pass
+
+
+# Directory for task coordination files
+TASKS_DIR = Path.home() / ".agentwire" / "tasks"
 
 
 class SummaryResult(NamedTuple):
@@ -72,6 +77,168 @@ def generate_summary_filename(task_name: str) -> str:
     """
     timestamp = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
     return f".agentwire/task-summary-{timestamp}.md"
+
+
+# =============================================================================
+# Task Context (coordinate between ensure and idle hook)
+# =============================================================================
+
+
+def write_task_context(
+    session: str,
+    task_name: str,
+    summary_file: str,
+    attempt: int = 1,
+) -> Path:
+    """Write task context file for hook coordination.
+
+    The idle hook reads this to know:
+    - A scheduled task is running
+    - What summary file to request
+
+    Args:
+        session: tmux session name
+        task_name: Task being executed
+        summary_file: Relative path for summary file
+        attempt: Current attempt number
+
+    Returns:
+        Path to the context file
+    """
+    TASKS_DIR.mkdir(parents=True, exist_ok=True)
+
+    context = {
+        "task": task_name,
+        "summary_file": summary_file,
+        "started_at": datetime.now().isoformat(),
+        "attempt": attempt,
+        "idle_count": 0,  # Hook increments this
+    }
+
+    context_file = TASKS_DIR / f"{session}.json"
+    context_file.write_text(json.dumps(context, indent=2))
+    return context_file
+
+
+def read_task_context(session: str) -> dict | None:
+    """Read task context file.
+
+    Args:
+        session: tmux session name
+
+    Returns:
+        Context dict or None if not found
+    """
+    context_file = TASKS_DIR / f"{session}.json"
+    if not context_file.exists():
+        return None
+
+    try:
+        return json.loads(context_file.read_text())
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
+def update_task_context(session: str, **updates) -> bool:
+    """Update fields in task context file.
+
+    Args:
+        session: tmux session name
+        **updates: Fields to update
+
+    Returns:
+        True if updated successfully
+    """
+    context = read_task_context(session)
+    if context is None:
+        return False
+
+    context.update(updates)
+    context_file = TASKS_DIR / f"{session}.json"
+
+    try:
+        context_file.write_text(json.dumps(context, indent=2))
+        return True
+    except OSError:
+        return False
+
+
+def clear_task_context(session: str) -> None:
+    """Remove task context and completion signal files.
+
+    Args:
+        session: tmux session name
+    """
+    context_file = TASKS_DIR / f"{session}.json"
+    complete_file = TASKS_DIR / f"{session}.complete"
+
+    for f in [context_file, complete_file]:
+        try:
+            f.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
+def write_completion_signal(session: str, status: str, summary_file: str) -> Path:
+    """Write completion signal file (called by hook).
+
+    Args:
+        session: tmux session name
+        status: Task status from summary
+        summary_file: Path to summary file
+
+    Returns:
+        Path to the completion signal file
+    """
+    TASKS_DIR.mkdir(parents=True, exist_ok=True)
+
+    signal = {
+        "completed_at": datetime.now().isoformat(),
+        "status": status,
+        "summary_file": summary_file,
+    }
+
+    complete_file = TASKS_DIR / f"{session}.complete"
+    complete_file.write_text(json.dumps(signal, indent=2))
+    return complete_file
+
+
+def wait_for_completion_signal(
+    session: str,
+    timeout: float = 300.0,
+    poll_interval: float = 2.0,
+) -> dict:
+    """Wait for completion signal from hook.
+
+    Args:
+        session: tmux session name
+        timeout: Maximum seconds to wait
+        poll_interval: Seconds between checks
+
+    Returns:
+        Completion signal dict with status and summary_file
+
+    Raises:
+        CompletionTimeout: If timeout exceeded
+    """
+    complete_file = TASKS_DIR / f"{session}.complete"
+    start_time = time.time()
+
+    while True:
+        if complete_file.exists():
+            try:
+                signal = json.loads(complete_file.read_text())
+                return signal
+            except (json.JSONDecodeError, OSError):
+                pass  # File may be partially written, retry
+
+        elapsed = time.time() - start_time
+        if elapsed >= timeout:
+            raise CompletionTimeout(
+                f"Timeout waiting for task completion after {timeout:.0f}s"
+            )
+
+        time.sleep(poll_interval)
 
 
 def get_summary_prompt(summary_file: str) -> str:
