@@ -143,6 +143,23 @@ agentwire task validate SESSION/TASK    # Validate task syntax
 - [ ] `output.save` - save captured output to file
 - [ ] `output.notify` - voice/alert/webhook/command
 
+### Phase 7: MCP Tools
+- [ ] `agentwire_ensure` - ensure session + send prompt/task
+- [ ] `agentwire_task_list` - list tasks for session
+- [ ] `agentwire_task_show` - show task definition
+- [ ] `agentwire_task_run` - run task (alias)
+
+### Phase 8: Roles
+- [ ] Create `task-runner` role for scheduled execution
+- [ ] Update `leader` role with scheduled context section
+- [ ] Consider `--role` override for tasks
+
+### Phase 9: Documentation
+- [ ] Update CLAUDE.md with ensure/task commands
+- [ ] Update CLAUDE.md MCP tools table
+- [ ] Finalize docs/scheduled-workloads.md for users
+- [ ] Add examples to role files
+
 ## Test Cases
 
 ### Basic Ensure
@@ -232,6 +249,119 @@ tasks:
 - `agentwire/config.py` - Extend `.agentwire.yml` schema for tasks
 - `agentwire/tasks.py` - New module for task loading/execution
 - `agentwire/templating.py` - New module for variable substitution
+- `agentwire/mcp_server.py` - Add MCP tools for tasks
+- `agentwire/roles/*.md` - Update/add roles for scheduled work
+- `CLAUDE.md` - Document new commands and MCP tools
+- `docs/scheduled-workloads.md` - User-facing documentation
+
+## MCP Tools
+
+New tools for agents to work with tasks:
+
+```python
+@mcp.tool()
+def ensure(session: str, prompt: str | None = None, task: str | None = None) -> str:
+    """Ensure session exists and send prompt/task.
+
+    Args:
+        session: Target session name
+        prompt: Inline prompt to send (optional)
+        task: Task name from .agentwire.yml (optional)
+    """
+
+@mcp.tool()
+def task_list(session: str | None = None) -> str:
+    """List available tasks for a session/project."""
+
+@mcp.tool()
+def task_show(session: str, task: str) -> str:
+    """Show task definition details."""
+
+@mcp.tool()
+def task_run(session: str, task: str) -> str:
+    """Run a task (alias for ensure --task)."""
+```
+
+## Role Updates
+
+### New Role: `task-runner`
+
+Optimized for scheduled/headless execution:
+
+```markdown
+# Task Runner
+
+You're executing a scheduled task. Work autonomously and report results.
+
+## Context
+
+You're running as part of a scheduled workflow:
+- Pre-commands have already gathered data (in your prompt)
+- Write output to {{ output_file }} if specified
+- Post-commands will handle notifications
+
+## Expectations
+
+- Complete the task without user interaction
+- Write structured output for post-processing
+- Use voice sparingly (scheduled = possibly unattended)
+- Be concise - this runs repeatedly
+```
+
+### Update: `leader` Role
+
+Add section for scheduled context awareness:
+
+```markdown
+## Scheduled Execution
+
+When running via `agentwire ensure --task`:
+- Pre-phase has populated your context with fresh data
+- Write to {{ output_file }} for post-phase processing
+- Post-phase will handle notifications
+- Keep output structured for automation
+```
+
+## Documentation Updates
+
+### CLAUDE.md Additions
+
+```markdown
+## Scheduled Workloads
+
+### ensure Command
+
+\`\`\`bash
+agentwire ensure -s session "prompt"      # Inline prompt
+agentwire ensure -s session --task name   # Named task
+\`\`\`
+
+Reliably sends prompt to session, creating if needed.
+
+### Tasks
+
+Define in `.agentwire.yml`:
+
+\`\`\`yaml
+tasks:
+  task-name:
+    pre:
+      var: "command"
+    prompt: "Use {{ var }}"
+    output:
+      file: output.md
+      notify: voice
+\`\`\`
+
+### MCP Tools
+
+| CLI | MCP Tool |
+|-----|----------|
+| `agentwire ensure -s x "prompt"` | `agentwire_ensure(session="x", prompt="...")` |
+| `agentwire ensure -s x --task y` | `agentwire_task_run(session="x", task="y")` |
+| `agentwire task list x` | `agentwire_task_list(session="x")` |
+\`\`\`
+```
 
 ## Success Criteria
 
