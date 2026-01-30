@@ -99,9 +99,10 @@ def is_session_idle(session: str, idle_threshold: float = 3.0) -> bool:
         True if session is idle, False otherwise
     """
     # Try to get activity time from tmux
+    # Note: display-message and capture-pane don't support = prefix for exact match
     try:
         result = subprocess.run(
-            ["tmux", "display-message", "-p", "-t", f"={session}", "#{pane_last_activity}"],
+            ["tmux", "display-message", "-p", "-t", session, "#{pane_last_activity}"],
             capture_output=True,
             text=True,
             timeout=5,
@@ -165,8 +166,9 @@ def wait_for_idle(
             raise CompletionError(f"Session '{session}' no longer exists")
 
         # Get current output snapshot
+        # Note: capture-pane doesn't support = prefix for exact match
         result = subprocess.run(
-            ["tmux", "capture-pane", "-t", f"={session}", "-p", "-S", "-20"],
+            ["tmux", "capture-pane", "-t", session, "-p", "-S", "-20"],
             capture_output=True,
             text=True,
             timeout=5,

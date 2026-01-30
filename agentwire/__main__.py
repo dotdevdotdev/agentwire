@@ -6822,7 +6822,7 @@ def _run_ensure_task(args, session, task, ctx, shell, project_path, timeout, jso
 
         # Send prompt to session
         subprocess.run(
-            ["tmux", "send-keys", "-t", f"={session}", prompt, "Enter"],
+            ["tmux", "send-keys", "-t", session, prompt, "Enter"],
             check=True
         )
 
@@ -6851,7 +6851,7 @@ def _run_ensure_task(args, session, task, ctx, shell, project_path, timeout, jso
             print("Requesting task summary...")
 
         subprocess.run(
-            ["tmux", "send-keys", "-t", f"={session}", summary_prompt, "Enter"],
+            ["tmux", "send-keys", "-t", session, summary_prompt, "Enter"],
             check=True
         )
 
@@ -6890,7 +6890,7 @@ def _run_ensure_task(args, session, task, ctx, shell, project_path, timeout, jso
             try:
                 on_task_end_prompt = expand_all(task.on_task_end, ctx)
                 subprocess.run(
-                    ["tmux", "send-keys", "-t", f"={session}", on_task_end_prompt, "Enter"],
+                    ["tmux", "send-keys", "-t", session, on_task_end_prompt, "Enter"],
                     check=True
                 )
 
@@ -6902,7 +6902,7 @@ def _run_ensure_task(args, session, task, ctx, shell, project_path, timeout, jso
 
         # Capture output
         output_result = subprocess.run(
-            ["tmux", "capture-pane", "-t", f"={session}", "-p", "-S", f"-{task.output.capture}"],
+            ["tmux", "capture-pane", "-t", session, "-p", "-S", f"-{task.output.capture}"],
             capture_output=True,
             text=True,
         )
