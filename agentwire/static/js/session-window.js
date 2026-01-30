@@ -998,7 +998,7 @@ export class SessionWindow {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    text: `[User said: '${text}' - respond using CLI: agentwire say 'your message']`
+                    text: `[User said: '${text}' - respond using MCP tool: agentwire_say(text="your message")]`
                 }),
             });
 
