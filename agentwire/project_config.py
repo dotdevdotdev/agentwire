@@ -8,7 +8,7 @@ import shutil
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import yaml
 
@@ -135,6 +135,8 @@ class ProjectConfig:
     roles: list[str] = field(default_factory=list)  # Composable roles
     voice: Optional[str] = None  # TTS voice
     parent: Optional[str] = None  # Parent session for hierarchical notifications
+    shell: Optional[str] = None  # Default shell for task commands (default: /bin/sh)
+    tasks: dict[str, Any] = field(default_factory=dict)  # Task definitions (raw dict, parsed by tasks.py)
 
     def to_dict(self) -> dict:
         """Convert to dictionary for YAML serialization."""
@@ -147,6 +149,10 @@ class ProjectConfig:
             d["voice"] = self.voice
         if self.parent:
             d["parent"] = self.parent
+        if self.shell:
+            d["shell"] = self.shell
+        if self.tasks:
+            d["tasks"] = self.tasks
         return d
 
     @classmethod
@@ -156,12 +162,16 @@ class ProjectConfig:
         roles = data.get("roles", [])
         voice = data.get("voice")
         parent = data.get("parent")
+        shell = data.get("shell")
+        tasks = data.get("tasks", {})
 
         return cls(
             type=SessionType.from_str(type_value) if isinstance(type_value, str) else type_value,
             roles=roles if isinstance(roles, list) else [roles] if roles else [],
             voice=voice,
             parent=parent,
+            shell=shell,
+            tasks=tasks if isinstance(tasks, dict) else {},
         )
 
 
