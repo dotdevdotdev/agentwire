@@ -6648,13 +6648,14 @@ def cmd_ensure(args) -> int:
     if machine_id:
         return _output_result(False, json_mode, "Remote sessions not yet supported for ensure", exit_code=ENSURE_EXIT_SESSION_ERROR)
 
-    # Find project path from session name or existing session
-    config = load_config()
-    projects_dir = Path(config.get("projects", {}).get("dir", "~/projects")).expanduser()
-
-    # Parse session name to get project
-    project, branch, _ = parse_session_name(session_name)
-    project_path = projects_dir / project
+    # Find project path from --project flag, or derive from session name
+    if hasattr(args, 'project') and args.project:
+        project_path = Path(args.project).expanduser().resolve()
+    else:
+        config = load_config()
+        projects_dir = Path(config.get("projects", {}).get("dir", "~/projects")).expanduser()
+        project, branch, _ = parse_session_name(session_name)
+        project_path = projects_dir / project
 
     if not project_path.exists():
         return _output_result(False, json_mode, f"Project path not found: {project_path}", exit_code=ENSURE_EXIT_SESSION_ERROR)
@@ -6828,6 +6829,7 @@ def _run_ensure_task(args, session, task, ctx, shell, project_path, timeout, jso
             task_name=task.name,
             summary_file=summary_filename,
             attempt=attempt,
+            exit_on_complete=task.exit_on_complete,
         )
 
         if not json_mode:
@@ -7820,6 +7822,7 @@ def main() -> int:
         description="Execute a task from .agentwire.yml with locking, retries, and completion detection.",
     )
     ensure_parser.add_argument("-s", "--session", required=True, help="Target session name")
+    ensure_parser.add_argument("-p", "--project", help="Project path containing .agentwire.yml (defaults to ~/projects/{session})")
     ensure_parser.add_argument("--task", required=True, help="Task name from .agentwire.yml")
     ensure_parser.add_argument("--timeout", type=int, default=300, help="Max wait time for completion (default: 300s)")
     ensure_parser.add_argument("--dry-run", action="store_true", help="Show what would execute without running")

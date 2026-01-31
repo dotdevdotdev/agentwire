@@ -79,6 +79,7 @@ class TaskConfig:
 
     # Completion configuration
     idle_timeout: int = 30  # Seconds of idle before completion
+    exit_on_complete: bool = True  # Exit session after task completion
 
     # Pre-phase: data gathering
     pre: list[PreCommand] = field(default_factory=list)
@@ -175,6 +176,7 @@ def parse_task_config(name: str, config: dict, default_shell: str | None = None)
         retries=config.get("retries", 0),
         retry_delay=config.get("retry_delay", 30),
         idle_timeout=config.get("idle_timeout", 30),
+        exit_on_complete=config.get("exit_on_complete", True),
         pre=pre_commands,
         on_task_end=config.get("on_task_end"),
         post=post_commands,
