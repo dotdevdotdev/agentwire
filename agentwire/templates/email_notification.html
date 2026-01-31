@@ -40,8 +40,8 @@
     }
 
     .echo-logo {
-      width: 80px;
       height: 80px;
+      width: auto;
       margin-bottom: 15px;
     }
 
@@ -55,6 +55,13 @@
       font-size: 28px;
       font-weight: 700;
       letter-spacing: 1px;
+    }
+
+    .banner {
+      width: 100%;
+      height: auto;
+      border-radius: 8px;
+      margin-bottom: 20px;
     }
 
     /* Greeting */
@@ -158,8 +165,8 @@
     }
 
     .signoff-echo {
-      width: 24px;
       height: 24px;
+      width: auto;
       vertical-align: middle;
       margin-left: 4px;
     }
@@ -198,7 +205,9 @@
 
       <!-- Header -->
       <div class="header">
-        {% if echo_image_url %}
+        {% if banner_image_url %}
+        <img src="{{ banner_image_url }}" alt="AgentWire" class="banner">
+        {% elif echo_image_url %}
         <img src="{{ echo_image_url }}" alt="Echo" class="echo-logo">
         {% endif %}
         {% if logo_image_url %}

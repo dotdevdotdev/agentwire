@@ -189,6 +189,7 @@ class EmailConfig:
     from_address: str = ""  # Verified sender (e.g., notifications@agentwire.dev)
     default_to: str = ""  # Default recipient
     # Email branding images (hosted publicly, e.g., on agentwire.dev)
+    banner_image_url: str = ""  # Full banner with Echo, wires, tree
     echo_image_url: str = ""  # Echo owl for header (~80px)
     echo_small_url: str = ""  # Small Echo for sign-off (~24px)
     logo_image_url: str = ""  # AgentWire text logo
@@ -384,6 +385,7 @@ def _dict_to_config(data: dict) -> Config:
         api_key=email_api_key,
         from_address=email_data.get("from_address", ""),
         default_to=email_data.get("default_to", ""),
+        banner_image_url=email_data.get("banner_image_url", ""),
         echo_image_url=email_data.get("echo_image_url", ""),
         echo_small_url=email_data.get("echo_small_url", ""),
         logo_image_url=email_data.get("logo_image_url", ""),
