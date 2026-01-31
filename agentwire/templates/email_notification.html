@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="dark">
+  <title>{{ subject }}</title>
+  <style>
+    /* Reset */
+    body, table, td, p, a, li { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+    table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
+
+    /* Base */
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: #000000;
+      color: #e0e0e0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      font-size: 16px;
+      line-height: 1.6;
+    }
+
+    .wrapper {
+      background-color: #000000;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 600px;
+      margin: 0 auto;
+      background-color: #000000;
+    }
+
+    /* Header */
+    .header {
+      text-align: center;
+      padding: 30px 20px;
+      border-bottom: 2px solid #00ff88;
+    }
+
+    .echo-logo {
+      width: 80px;
+      height: 80px;
+      margin-bottom: 15px;
+    }
+
+    .brand-logo {
+      max-width: 200px;
+      height: auto;
+    }
+
+    .brand-text {
+      color: #00ff88;
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: 1px;
+    }
+
+    /* Greeting */
+    .greeting {
+      color: #00d4ff;
+      font-size: 20px;
+      padding: 25px 20px 15px 20px;
+    }
+
+    /* Content Card */
+    .content-card {
+      background: linear-gradient(145deg, #111111 0%, #0a0a0a 100%);
+      border: 1px solid #222222;
+      border-left: 3px solid #00ff88;
+      border-radius: 8px;
+      padding: 25px;
+      margin: 10px 20px 20px 20px;
+    }
+
+    .subject-line {
+      color: #00ff88;
+      font-size: 22px;
+      font-weight: 600;
+      margin: 0 0 20px 0;
+      padding-bottom: 15px;
+      border-bottom: 1px solid #333333;
+    }
+
+    .body-content {
+      color: #d0d0d0;
+      line-height: 1.7;
+    }
+
+    .body-content p { margin: 0 0 15px 0; }
+    .body-content p:last-child { margin-bottom: 0; }
+    .body-content code {
+      background: #1a1a1a;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+      font-size: 14px;
+      color: #00d4ff;
+    }
+    .body-content pre {
+      background: #1a1a1a;
+      padding: 15px;
+      border-radius: 6px;
+      overflow-x: auto;
+      border: 1px solid #333;
+    }
+    .body-content pre code {
+      background: none;
+      padding: 0;
+    }
+    .body-content ul, .body-content ol {
+      margin: 0 0 15px 0;
+      padding-left: 25px;
+    }
+    .body-content li { margin-bottom: 8px; }
+    .body-content a {
+      color: #00d4ff;
+      text-decoration: none;
+    }
+    .body-content a:hover { text-decoration: underline; }
+    .body-content h1, .body-content h2, .body-content h3 {
+      color: #ffffff;
+      margin: 20px 0 10px 0;
+    }
+    .body-content blockquote {
+      border-left: 3px solid #00ff88;
+      margin: 15px 0;
+      padding-left: 15px;
+      color: #999;
+    }
+
+    /* Attachments */
+    .attachments {
+      margin-top: 20px;
+      padding-top: 15px;
+      border-top: 1px solid #333333;
+    }
+
+    .attachment-item {
+      display: inline-block;
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 6px;
+      padding: 8px 14px;
+      margin: 5px 5px 5px 0;
+      color: #00d4ff;
+      font-size: 14px;
+    }
+
+    .attachment-icon { margin-right: 6px; }
+
+    /* Sign-off */
+    .signoff {
+      padding: 20px;
+      color: #888888;
+      font-size: 16px;
+    }
+
+    .signoff-echo {
+      width: 24px;
+      height: 24px;
+      vertical-align: middle;
+      margin-left: 4px;
+    }
+
+    /* Footer */
+    .footer {
+      text-align: center;
+      padding: 25px 20px;
+      border-top: 1px solid #222222;
+    }
+
+    .footer-link {
+      color: #00d4ff;
+      text-decoration: none;
+      font-size: 14px;
+    }
+
+    .footer-tagline {
+      color: #444444;
+      font-size: 12px;
+      margin-top: 8px;
+    }
+
+    /* Responsive */
+    @media only screen and (max-width: 480px) {
+      .container { width: 100% !important; }
+      .content-card { margin: 10px !important; padding: 20px !important; }
+      .greeting { font-size: 18px !important; }
+      .subject-line { font-size: 20px !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <div class="container">
+
+      <!-- Header -->
+      <div class="header">
+        {% if echo_image_url %}
+        <img src="{{ echo_image_url }}" alt="Echo" class="echo-logo">
+        {% endif %}
+        {% if logo_image_url %}
+        <img src="{{ logo_image_url }}" alt="AgentWire" class="brand-logo">
+        {% else %}
+        <div class="brand-text">AgentWire</div>
+        {% endif %}
+      </div>
+
+      <!-- Greeting -->
+      <div class="greeting">{{ greeting }}</div>
+
+      <!-- Content Card -->
+      <div class="content-card">
+        <div class="subject-line">{{ subject }}</div>
+        <div class="body-content">{{ body_html | safe }}</div>
+
+        {% if attachments %}
+        <div class="attachments">
+          {% for attachment in attachments %}
+          <span class="attachment-item">
+            <span class="attachment-icon">📎</span>{{ attachment.filename }}
+          </span>
+          {% endfor %}
+        </div>
+        {% endif %}
+      </div>
+
+      <!-- Sign-off -->
+      <div class="signoff">
+        — Echo
+        {% if echo_small_url %}
+        <img src="{{ echo_small_url }}" alt="" class="signoff-echo">
+        {% endif %}
+      </div>
+
+      <!-- Footer -->
+      <div class="footer">
+        <a href="https://agentwire.dev" class="footer-link">agentwire.dev</a>
+        <div class="footer-tagline">Voice interface for AI agents</div>
+      </div>
+
+    </div>
+  </div>
+</body>
+</html>

@@ -16,6 +16,12 @@ import tempfile
 import time
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+# Load .env files (project first, then global config)
+load_dotenv()  # .env in current directory
+load_dotenv(Path.home() / ".agentwire" / ".env")  # Global config
+
 from . import __version__, cli_safety, pane_manager
 from .project_config import (
     ProjectConfig,
@@ -7518,6 +7524,17 @@ def main() -> int:
     alert_parser.add_argument("--to", type=str, metavar="SESSION", help="Target session (default: parent from .agentwire.yml)")
     alert_parser.add_argument("-q", "--quiet", action="store_true", help="Suppress output")
     alert_parser.set_defaults(func=cmd_alert)
+
+    # === email command ===
+    from agentwire.notifications import cmd_email
+    email_parser = subparsers.add_parser("email", help="Send branded email notification via Resend")
+    email_parser.add_argument("--to", type=str, help="Recipient email (default: from config)")
+    email_parser.add_argument("--subject", "-s", type=str, help="Email subject")
+    email_parser.add_argument("--body", "-b", type=str, help="Email body - markdown supported (or pipe via stdin)")
+    email_parser.add_argument("--attach", "-a", type=str, action="append", help="Attach file (can use multiple times)")
+    email_parser.add_argument("--plain", action="store_true", help="Send plain text only (no HTML template)")
+    email_parser.add_argument("-q", "--quiet", action="store_true", help="Suppress success output")
+    email_parser.set_defaults(func=cmd_email)
 
     # === notify command ===
     notify_parser = subparsers.add_parser("notify", help="Notify portal of session/pane state changes")

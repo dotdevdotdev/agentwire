@@ -182,6 +182,26 @@ class SessionConfig:
 
 
 @dataclass
+class EmailConfig:
+    """Email notification configuration (Resend)."""
+
+    api_key: str = ""  # Resend API key (or set RESEND_API_KEY env var)
+    from_address: str = ""  # Verified sender (e.g., notifications@agentwire.dev)
+    default_to: str = ""  # Default recipient
+    # Email branding images (hosted publicly, e.g., on agentwire.dev)
+    echo_image_url: str = ""  # Echo owl for header (~80px)
+    echo_small_url: str = ""  # Small Echo for sign-off (~24px)
+    logo_image_url: str = ""  # AgentWire text logo
+
+
+@dataclass
+class NotificationsConfig:
+    """Notification channels configuration."""
+
+    email: EmailConfig = field(default_factory=EmailConfig)
+
+
+@dataclass
 class Config:
     """Root configuration for AgentWire."""
 
@@ -195,6 +215,7 @@ class Config:
     portal: PortalConfig = field(default_factory=PortalConfig)
     services: ServicesConfig = field(default_factory=ServicesConfig)
     session: SessionConfig = field(default_factory=SessionConfig)
+    notifications: NotificationsConfig = field(default_factory=NotificationsConfig)
 
 
 def _merge_dict(base: dict, override: dict) -> dict:
@@ -354,6 +375,21 @@ def _dict_to_config(data: dict) -> Config:
         tts=tts_service,
     )
 
+    # Notifications
+    notifications_data = data.get("notifications", {})
+    email_data = notifications_data.get("email", {})
+    # Support RESEND_API_KEY env var as fallback
+    email_api_key = email_data.get("api_key") or os.environ.get("RESEND_API_KEY", "")
+    email_config = EmailConfig(
+        api_key=email_api_key,
+        from_address=email_data.get("from_address", ""),
+        default_to=email_data.get("default_to", ""),
+        echo_image_url=email_data.get("echo_image_url", ""),
+        echo_small_url=email_data.get("echo_small_url", ""),
+        logo_image_url=email_data.get("logo_image_url", ""),
+    )
+    notifications = NotificationsConfig(email=email_config)
+
     return Config(
         server=server,
         projects=projects,
@@ -364,6 +400,7 @@ def _dict_to_config(data: dict) -> Config:
         uploads=uploads,
         portal=portal,
         services=services,
+        notifications=notifications,
     )
 
 
