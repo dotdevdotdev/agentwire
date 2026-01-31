@@ -118,10 +118,13 @@ agentwire ensure -s brainstorm -p ~/projects/foo --task brainstorm --keep-sessio
 
 ## Acceptance Criteria
 
-- [ ] `exit_on_complete` field added to task schema (default: true)
-- [ ] Hook sends `/exit` when `exit_on_complete: true`
-- [ ] Task context file includes `exit_on_complete` value
-- [ ] OpenCode plugin updated with same logic
-- [ ] `--keep-session` CLI flag overrides task config
-- [ ] CLAUDE.md updated with new task option
-- [ ] Brainstorm task updated to use default (auto-exit)
+- [x] `exit_on_complete` field added to task schema (default: true)
+- [x] Hook sends `/exit` when `exit_on_complete: true`
+- [x] Hook kills tmux session after /exit for clean slate
+- [x] Task context file includes `exit_on_complete` value
+- [x] Stale completion signals cleared before starting new task
+- [x] ProjectConfig preserves `tasks` section when updating
+- [ ] OpenCode plugin updated with same logic (deferred)
+- [ ] `--keep-session` CLI flag overrides task config (deferred)
+- [ ] CLAUDE.md updated with new task option (deferred)
+- [x] Brainstorm task updated to use default (auto-exit)
