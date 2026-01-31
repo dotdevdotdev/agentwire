@@ -177,3 +177,124 @@ def get_lock_holder(session: str) -> int | None:
         pass
 
     return None
+
+
+def _is_process_running(pid: int) -> bool:
+    """Check if a process with given PID is running.
+
+    Args:
+        pid: Process ID to check
+
+    Returns:
+        True if process is running, False otherwise
+    """
+    import os
+
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+
+def list_locks() -> list[dict]:
+    """List all locks with their metadata.
+
+    Returns:
+        List of dicts with keys: session, pid, age_seconds, status
+        status is 'active' (process running), 'stale' (process dead/missing),
+        or 'unknown' (can't determine)
+    """
+    import os
+
+    if not LOCKS_DIR.exists():
+        return []
+
+    results = []
+    current_time = time.time()
+
+    for lock_file in LOCKS_DIR.glob("*.lock"):
+        session = lock_file.stem.replace("--", "/")
+
+        try:
+            stat = lock_file.stat()
+            age_seconds = int(current_time - stat.st_mtime)
+        except OSError:
+            age_seconds = 0
+
+        # Read PID from file
+        pid = None
+        try:
+            content = lock_file.read_text().strip()
+            if content:
+                pid = int(content)
+        except (ValueError, OSError):
+            pass
+
+        # Determine status
+        if pid is None:
+            status = "stale"  # No PID recorded
+        elif _is_process_running(pid):
+            # Double check with flock
+            if is_session_locked(session):
+                status = "active"
+            else:
+                status = "stale"  # Process exists but doesn't hold lock
+        else:
+            status = "stale"  # Process is dead
+
+        results.append({
+            "session": session,
+            "pid": pid,
+            "age_seconds": age_seconds,
+            "status": status,
+        })
+
+    return sorted(results, key=lambda x: x["session"])
+
+
+def clean_stale_locks(dry_run: bool = False) -> list[str]:
+    """Remove all stale locks.
+
+    A lock is stale if:
+    - No PID is recorded in the lock file
+    - The recorded PID's process is not running
+    - The lock file exists but no process holds the flock
+
+    Args:
+        dry_run: If True, don't actually remove, just return what would be removed
+
+    Returns:
+        List of session names whose locks were removed (or would be removed)
+    """
+    removed = []
+
+    for lock_info in list_locks():
+        if lock_info["status"] == "stale":
+            session = lock_info["session"]
+            if not dry_run:
+                remove_lock(session)
+            removed.append(session)
+
+    return removed
+
+
+def remove_lock(session: str) -> bool:
+    """Force-remove a lock file.
+
+    Args:
+        session: Session name
+
+    Returns:
+        True if lock was removed, False if it didn't exist
+    """
+    lock_path = _get_lock_path(session)
+
+    if not lock_path.exists():
+        return False
+
+    try:
+        lock_path.unlink()
+        return True
+    except OSError:
+        return False

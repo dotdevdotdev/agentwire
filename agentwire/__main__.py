@@ -3052,6 +3052,9 @@ def cmd_new(args) -> int:
                 type=SessionType.from_str(session_type),
                 roles=role_names if role_names else (existing_config.roles if existing_config else []),
                 voice=existing_config.voice if existing_config else None,
+                parent=existing_config.parent if existing_config else None,
+                shell=existing_config.shell if existing_config else None,
+                tasks=existing_config.tasks if existing_config else {},
             )
             save_project_config(project_config, session_path)
     else:
@@ -3082,15 +3085,18 @@ def cmd_new(args) -> int:
             check=True
         )
 
-    # Update project config (.agentwire.yml) - preserve existing settings
+    # Update project config (.agentwire.yml) - preserve ALL existing settings
     # Note: session name is NOT stored in config - it's runtime context
     existing_config = load_project_config(session_path)
     if existing_config:
-        # Preserve existing voice and roles if not overridden by CLI
+        # Preserve existing settings if not overridden by CLI
         project_config = ProjectConfig(
             type=SessionType.from_str(session_type),
             roles=role_names if type_arg else existing_config.roles,
             voice=existing_config.voice,
+            parent=existing_config.parent,
+            shell=existing_config.shell,
+            tasks=existing_config.tasks,
         )
     else:
         # Create new config
@@ -3986,6 +3992,9 @@ def cmd_recreate(args) -> int:
             type=SessionType.from_str(session_type_str),
             roles=project_config.roles if project_config else [],
             voice=project_config.voice if project_config else None,
+            parent=project_config.parent if project_config else None,
+            shell=project_config.shell if project_config else None,
+            tasks=project_config.tasks if project_config else {},
         )
         save_project_config(updated_config, session_path)
         roles = None
@@ -6648,13 +6657,14 @@ def cmd_ensure(args) -> int:
     if machine_id:
         return _output_result(False, json_mode, "Remote sessions not yet supported for ensure", exit_code=ENSURE_EXIT_SESSION_ERROR)
 
-    # Find project path from session name or existing session
-    config = load_config()
-    projects_dir = Path(config.get("projects", {}).get("dir", "~/projects")).expanduser()
-
-    # Parse session name to get project
-    project, branch, _ = parse_session_name(session_name)
-    project_path = projects_dir / project
+    # Find project path from --project flag, or derive from session name
+    if hasattr(args, 'project') and args.project:
+        project_path = Path(args.project).expanduser().resolve()
+    else:
+        config = load_config()
+        projects_dir = Path(config.get("projects", {}).get("dir", "~/projects")).expanduser()
+        project, branch, _ = parse_session_name(session_name)
+        project_path = projects_dir / project
 
     if not project_path.exists():
         return _output_result(False, json_mode, f"Project path not found: {project_path}", exit_code=ENSURE_EXIT_SESSION_ERROR)
@@ -6821,6 +6831,10 @@ def _run_ensure_task(args, session, task, ctx, shell, project_path, timeout, jso
         # Ensure .agentwire directory exists
         (project_path / ".agentwire").mkdir(exist_ok=True)
 
+        # Clear any stale completion signal from a previous run
+        # This prevents immediate return if a previous run's signal wasn't cleaned up
+        clear_task_context(session)
+
         # Write task context for hook coordination
         # Hook will: first idle → send summary prompt, second idle → write completion signal
         write_task_context(
@@ -6828,6 +6842,7 @@ def _run_ensure_task(args, session, task, ctx, shell, project_path, timeout, jso
             task_name=task.name,
             summary_file=summary_filename,
             attempt=attempt,
+            exit_on_complete=task.exit_on_complete,
         )
 
         if not json_mode:
@@ -7181,6 +7196,113 @@ def cmd_task_validate(args) -> int:
     else:
         print(f"Task '{task_name}' is valid.")
         return 0
+
+
+# =============================================================================
+# Lock Management Commands
+# =============================================================================
+
+
+def cmd_lock_list(args) -> int:
+    """List all locks with metadata."""
+    from .locking import list_locks
+
+    json_mode = getattr(args, 'json', False)
+    locks = list_locks()
+
+    if json_mode:
+        _output_json({"locks": locks})
+        return 0
+
+    if not locks:
+        print("No locks found.")
+        return 0
+
+    # Format output
+    print(f"{'SESSION':<25} {'PID':<10} {'AGE':<12} {'STATUS'}")
+    print("-" * 60)
+
+    for lock in locks:
+        session = lock["session"][:24]
+        pid = str(lock["pid"]) if lock["pid"] else "-"
+        age_seconds = lock["age_seconds"]
+
+        # Format age
+        if age_seconds < 60:
+            age = f"{age_seconds}s"
+        elif age_seconds < 3600:
+            age = f"{age_seconds // 60}m {age_seconds % 60}s"
+        elif age_seconds < 86400:
+            hours = age_seconds // 3600
+            mins = (age_seconds % 3600) // 60
+            age = f"{hours}h {mins}m"
+        else:
+            days = age_seconds // 86400
+            hours = (age_seconds % 86400) // 3600
+            age = f"{days}d {hours}h"
+
+        status = lock["status"]
+        print(f"{session:<25} {pid:<10} {age:<12} {status}")
+
+    return 0
+
+
+def cmd_lock_clean(args) -> int:
+    """Remove all stale locks."""
+    from .locking import clean_stale_locks
+
+    json_mode = getattr(args, 'json', False)
+    dry_run = getattr(args, 'dry_run', False)
+
+    removed = clean_stale_locks(dry_run=dry_run)
+
+    if json_mode:
+        _output_json({
+            "removed": removed,
+            "count": len(removed),
+            "dry_run": dry_run,
+        })
+        return 0
+
+    if not removed:
+        print("No stale locks found.")
+    elif dry_run:
+        print(f"Would remove {len(removed)} stale lock(s): {', '.join(removed)}")
+    else:
+        print(f"Removed {len(removed)} stale lock(s): {', '.join(removed)}")
+
+    return 0
+
+
+def cmd_lock_remove(args) -> int:
+    """Force-remove a specific lock."""
+    from .locking import remove_lock
+
+    session = args.session
+    json_mode = getattr(args, 'json', False)
+
+    removed = remove_lock(session)
+
+    if json_mode:
+        _output_json({
+            "session": session,
+            "removed": removed,
+        })
+        return 0 if removed else 1
+
+    if removed:
+        print(f"Removed lock: {session}")
+        return 0
+    else:
+        print(f"No lock found for: {session}")
+        return 1
+
+
+def cmd_lock(args) -> int:
+    """Lock command dispatcher - shows help if no subcommand."""
+    # This will be called if no subcommand is provided
+    # The help is printed in main() based on lock_command being None
+    return 0
 
 
 class VersionAction(argparse.Action):
@@ -7820,6 +7942,7 @@ def main() -> int:
         description="Execute a task from .agentwire.yml with locking, retries, and completion detection.",
     )
     ensure_parser.add_argument("-s", "--session", required=True, help="Target session name")
+    ensure_parser.add_argument("-p", "--project", help="Project path containing .agentwire.yml (defaults to ~/projects/{session})")
     ensure_parser.add_argument("--task", required=True, help="Task name from .agentwire.yml")
     ensure_parser.add_argument("--timeout", type=int, default=300, help="Max wait time for completion (default: 300s)")
     ensure_parser.add_argument("--dry-run", action="store_true", help="Show what would execute without running")
@@ -7853,6 +7976,32 @@ def main() -> int:
     task_validate.add_argument("task", help="Task name (session/task or just task)")
     task_validate.add_argument("--json", action="store_true", help="Output JSON")
     task_validate.set_defaults(func=cmd_task_validate)
+
+    # === lock command group ===
+    lock_parser = subparsers.add_parser(
+        "lock",
+        help="Manage session locks",
+        description="List, clean, and remove session locks.",
+    )
+    lock_subparsers = lock_parser.add_subparsers(dest="lock_command")
+    lock_parser.set_defaults(func=cmd_lock)
+
+    # lock list
+    lock_list_parser = lock_subparsers.add_parser("list", help="List all locks")
+    lock_list_parser.add_argument("--json", action="store_true", help="Output JSON")
+    lock_list_parser.set_defaults(func=cmd_lock_list)
+
+    # lock clean
+    lock_clean_parser = lock_subparsers.add_parser("clean", help="Remove stale locks")
+    lock_clean_parser.add_argument("--dry-run", action="store_true", help="Show what would be removed")
+    lock_clean_parser.add_argument("--json", action="store_true", help="Output JSON")
+    lock_clean_parser.set_defaults(func=cmd_lock_clean)
+
+    # lock remove
+    lock_remove_parser = lock_subparsers.add_parser("remove", help="Force-remove a lock")
+    lock_remove_parser.add_argument("session", help="Session name")
+    lock_remove_parser.add_argument("--json", action="store_true", help="Output JSON")
+    lock_remove_parser.set_defaults(func=cmd_lock_remove)
 
     args = parser.parse_args()
 
@@ -7914,6 +8063,10 @@ def main() -> int:
 
     if args.command == "task" and getattr(args, "task_command", None) is None:
         task_parser.print_help()
+        return 0
+
+    if args.command == "lock" and getattr(args, "lock_command", None) is None:
+        lock_parser.print_help()
         return 0
 
     if hasattr(args, "func"):

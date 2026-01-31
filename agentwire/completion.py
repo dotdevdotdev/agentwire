@@ -89,18 +89,21 @@ def write_task_context(
     task_name: str,
     summary_file: str,
     attempt: int = 1,
+    exit_on_complete: bool = True,
 ) -> Path:
     """Write task context file for hook coordination.
 
     The idle hook reads this to know:
     - A scheduled task is running
     - What summary file to request
+    - Whether to exit the session after completion
 
     Args:
         session: tmux session name
         task_name: Task being executed
         summary_file: Relative path for summary file
         attempt: Current attempt number
+        exit_on_complete: Whether to exit session after task completion
 
     Returns:
         Path to the context file
@@ -113,6 +116,7 @@ def write_task_context(
         "started_at": datetime.now().isoformat(),
         "attempt": attempt,
         "idle_count": 0,  # Hook increments this
+        "exit_on_complete": exit_on_complete,
     }
 
     context_file = TASKS_DIR / f"{session}.json"
