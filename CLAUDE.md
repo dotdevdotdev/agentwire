@@ -91,6 +91,11 @@ agentwire tunnels up            # create all required tunnels
 agentwire tunnels down          # tear down all tunnels
 agentwire tunnels status        # show tunnel health
 
+# Lock management (for scheduled tasks)
+agentwire lock list             # list all locks
+agentwire lock clean            # remove stale locks
+agentwire lock remove <session> # force-remove a specific lock
+
 # Project discovery
 agentwire projects list         # discover projects from projects_dir
 agentwire projects list --json  # JSON output for scripting
