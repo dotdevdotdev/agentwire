@@ -81,6 +81,11 @@ agentwire voiceclone stop name  # stop and save as voice clone
 agentwire voiceclone list       # list available voices
 agentwire voiceclone delete name # delete a voice clone
 
+# Email notifications
+agentwire email --to addr --subject "Subject" --body "Body"
+agentwire email --body "msg" # uses default_to from config
+agentwire email --attach file.pdf --body "See attached"
+
 # Machine management
 agentwire machine list
 agentwire machine add <id> --host <host> --user <user>
@@ -237,6 +242,17 @@ uploads:
 
 portal:
   url: "https://localhost:8765"
+
+notifications:
+  email:
+    api_key: ""  # Resend API key (or set RESEND_API_KEY env var)
+    from_address: "Echo <echo@yourdomain.com>"
+    default_to: "user@example.com"
+    # Branding images (hosted publicly)
+    banner_image_url: "https://yourdomain.com/images/banner.png"
+    echo_image_url: "https://yourdomain.com/images/echo.png"
+    echo_small_url: "https://yourdomain.com/images/echo-small.png"
+    logo_image_url: "https://yourdomain.com/images/logo.png"
 ```
 
 ### .agentwire.yml (Project Config)

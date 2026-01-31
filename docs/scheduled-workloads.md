@@ -148,6 +148,7 @@ output:
 |--------|-------------|
 | `voice` | `agentwire say "Task complete"` |
 | `alert` | `agentwire alert "Task complete"` |
+| `email` | `agentwire email` with task results |
 | `webhook URL` | POST to webhook with JSON payload |
 | `command` | Run arbitrary command |
 
@@ -167,15 +168,65 @@ agentwire task validate newsbot/news-check
 agentwire ensure -s newsbot --task news-check --dry-run
 ```
 
-## Cron Integration
+## Scheduling Integration
 
-Users manage their own scheduling:
+Users manage their own scheduling via cron or launchd.
+
+### Cron (Linux)
 
 ```bash
 # crontab -e
 */30 * * * * agentwire ensure -s newsbot --task news-check
 0 9 * * * agentwire ensure -s myproject --task daily-summary
 0 2 * * 0 agentwire ensure -s myproject --task cleanup
+```
+
+### launchd (macOS)
+
+Create a plist in `~/Library/LaunchAgents/`:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "...">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>dev.agentwire.my-task</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/path/to/project/run-task.sh</string>
+    </array>
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>13</integer>
+        <key>Minute</key>
+        <integer>30</integer>
+    </dict>
+    <key>StandardOutPath</key>
+    <string>~/.agentwire/logs/my-task.log</string>
+    <key>StandardErrorPath</key>
+    <string>~/.agentwire/logs/my-task.log</string>
+</dict>
+</plist>
+```
+
+Wrapper script (`run-task.sh`) to load environment:
+
+```bash
+#!/bin/bash
+# Load secrets
+if [ -f ~/.agentwire/.env ]; then
+    export $(grep -v '^#' ~/.agentwire/.env | xargs)
+fi
+exec agentwire ensure -s myproject --task my-task
+```
+
+Load/unload:
+
+```bash
+launchctl load ~/Library/LaunchAgents/dev.agentwire.my-task.plist
+launchctl unload ~/Library/LaunchAgents/dev.agentwire.my-task.plist
 ```
 
 ## Mental Model
@@ -229,6 +280,32 @@ tasks:
 # crontab
 0 7 * * * agentwire ensure -s newsbot --task morning-briefing
 ```
+
+## Secrets Management
+
+For API keys and secrets, use file-based injection via pre-commands:
+
+```yaml
+tasks:
+  api-task:
+    pre:
+      api_key:
+        cmd: "cat ~/.agentwire/keys/myservice"
+        required: true
+    prompt: |
+      Use this API key: {{ api_key }}
+      ...
+```
+
+Store secrets in `~/.agentwire/keys/`:
+
+```bash
+mkdir -p ~/.agentwire/keys
+echo "your-api-key" > ~/.agentwire/keys/myservice
+chmod 600 ~/.agentwire/keys/myservice
+```
+
+This avoids environment variable issues with tmux sessions and keeps secrets out of config files.
 
 ## Implementation Notes
 
